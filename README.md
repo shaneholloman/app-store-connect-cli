@@ -21,7 +21,8 @@ A **fast**, **lightweight**, and **AI-agent friendly** CLI for App Store Connect
 ### Install
 
 ```bash
-# Via Homebrew (coming soon)
+# Via Homebrew (recommended)
+brew tap rudrank/tap
 brew install rudrank/tap/asc
 
 # Install script (macOS/Linux)
@@ -209,10 +210,8 @@ asc feedback --app "123456789" --json
 ### Homebrew (macOS)
 
 ```bash
-# Add tap
-brew tap rudrank/tap/asc
-
-# Install
+# Add tap and install
+brew tap rudrank/tap
 brew install asc
 ```
 
