@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -21,6 +22,10 @@ func FeedbackCommand() *ffcli.Command {
 	output := fs.String("output", "json", "Output format: json (default), table, markdown")
 	jsonFlag := fs.Bool("json", false, "Output in JSON format (shorthand)")
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
+	deviceModel := fs.String("device-model", "", "Filter by device model(s), comma-separated")
+	osVersion := fs.String("os-version", "", "Filter by OS version(s), comma-separated")
+	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
+	next := fs.String("next", "", "Fetch next page using a links.next URL")
 
 	return &ffcli.Command{
 		Name:       "feedback",
@@ -32,15 +37,24 @@ This command fetches beta feedback screenshot submissions and comments.
 
 Examples:
   asc feedback --app "123456789"
-  asc feedback --app "123456789" --json`,
+  asc feedback --app "123456789" --json
+  asc feedback --app "123456789" --device-model "iPhone15,3" --os-version "17.2"
+  asc feedback --next "<links.next>" --json`,
 		FlagSet: fs,
 		Exec: func(ctx context.Context, args []string) error {
 			if err := fs.Parse(args); err != nil {
 				return err
 			}
 
+			if *limit != 0 && (*limit < 1 || *limit > 200) {
+				return fmt.Errorf("--limit must be between 1 and 200")
+			}
+			if err := validateNextURL(*next); err != nil {
+				return err
+			}
+
 			resolvedAppID := resolveAppID(*appID)
-			if resolvedAppID == "" {
+			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
 				return flag.ErrHelp
 			}
@@ -53,7 +67,14 @@ Examples:
 			requestCtx, cancel := contextWithTimeout(ctx)
 			defer cancel()
 
-			feedback, err := client.GetFeedback(requestCtx, resolvedAppID)
+			opts := []asc.FeedbackOption{
+				asc.WithFeedbackDeviceModels(splitCSV(*deviceModel)),
+				asc.WithFeedbackOSVersions(splitCSV(*osVersion)),
+				asc.WithFeedbackLimit(*limit),
+				asc.WithFeedbackNextURL(*next),
+			}
+
+			feedback, err := client.GetFeedback(requestCtx, resolvedAppID, opts...)
 			if err != nil {
 				return fmt.Errorf("failed to fetch feedback: %w", err)
 			}
@@ -76,6 +97,10 @@ func CrashesCommand() *ffcli.Command {
 	output := fs.String("output", "json", "Output format: json (default), table, markdown")
 	jsonFlag := fs.Bool("json", false, "Output in JSON format (shorthand)")
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
+	deviceModel := fs.String("device-model", "", "Filter by device model(s), comma-separated")
+	osVersion := fs.String("os-version", "", "Filter by OS version(s), comma-separated")
+	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
+	next := fs.String("next", "", "Fetch next page using a links.next URL")
 
 	return &ffcli.Command{
 		Name:       "crashes",
@@ -89,15 +114,24 @@ helping you identify and fix issues in your app.
 Examples:
   asc crashes --app "123456789"
   asc crashes --app "123456789" --json
-  asc crashes --app "123456789" --json > crashes.json`,
+  asc crashes --app "123456789" --json > crashes.json
+  asc crashes --app "123456789" --device-model "iPhone15,3" --os-version "17.2"
+  asc crashes --next "<links.next>" --json`,
 		FlagSet: fs,
 		Exec: func(ctx context.Context, args []string) error {
 			if err := fs.Parse(args); err != nil {
 				return err
 			}
 
+			if *limit != 0 && (*limit < 1 || *limit > 200) {
+				return fmt.Errorf("--limit must be between 1 and 200")
+			}
+			if err := validateNextURL(*next); err != nil {
+				return err
+			}
+
 			resolvedAppID := resolveAppID(*appID)
-			if resolvedAppID == "" {
+			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
 				return flag.ErrHelp
 			}
@@ -110,7 +144,14 @@ Examples:
 			requestCtx, cancel := contextWithTimeout(ctx)
 			defer cancel()
 
-			crashes, err := client.GetCrashes(requestCtx, resolvedAppID)
+			opts := []asc.CrashOption{
+				asc.WithCrashDeviceModels(splitCSV(*deviceModel)),
+				asc.WithCrashOSVersions(splitCSV(*osVersion)),
+				asc.WithCrashLimit(*limit),
+				asc.WithCrashNextURL(*next),
+			}
+
+			crashes, err := client.GetCrashes(requestCtx, resolvedAppID, opts...)
 			if err != nil {
 				return fmt.Errorf("failed to fetch crashes: %w", err)
 			}
@@ -135,6 +176,8 @@ func ReviewsCommand() *ffcli.Command {
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
 	stars := fs.Int("stars", 0, "Filter by star rating (1-5)")
 	territory := fs.String("territory", "", "Filter by territory (e.g., US, GBR)")
+	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
+	next := fs.String("next", "", "Fetch next page using a links.next URL")
 
 	return &ffcli.Command{
 		Name:       "reviews",
@@ -148,15 +191,23 @@ helping you understand user feedback and sentiment.
 Examples:
   asc reviews --app "123456789"
   asc reviews --app "123456789" --json
-  asc reviews --app "123456789" --stars 1 --territory US --json`,
+  asc reviews --app "123456789" --stars 1 --territory US --json
+  asc reviews --next "<links.next>" --json`,
 		FlagSet: fs,
 		Exec: func(ctx context.Context, args []string) error {
 			if err := fs.Parse(args); err != nil {
 				return err
 			}
 
+			if *limit != 0 && (*limit < 1 || *limit > 200) {
+				return fmt.Errorf("--limit must be between 1 and 200")
+			}
+			if err := validateNextURL(*next); err != nil {
+				return err
+			}
+
 			resolvedAppID := resolveAppID(*appID)
-			if resolvedAppID == "" {
+			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
 				return flag.ErrHelp
 			}
@@ -178,6 +229,12 @@ Examples:
 			}
 			if *territory != "" {
 				opts = append(opts, asc.WithTerritory(*territory))
+			}
+			if *limit != 0 {
+				opts = append(opts, asc.WithLimit(*limit))
+			}
+			if strings.TrimSpace(*next) != "" {
+				opts = append(opts, asc.WithNextURL(*next))
 			}
 
 			reviews, err := client.GetReviews(requestCtx, resolvedAppID, opts...)
@@ -292,4 +349,35 @@ func contextWithTimeout(ctx context.Context) (context.Context, context.CancelFun
 		ctx = context.Background()
 	}
 	return context.WithTimeout(ctx, asc.DefaultTimeout)
+}
+
+func splitCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		cleaned = append(cleaned, part)
+	}
+	return cleaned
+}
+
+func validateNextURL(next string) error {
+	next = strings.TrimSpace(next)
+	if next == "" {
+		return nil
+	}
+	parsed, err := url.Parse(next)
+	if err != nil {
+		return fmt.Errorf("--next must be a valid URL: %w", err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "api.appstoreconnect.apple.com" {
+		return fmt.Errorf("--next must be an App Store Connect URL")
+	}
+	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -86,13 +87,101 @@ type CrashesResponse = Response[CrashAttributes]
 // ReviewsResponse is the response from customer reviews endpoint.
 type ReviewsResponse = Response[ReviewAttributes]
 
+type listQuery struct {
+	limit   int
+	nextURL string
+}
+
+type feedbackQuery struct {
+	listQuery
+	deviceModels []string
+	osVersions   []string
+}
+
+type crashQuery struct {
+	listQuery
+	deviceModels []string
+	osVersions   []string
+}
+
 type reviewQuery struct {
+	listQuery
 	rating    int
 	territory string
 }
 
+// FeedbackOption is a functional option for GetFeedback.
+type FeedbackOption func(*feedbackQuery)
+
+// CrashOption is a functional option for GetCrashes.
+type CrashOption func(*crashQuery)
+
 // ReviewOption is a functional option for GetReviews.
 type ReviewOption func(*reviewQuery)
+
+// WithFeedbackDeviceModels filters feedback by device model(s).
+func WithFeedbackDeviceModels(models []string) FeedbackOption {
+	return func(q *feedbackQuery) {
+		q.deviceModels = normalizeList(models)
+	}
+}
+
+// WithFeedbackOSVersions filters feedback by OS version(s).
+func WithFeedbackOSVersions(versions []string) FeedbackOption {
+	return func(q *feedbackQuery) {
+		q.osVersions = normalizeList(versions)
+	}
+}
+
+// WithFeedbackLimit sets the max number of feedback items to return.
+func WithFeedbackLimit(limit int) FeedbackOption {
+	return func(q *feedbackQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithFeedbackNextURL uses a next page URL directly.
+func WithFeedbackNextURL(next string) FeedbackOption {
+	return func(q *feedbackQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithCrashDeviceModels filters crashes by device model(s).
+func WithCrashDeviceModels(models []string) CrashOption {
+	return func(q *crashQuery) {
+		q.deviceModels = normalizeList(models)
+	}
+}
+
+// WithCrashOSVersions filters crashes by OS version(s).
+func WithCrashOSVersions(versions []string) CrashOption {
+	return func(q *crashQuery) {
+		q.osVersions = normalizeList(versions)
+	}
+}
+
+// WithCrashLimit sets the max number of crash items to return.
+func WithCrashLimit(limit int) CrashOption {
+	return func(q *crashQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithCrashNextURL uses a next page URL directly.
+func WithCrashNextURL(next string) CrashOption {
+	return func(q *crashQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
 
 // WithRating filters reviews by star rating (1-5).
 func WithRating(rating int) ReviewOption {
@@ -108,6 +197,24 @@ func WithTerritory(territory string) ReviewOption {
 	return func(r *reviewQuery) {
 		if territory != "" {
 			r.territory = strings.ToUpper(territory)
+		}
+	}
+}
+
+// WithLimit sets the max number of reviews to return.
+func WithLimit(limit int) ReviewOption {
+	return func(r *reviewQuery) {
+		if limit > 0 {
+			r.limit = limit
+		}
+	}
+}
+
+// WithNextURL uses a next page URL directly.
+func WithNextURL(next string) ReviewOption {
+	return func(r *reviewQuery) {
+		if strings.TrimSpace(next) != "" {
+			r.nextURL = strings.TrimSpace(next)
 		}
 	}
 }
@@ -141,7 +248,10 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body io.Re
 		return nil, fmt.Errorf("failed to generate JWT: %w", err)
 	}
 
-	url := BaseURL + path
+	url := path
+	if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
+		url = BaseURL + path
+	}
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -213,13 +323,69 @@ func buildReviewQuery(opts []ReviewOption) string {
 	if query.rating >= 1 && query.rating <= 5 {
 		values.Set("filter[rating]", fmt.Sprintf("%d", query.rating))
 	}
+	addLimit(values, query.limit)
 
 	return values.Encode()
 }
 
+func buildFeedbackQuery(query *feedbackQuery) string {
+	values := url.Values{}
+	addCSV(values, "filter[deviceModel]", query.deviceModels)
+	addCSV(values, "filter[osVersion]", query.osVersions)
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
+func buildCrashQuery(query *crashQuery) string {
+	values := url.Values{}
+	addCSV(values, "filter[deviceModel]", query.deviceModels)
+	addCSV(values, "filter[osVersion]", query.osVersions)
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
+func normalizeList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		normalized = append(normalized, value)
+	}
+	return normalized
+}
+
+func addCSV(values url.Values, key string, items []string) {
+	items = normalizeList(items)
+	if len(items) == 0 {
+		return
+	}
+	values.Set(key, strings.Join(items, ","))
+}
+
+func addLimit(values url.Values, limit int) {
+	if limit > 0 {
+		values.Set("limit", strconv.Itoa(limit))
+	}
+}
+
 // GetFeedback retrieves TestFlight feedback
-func (c *Client) GetFeedback(ctx context.Context, appID string) (*FeedbackResponse, error) {
+func (c *Client) GetFeedback(ctx context.Context, appID string, opts ...FeedbackOption) (*FeedbackResponse, error) {
+	query := &feedbackQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
 	path := fmt.Sprintf("/v1/apps/%s/betaFeedbackScreenshotSubmissions", appID)
+	if query.nextURL != "" {
+		path = query.nextURL
+	} else if queryString := buildFeedbackQuery(query); queryString != "" {
+		path += "?" + queryString
+	}
 
 	data, err := c.do(ctx, "GET", path, nil)
 	if err != nil {
@@ -235,8 +401,18 @@ func (c *Client) GetFeedback(ctx context.Context, appID string) (*FeedbackRespon
 }
 
 // GetCrashes retrieves TestFlight crash reports
-func (c *Client) GetCrashes(ctx context.Context, appID string) (*CrashesResponse, error) {
+func (c *Client) GetCrashes(ctx context.Context, appID string, opts ...CrashOption) (*CrashesResponse, error) {
+	query := &crashQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
 	path := fmt.Sprintf("/v1/apps/%s/betaFeedbackCrashSubmissions", appID)
+	if query.nextURL != "" {
+		path = query.nextURL
+	} else if queryString := buildCrashQuery(query); queryString != "" {
+		path += "?" + queryString
+	}
 
 	data, err := c.do(ctx, "GET", path, nil)
 	if err != nil {
@@ -253,10 +429,16 @@ func (c *Client) GetCrashes(ctx context.Context, appID string) (*CrashesResponse
 
 // GetReviews retrieves App Store reviews
 func (c *Client) GetReviews(ctx context.Context, appID string, opts ...ReviewOption) (*ReviewsResponse, error) {
+	query := &reviewQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
 	path := fmt.Sprintf("/v1/apps/%s/customerReviews", appID)
-	query := buildReviewQuery(opts)
-	if query != "" {
-		path += "?" + query
+	if query.nextURL != "" {
+		path = query.nextURL
+	} else if queryString := buildReviewQuery(opts); queryString != "" {
+		path += "?" + queryString
 	}
 
 	data, err := c.do(ctx, "GET", path, nil)

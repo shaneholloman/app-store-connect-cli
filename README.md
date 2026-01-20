@@ -59,11 +59,17 @@ Environment variable fallback:
 # List beta feedback (JSON - best for AI agents)
 asc feedback --app "123456789" --json
 
+# Filter feedback by device model and OS version
+asc feedback --app "123456789" --device-model "iPhone15,3" --os-version "17.2" --json
+
 # Get crash reports (table format - for humans)
 asc crashes --app "123456789" --output table
 
 # Get crash reports (markdown - for docs)
 asc crashes --app "123456789" --output markdown
+
+# Limit results per page (pagination)
+asc crashes --app "123456789" --limit 25 --json
 ```
 
 ### App Store
@@ -77,6 +83,9 @@ asc reviews --app "123456789" --stars 1 --output table
 
 # Filter by territory (markdown - for docs)
 asc reviews --app "123456789" --territory US --output markdown
+
+# Fetch next page using links.next
+asc reviews --next "<links.next>" --json
 ```
 
 ### Output Formats

@@ -62,6 +62,12 @@ test-coverage:
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)Coverage report: coverage.html$(NC)"
 
+# Run integration tests (opt-in)
+.PHONY: test-integration
+test-integration:
+	@echo "$(BLUE)Running integration tests (requires ASC_* env vars)...$(NC)"
+	$(GO) test -tags=integration -v ./internal/asc -run Integration
+
 # Lint the code
 .PHONY: lint
 lint:
@@ -136,6 +142,7 @@ help:
 	@echo "  build-debug    Build with debug symbols"
 	@echo "  test           Run tests"
 	@echo "  test-coverage  Run tests with coverage"
+	@echo "  test-integration  Run opt-in integration tests"
 	@echo "  lint           Lint the code"
 	@echo "  format         Format code"
 	@echo "  deps           Install dependencies"

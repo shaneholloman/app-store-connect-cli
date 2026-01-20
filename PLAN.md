@@ -20,16 +20,15 @@ A fast, AI-agent-friendly CLI for App Store Connect that enables developers to s
 - CLI skeleton with ffcli framework
 - Commands register and show help: `asc --help`, `asc feedback --help`, `asc auth --help`
 - ECDSA JWT signing wired to `.p8` keys
+- Keychain storage with local config fallback
 - Feedback/crash/review endpoints aligned to ASC OpenAPI spec
 - Code compiles and unit tests run
 - Live API validation: feedback/crashes return data; reviews may be empty if no reviews exist
 
 ### What Doesn't Work Yet
 
-- **Pagination** - No paging support yet for large datasets
-- **Filtering** - Reviews support rating/territory filters; feedback/crashes are unfiltered
-- **Keychain** - Keychain support implemented; local config fallback remains
-- **Tests** - Basic unit coverage (config, auth, query, output)
+- **Pagination** - Manual pagination only (`--limit`, `--next`); no auto-paging yet
+- **Tests** - Integration tests are opt-in and require real credentials
 
 ### Files Status
 
@@ -116,8 +115,8 @@ asc reviews --app "123456789" --json
 #### What Needs Fixing
 
 - [x] Test actual API authentication with App Store Connect
-- [ ] Add pagination support
-- [ ] Add integration tests for auth flow
+- [x] Add pagination support
+- [x] Add opt-in integration tests for API calls
 
 #### Deliverables (Actual)
 
@@ -166,9 +165,9 @@ asc reviews --app "123456789" --json
   - `GET /v1/apps/{id}/betaFeedbackCrashSubmissions`
   - `GET /v1/apps/{id}/customerReviews`
 - [x] Add review filters (`--stars`, `--territory`) via query params
-- [ ] Add pagination support for all list endpoints
-- [ ] Add feedback/crash filters where supported (device model, OS version, etc.)
-- [ ] Write integration tests (mock or real API)
+- [x] Add pagination support for all list endpoints
+- [x] Add feedback/crash filters where supported (device model, OS version, etc.)
+- [x] Write integration tests (opt-in, real API)
 
 ---
 
@@ -411,16 +410,16 @@ github.com/goreleaser/nfpm/v2     - Packaging via `go run` (optional)
 
 **Phase 1: Foundation - IMPLEMENTED** (validated locally)
 
-Next: Add pagination, feedback/crash filters, and integration tests
+Next: Add auto-pagination, more filters (build/tester/platform), and mockable integration tests
 
 ## Known Issues
 
 1. **Pagination**
-   - No pagination support yet for large datasets
+   - Manual pagination only (`--limit`, `--next`); no auto-paging yet
 
 2. **Filtering**
    - Reviews support rating/territory filters
-   - Feedback/crashes do not yet expose API filters
+   - Feedback/crashes support device model + OS version only (more filters pending)
 
 3. **Keychain**
    - Keychain supported; local config fallback still exists
@@ -436,4 +435,4 @@ Next: Add pagination, feedback/crash filters, and integration tests
 - [x] `asc reviews --app "APP_ID" --json` returns customer reviews (may be empty)
 - [x] Reviews include: id, createdDate, rating, title, body, territory
 - [x] All commands work with real App Store Connect API keys
-- [ ] Basic integration test that doesn't require real API credentials
+- [x] Opt-in integration tests (real API credentials required)
