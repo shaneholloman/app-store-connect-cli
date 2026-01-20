@@ -7,12 +7,104 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/auth"
 )
+
+// ANSI escape codes for bold text
+var (
+	bold  = "\033[1m"
+	reset = "\033[22m"
+)
+
+// Bold returns the string wrapped in ANSI bold codes
+func Bold(s string) string {
+	return bold + s + reset
+}
+
+// DefaultUsageFunc returns a usage string with bold section headers
+func DefaultUsageFunc(c *ffcli.Command) string {
+	var b strings.Builder
+
+	shortHelp := strings.TrimSpace(c.ShortHelp)
+	longHelp := strings.TrimSpace(c.LongHelp)
+	if shortHelp == "" && longHelp != "" {
+		shortHelp = longHelp
+		longHelp = ""
+	}
+
+	// DESCRIPTION
+	if shortHelp != "" {
+		b.WriteString(Bold("DESCRIPTION"))
+		b.WriteString("\n")
+		b.WriteString("  ")
+		b.WriteString(shortHelp)
+		b.WriteString("\n\n")
+	}
+
+	// USAGE / ShortUsage
+	usage := strings.TrimSpace(c.ShortUsage)
+	if usage == "" {
+		usage = strings.TrimSpace(c.Name)
+	}
+	if usage != "" {
+		b.WriteString(Bold("USAGE"))
+		b.WriteString("\n")
+		b.WriteString("  ")
+		b.WriteString(usage)
+		b.WriteString("\n\n")
+	}
+
+	// LongHelp (additional description)
+	if longHelp != "" {
+		if shortHelp != "" && strings.HasPrefix(longHelp, shortHelp) {
+			longHelp = strings.TrimSpace(strings.TrimPrefix(longHelp, shortHelp))
+		}
+		if longHelp != "" {
+			b.WriteString(longHelp)
+			b.WriteString("\n\n")
+		}
+	}
+
+	// SUBCOMMANDS
+	if len(c.Subcommands) > 0 {
+		b.WriteString(Bold("SUBCOMMANDS"))
+		b.WriteString("\n")
+		tw := tabwriter.NewWriter(&b, 0, 2, 2, ' ', 0)
+		for _, sub := range c.Subcommands {
+			fmt.Fprintf(tw, "  %-12s %s\n", sub.Name, sub.ShortHelp)
+		}
+		tw.Flush()
+		b.WriteString("\n")
+	}
+
+	// FLAGS
+	if c.FlagSet != nil {
+		hasFlags := false
+		c.FlagSet.VisitAll(func(*flag.Flag) {
+			hasFlags = true
+		})
+		if hasFlags {
+			b.WriteString(Bold("FLAGS"))
+			b.WriteString("\n")
+			tw := tabwriter.NewWriter(&b, 0, 2, 2, ' ', 0)
+			c.FlagSet.VisitAll(func(f *flag.Flag) {
+				def := f.DefValue
+				if def == "" {
+					def = "\"\""
+				}
+				fmt.Fprintf(tw, "  --%-12s %s (default: %s)\n", f.Name, f.Usage, def)
+			})
+			tw.Flush()
+		}
+	}
+
+	return b.String()
+}
 
 // Feedback command factory
 func FeedbackCommand() *ffcli.Command {
@@ -47,7 +139,8 @@ Examples:
   asc feedback --app "123456789" --device-model "iPhone15,3" --os-version "17.2"
   asc feedback --app "123456789" --sort -createdDate --limit 5 --json
   asc feedback --next "<links.next>" --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("feedback: --limit must be between 1 and 200")
@@ -138,7 +231,8 @@ Examples:
   asc crashes --app "123456789" --device-model "iPhone15,3" --os-version "17.2"
   asc crashes --app "123456789" --sort -createdDate --limit 5 --json
   asc crashes --next "<links.next>" --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("crashes: --limit must be between 1 and 200")
@@ -223,7 +317,8 @@ Examples:
   asc reviews --app "123456789" --stars 1 --territory US --json
   asc reviews --app "123456789" --sort -createdDate --limit 5 --json
   asc reviews --next "<links.next>" --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("reviews: --limit must be between 1 and 200")
@@ -311,7 +406,8 @@ Examples:
   asc apps --sort name --json
   asc apps --output table
   asc apps --next "<links.next>" --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("apps: --limit must be between 1 and 200")
@@ -379,7 +475,8 @@ with presigned URLs. The actual file upload must be done separately.
 Examples:
   asc builds upload --app "123456789" --ipa "path/to/app.ipa"
   asc builds upload --ipa "app.ipa" --version "1.0.0" --build-number "123"`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			// Validate required flags
 			resolvedAppID := resolveAppID(*appID)
@@ -502,18 +599,13 @@ func BuildsCommand() *ffcli.Command {
 		ShortHelp:  "Manage builds in App Store Connect.",
 		LongHelp: `Manage builds in App Store Connect.
 
-Subcommands:
-  list    List builds for an app
-  info    Show build details
-  expire  Expire a build for TestFlight
-  upload  Prepare a build upload
-
 Examples:
   asc builds list --app "123456789"
   asc builds info --build "BUILD_ID"
   asc builds expire --build "BUILD_ID"
   asc builds upload --app "123456789" --ipa "app.ipa"`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			listCmd,
 			BuildsInfoCommand(),
@@ -551,7 +643,8 @@ Examples:
   asc builds list --app "123456789"
   asc builds list --app "123456789" --json
   asc builds list --app "123456789" --limit 10 --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			BuildsInfoCommand(),
 			BuildsExpireCommand(),
@@ -621,11 +714,11 @@ func BuildsInfoCommand() *ffcli.Command {
 
 Examples:
   asc builds info --build "BUILD_ID" --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if strings.TrimSpace(*buildID) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --build is required")
-				fs.Usage()
 				return flag.ErrHelp
 			}
 
@@ -671,11 +764,11 @@ This action is irreversible for the specified build.
 
 Examples:
   asc builds expire --build "BUILD_ID" --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if strings.TrimSpace(*buildID) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --build is required")
-				fs.Usage()
 				return flag.ErrHelp
 			}
 
@@ -724,7 +817,8 @@ a version for review on the App Store.
 Examples:
   asc submit --version "VERSION_ID" --confirm
   asc submit --version "VERSION_ID" --confirm --json`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			// Validate required flags
 			if *versionID == "" {
@@ -782,6 +876,7 @@ func VersionCommand(version string) *ffcli.Command {
 		Name:       "version",
 		ShortUsage: "asc version",
 		ShortHelp:  "Print version information and exit.",
+		UsageFunc:  DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			fmt.Println(version)
 			return nil
@@ -797,6 +892,7 @@ func RootCommand(version string) *ffcli.Command {
 		ShortHelp:  "A fast, AI-agent friendly CLI for App Store Connect.",
 		LongHelp:   "ASC is a lightweight CLI for App Store Connect. Built for developers and AI agents.",
 		FlagSet:    flag.NewFlagSet("asc", flag.ExitOnError),
+		UsageFunc:  DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			AuthCommand(),
 			FeedbackCommand(),

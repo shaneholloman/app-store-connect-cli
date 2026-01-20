@@ -19,8 +19,14 @@ func AuthCommand() *ffcli.Command {
 		Name:       "auth",
 		ShortUsage: "asc auth <subcommand> [flags]",
 		ShortHelp:  "Manage App Store Connect API authentication.",
-		LongHelp:   "Manage App Store Connect API authentication.\n\nAuthentication is handled via App Store Connect API keys. Generate keys at:\nhttps://appstoreconnect.apple.com/access/integrations/api\n\nCredentials are stored in the system keychain when available, with a local config fallback.\n\nSubcommands:\n  login     Register and store API key\n  logout    Remove stored credentials\n  status    Show current authentication status",
-		FlagSet:    fs,
+		LongHelp: `Manage App Store Connect API authentication.
+
+Authentication is handled via App Store Connect API keys. Generate keys at:
+https://appstoreconnect.apple.com/access/integrations/api
+
+Credentials are stored in the system keychain when available, with a local config fallback.`,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			AuthLoginCommand(),
 			AuthLogoutCommand(),
@@ -28,7 +34,6 @@ func AuthCommand() *ffcli.Command {
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			if len(args) == 0 {
-				fs.Usage()
 				return flag.ErrHelp
 			}
 			return nil
@@ -58,26 +63,23 @@ Examples:
   asc auth login --name "MyKey" --key-id "ABC123" --issuer-id "DEF456" --private-key /path/to/AuthKey.p8
 
 The private key file path is stored securely. The key content is never saved.`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *name == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				fs.Usage()
 				return flag.ErrHelp
 			}
 			if *keyID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --key-id is required")
-				fs.Usage()
 				return flag.ErrHelp
 			}
 			if *issuerID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --issuer-id is required")
-				fs.Usage()
 				return flag.ErrHelp
 			}
 			if *keyPath == "" {
 				fmt.Fprintln(os.Stderr, "Error: --private-key is required")
-				fs.Usage()
 				return flag.ErrHelp
 			}
 
@@ -111,7 +113,8 @@ func AuthLogoutCommand() *ffcli.Command {
 Examples:
   asc auth logout
   asc auth logout --all`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *all {
 				// Flag is accepted for future multi-key support.
@@ -141,7 +144,8 @@ Displays information about stored API keys and which one is currently active.
 
 Examples:
   asc auth status`,
-		FlagSet: fs,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			credentials, err := auth.ListCredentials()
 			if err != nil {

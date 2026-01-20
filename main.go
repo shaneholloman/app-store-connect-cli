@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -28,6 +29,9 @@ func main() {
 	}
 
 	if err := root.Run(context.Background()); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			os.Exit(1)
+		}
 		log.Fatalf("error executing command: %v\n", err)
 	}
 }
