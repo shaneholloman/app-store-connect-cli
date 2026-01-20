@@ -410,15 +410,10 @@ Examples:
 			emailValue := strings.TrimSpace(*email)
 			testerID, err := findBetaTesterIDByEmail(requestCtx, client, resolvedAppID, emailValue)
 			if err != nil {
-				if !errors.Is(err, errBetaTesterNotFound) {
-					return fmt.Errorf("beta-testers invite: %w", err)
+				if errors.Is(err, errBetaTesterNotFound) {
+					return fmt.Errorf("beta-testers invite: no tester found for %q (add with beta-testers add --group ...)", emailValue)
 				}
-
-				created, createErr := client.CreateBetaTester(requestCtx, emailValue, "", "", nil)
-				if createErr != nil {
-					return fmt.Errorf("beta-testers invite: failed to create tester: %w", createErr)
-				}
-				testerID = created.Data.ID
+				return fmt.Errorf("beta-testers invite: %w", err)
 			}
 
 			invitation, err := client.CreateBetaTesterInvitation(requestCtx, resolvedAppID, testerID)
