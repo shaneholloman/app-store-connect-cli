@@ -80,3 +80,8 @@ fi
 
 echo "Installed ${BIN_NAME} to ${INSTALL_DIR}/${BIN_NAME}"
 echo "Run: ${BIN_NAME} --help"
+if [[ ":${PATH}:" != *":${INSTALL_DIR}:"* ]]; then
+  echo "Note: ${INSTALL_DIR} is not in your PATH."
+  echo "Add it to your shell profile, e.g.:"
+  echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
+fi
