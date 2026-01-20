@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,10 +105,13 @@ func TestGetBuilds_WithSortAndLimit(t *testing.T) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET, got %s", req.Method)
 		}
-		if req.URL.Path != "/v1/apps/123/builds" {
-			t.Fatalf("expected path /v1/apps/123/builds, got %s", req.URL.Path)
+		if req.URL.Path != "/v1/builds" {
+			t.Fatalf("expected path /v1/builds, got %s", req.URL.Path)
 		}
 		values := req.URL.Query()
+		if values.Get("filter[app]") != "123" {
+			t.Fatalf("expected filter[app]=123, got %q", values.Get("filter[app]"))
+		}
 		if values.Get("sort") != "-uploadedDate" {
 			t.Fatalf("expected sort=-uploadedDate, got %q", values.Get("sort"))
 		}
@@ -123,7 +127,7 @@ func TestGetBuilds_WithSortAndLimit(t *testing.T) {
 }
 
 func TestGetBuilds_UsesNextURL(t *testing.T) {
-	next := "https://api.appstoreconnect.apple.com/v1/apps/123/builds?cursor=abc"
+	next := "https://api.appstoreconnect.apple.com/v1/builds?cursor=abc"
 	response := jsonResponse(http.StatusOK, `{"data":[]}`)
 	client := newTestClient(t, func(req *http.Request) {
 		if req.URL.String() != next {
@@ -134,6 +138,65 @@ func TestGetBuilds_UsesNextURL(t *testing.T) {
 
 	if _, err := client.GetBuilds(context.Background(), "123", WithBuildsLimit(5), WithBuildsSort("uploadedDate"), WithBuildsNextURL(next)); err != nil {
 		t.Fatalf("GetBuilds() error: %v", err)
+	}
+}
+
+func TestGetBuild_ByID(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"builds","id":"123","attributes":{"version":"1.0","uploadedDate":"2026-01-20T00:00:00Z","expired":false}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/builds/123" {
+			t.Fatalf("expected path /v1/builds/123, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetBuild(context.Background(), "123"); err != nil {
+		t.Fatalf("GetBuild() error: %v", err)
+	}
+}
+
+func TestExpireBuild_SendsPatch(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"builds","id":"123","attributes":{"version":"1.0","uploadedDate":"2026-01-20T00:00:00Z","expired":true}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/builds/123" {
+			t.Fatalf("expected path /v1/builds/123, got %s", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+		var payload struct {
+			Data struct {
+				Type       string `json:"type"`
+				ID         string `json:"id"`
+				Attributes struct {
+					Expired bool `json:"expired"`
+				} `json:"attributes"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+		if payload.Data.Type != "builds" {
+			t.Fatalf("expected type builds, got %q", payload.Data.Type)
+		}
+		if payload.Data.ID != "123" {
+			t.Fatalf("expected id 123, got %q", payload.Data.ID)
+		}
+		if !payload.Data.Attributes.Expired {
+			t.Fatalf("expected expired true")
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.ExpireBuild(context.Background(), "123"); err != nil {
+		t.Fatalf("ExpireBuild() error: %v", err)
 	}
 }
 

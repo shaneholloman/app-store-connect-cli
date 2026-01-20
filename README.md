@@ -137,6 +137,12 @@ asc builds --app "123456789" --sort -uploadedDate --json
 # Fetch next page
 asc apps --next "<links.next>" --json
 asc builds --next "<links.next>" --json
+
+# Build details
+asc builds info --build "BUILD_ID" --json
+
+# Expire a build (irreversible)
+asc builds expire --build "BUILD_ID" --json
 ```
 
 ### Utilities

@@ -195,6 +195,56 @@ func TestPrintMarkdown_Builds(t *testing.T) {
 	}
 }
 
+func TestPrintTable_BuildInfo(t *testing.T) {
+	resp := &BuildResponse{
+		Data: Resource[BuildAttributes]{
+			ID: "1",
+			Attributes: BuildAttributes{
+				Version:         "2.0.0",
+				UploadedDate:    "2026-01-20T00:00:00Z",
+				ProcessingState: "VALID",
+				Expired:         true,
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Processing") {
+		t.Fatalf("expected build info header in output, got: %s", output)
+	}
+	if !strings.Contains(output, "2.0.0") {
+		t.Fatalf("expected build version in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_BuildInfo(t *testing.T) {
+	resp := &BuildResponse{
+		Data: Resource[BuildAttributes]{
+			ID: "1",
+			Attributes: BuildAttributes{
+				Version:         "2.0.0",
+				UploadedDate:    "2026-01-20T00:00:00Z",
+				ProcessingState: "VALID",
+				Expired:         true,
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Version | Uploaded | Processing | Expired |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "2.0.0") {
+		t.Fatalf("expected build version in output, got: %s", output)
+	}
+}
+
 func TestPrintPrettyJSON(t *testing.T) {
 	resp := &ReviewsResponse{
 		Data: []Resource[ReviewAttributes]{

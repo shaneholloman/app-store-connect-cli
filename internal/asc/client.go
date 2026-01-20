@@ -49,6 +49,12 @@ type Response[T any] struct {
 	Links Links         `json:"links,omitempty"`
 }
 
+// SingleResponse is a generic ASC API response wrapper for single resources.
+type SingleResponse[T any] struct {
+	Data  Resource[T] `json:"data"`
+	Links Links       `json:"links,omitempty"`
+}
+
 // FeedbackAttributes describes beta feedback screenshot submissions.
 type FeedbackAttributes struct {
 	CreatedDate    string `json:"createdDate"`
@@ -96,6 +102,9 @@ type AppsResponse = Response[AppAttributes]
 
 // BuildsResponse is the response from builds endpoint.
 type BuildsResponse = Response[BuildAttributes]
+
+// BuildResponse is the response from build detail/updates.
+type BuildResponse = SingleResponse[BuildAttributes]
 
 type listQuery struct {
 	limit   int
@@ -740,11 +749,12 @@ func (c *Client) GetBuilds(ctx context.Context, appID string, opts ...BuildsOpti
 		opt(query)
 	}
 
-	path := fmt.Sprintf("/v1/apps/%s/builds", appID)
+	path := "/v1/builds"
 	if query.nextURL != "" {
 		path = query.nextURL
 	} else {
 		values := url.Values{}
+		values.Set("filter[app]", appID)
 		if query.sort != "" {
 			values.Set("sort", query.sort)
 		}
@@ -762,6 +772,56 @@ func (c *Client) GetBuilds(ctx context.Context, appID string, opts ...BuildsOpti
 	}
 
 	var response BuildsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// GetBuild retrieves a single build by ID.
+func (c *Client) GetBuild(ctx context.Context, buildID string) (*BuildResponse, error) {
+	path := fmt.Sprintf("/v1/builds/%s", buildID)
+	data, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response BuildResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// ExpireBuild expires a build for TestFlight testing.
+func (c *Client) ExpireBuild(ctx context.Context, buildID string) (*BuildResponse, error) {
+	payload := struct {
+		Data struct {
+			Type       string `json:"type"`
+			ID         string `json:"id"`
+			Attributes struct {
+				Expired bool `json:"expired"`
+			} `json:"attributes"`
+		} `json:"data"`
+	}{}
+	payload.Data.Type = "builds"
+	payload.Data.ID = buildID
+	payload.Data.Attributes.Expired = true
+
+	body, err := BuildRequestBody(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("/v1/builds/%s", buildID)
+	data, err := c.do(ctx, "PATCH", path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var response BuildResponse
 	if err := json.Unmarshal(data, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
@@ -802,6 +862,8 @@ func PrintMarkdown(data interface{}) error {
 		return printAppsMarkdown(v)
 	case *BuildsResponse:
 		return printBuildsMarkdown(v)
+	case *BuildResponse:
+		return printBuildsMarkdown(&BuildsResponse{Data: []Resource[BuildAttributes]{v.Data}})
 	default:
 		return PrintJSON(data)
 	}
@@ -820,6 +882,8 @@ func PrintTable(data interface{}) error {
 		return printAppsTable(v)
 	case *BuildsResponse:
 		return printBuildsTable(v)
+	case *BuildResponse:
+		return printBuildsTable(&BuildsResponse{Data: []Resource[BuildAttributes]{v.Data}})
 	default:
 		return PrintJSON(data)
 	}

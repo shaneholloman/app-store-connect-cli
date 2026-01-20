@@ -128,3 +128,45 @@ func TestUnknownCommandPrintsHelpError(t *testing.T) {
 		t.Fatalf("expected unknown command message, got %q", stderr)
 	}
 }
+
+func TestBuildsInfoRequiresBuildID(t *testing.T) {
+	root := RootCommand("1.2.3")
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"builds", "info"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected ErrHelp, got %v", err)
+		}
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "--build is required") {
+		t.Fatalf("expected missing build error, got %q", stderr)
+	}
+}
+
+func TestBuildsExpireRequiresBuildID(t *testing.T) {
+	root := RootCommand("1.2.3")
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"builds", "expire"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected ErrHelp, got %v", err)
+		}
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "--build is required") {
+		t.Fatalf("expected missing build error, got %q", stderr)
+	}
+}

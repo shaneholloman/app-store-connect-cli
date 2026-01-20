@@ -74,6 +74,8 @@ asc apps --json
 asc apps --sort name --json
 asc builds --app "123456789" --json
 asc builds --app "123456789" --sort -uploadedDate --json
+asc builds info --build "BUILD_ID" --json
+asc builds expire --build "BUILD_ID" --json
 
 # Utilities
 asc version

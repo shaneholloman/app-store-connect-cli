@@ -381,8 +381,16 @@ Examples:
   asc builds --app "123456789" --limit 10 --json
   asc builds --app "123456789" --sort -uploadedDate --json
   asc builds --app "123456789" --output table
-  asc builds --next "<links.next>" --json`,
+  asc builds --next "<links.next>" --json
+
+Subcommands:
+  info    Show build details
+  expire  Expire a build for TestFlight`,
 		FlagSet: fs,
+		Subcommands: []*ffcli.Command{
+			BuildsInfoCommand(),
+			BuildsExpireCommand(),
+		},
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("builds: --limit must be between 1 and 200")
@@ -427,6 +435,104 @@ Examples:
 			}
 
 			return printOutput(builds, format, *pretty)
+		},
+	}
+}
+
+// BuildsInfoCommand returns a build detail subcommand.
+func BuildsInfoCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("builds info", flag.ExitOnError)
+
+	buildID := fs.String("build", "", "Build ID")
+	output := fs.String("output", "json", "Output format: json (default), table, markdown")
+	jsonFlag := fs.Bool("json", false, "Output in JSON format (shorthand)")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
+
+	return &ffcli.Command{
+		Name:       "info",
+		ShortUsage: "asc builds info [flags]",
+		ShortHelp:  "Show build details.",
+		LongHelp: `Show build details.
+
+Examples:
+  asc builds info --build "BUILD_ID" --json`,
+		FlagSet: fs,
+		Exec: func(ctx context.Context, args []string) error {
+			if strings.TrimSpace(*buildID) == "" {
+				fmt.Fprintln(os.Stderr, "Error: --build is required")
+				fs.Usage()
+				return flag.ErrHelp
+			}
+
+			client, err := getASCClient()
+			if err != nil {
+				return fmt.Errorf("builds info: %w", err)
+			}
+
+			requestCtx, cancel := contextWithTimeout(ctx)
+			defer cancel()
+
+			build, err := client.GetBuild(requestCtx, strings.TrimSpace(*buildID))
+			if err != nil {
+				return fmt.Errorf("builds info: failed to fetch: %w", err)
+			}
+
+			format := *output
+			if *jsonFlag {
+				format = "json"
+			}
+
+			return printOutput(build, format, *pretty)
+		},
+	}
+}
+
+// BuildsExpireCommand returns a build expiration subcommand.
+func BuildsExpireCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("builds expire", flag.ExitOnError)
+
+	buildID := fs.String("build", "", "Build ID")
+	output := fs.String("output", "json", "Output format: json (default), table, markdown")
+	jsonFlag := fs.Bool("json", false, "Output in JSON format (shorthand)")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
+
+	return &ffcli.Command{
+		Name:       "expire",
+		ShortUsage: "asc builds expire [flags]",
+		ShortHelp:  "Expire a build for TestFlight.",
+		LongHelp: `Expire a build for TestFlight.
+
+This action is irreversible for the specified build.
+
+Examples:
+  asc builds expire --build "BUILD_ID" --json`,
+		FlagSet: fs,
+		Exec: func(ctx context.Context, args []string) error {
+			if strings.TrimSpace(*buildID) == "" {
+				fmt.Fprintln(os.Stderr, "Error: --build is required")
+				fs.Usage()
+				return flag.ErrHelp
+			}
+
+			client, err := getASCClient()
+			if err != nil {
+				return fmt.Errorf("builds expire: %w", err)
+			}
+
+			requestCtx, cancel := contextWithTimeout(ctx)
+			defer cancel()
+
+			build, err := client.ExpireBuild(requestCtx, strings.TrimSpace(*buildID))
+			if err != nil {
+				return fmt.Errorf("builds expire: failed to expire: %w", err)
+			}
+
+			format := *output
+			if *jsonFlag {
+				format = "json"
+			}
+
+			return printOutput(build, format, *pretty)
 		},
 	}
 }

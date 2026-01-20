@@ -24,6 +24,11 @@ A fast, AI-agent-friendly CLI for App Store Connect that enables developers to s
 - Feedback/crash/review endpoints aligned to ASC OpenAPI spec
 - Code compiles and unit tests run
 - Live API validation: feedback/crashes return data; reviews may be empty if no reviews exist
+- Apps/builds list commands working with manual pagination
+- Sorting supported for apps/builds/reviews/feedback/crashes
+- Build info and build expiration commands available
+- Installer script available for latest release downloads
+- HTTP-level client tests and CLI/output tests added
 
 ### What Doesn't Work Yet
 
@@ -175,37 +180,35 @@ asc reviews --app "123456789" --json
 
 **Goal:** Add commands for managing apps and builds
 
-#### Features
+#### Features (Current + Remaining)
 
-1. **List Apps**
+1. **List Apps** ✅
    ```bash
-   asc apps list
-   asc apps list --json
+   asc apps --json
    ```
 
-2. **List Builds**
+2. **List Builds** ✅
    ```bash
-   asc builds list --app "APP_ID"
-   asc builds list --app "APP_ID" --json
+   asc builds --app "APP_ID" --json
    ```
 
-3. **Build Details**
+3. **Build Details** ✅
    ```bash
    asc builds info --build "BUILD_ID"
    ```
 
-4. **Expire Build**
+4. **Expire Build** ✅
    ```bash
-   asc builds expire --build "BUILD_ID" --app "APP_ID"
+   asc builds expire --build "BUILD_ID"
    ```
 
 #### Technical Tasks
 
-- [ ] Implement `GET /v1/apps`
-- [ ] Implement `GET /v1/apps/{id}/builds`
-- [ ] Implement `PATCH /v1/builds/{id}`
+- [x] Implement `GET /v1/apps`
+- [x] Implement `GET /v1/apps/{id}/builds`
+- [x] Implement `GET /v1/builds/{id}`
+- [x] Implement `PATCH /v1/builds/{id}`
 - [ ] Add build expiration workflow
-- [ ] Add pagination support
 
 ---
 
@@ -410,7 +413,7 @@ github.com/goreleaser/nfpm/v2     - Packaging via `go run` (optional)
 
 **Phase 1: Foundation - IMPLEMENTED** (validated locally)
 
-Next: Add auto-pagination, more filters (build/tester/platform), and mockable integration tests
+Next: Add auto-pagination and beta management commands
 
 ## Known Issues
 

@@ -437,6 +437,84 @@ func TestIntegrationEndpoints(t *testing.T) {
 		}
 		assertSortedByCreatedDateDesc(t, reviewDates)
 	})
+
+	t.Run("builds", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		builds, err := client.GetBuilds(ctx, appID, WithBuildsLimit(5))
+		if err != nil {
+			t.Fatalf("failed to fetch builds: %v", err)
+		}
+		if builds == nil {
+			t.Fatal("expected builds response")
+		}
+		assertLimit(t, len(builds.Data), 5)
+		assertASCLink(t, builds.Links.Self)
+		assertASCLink(t, builds.Links.Next)
+		if len(builds.Data) == 0 {
+			t.Skip("no build data to validate details")
+		}
+		first := builds.Data[0]
+		if first.ID == "" {
+			t.Fatal("expected build ID to be set")
+		}
+
+		infoCtx, infoCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer infoCancel()
+		build, err := client.GetBuild(infoCtx, first.ID)
+		if err != nil {
+			t.Fatalf("failed to fetch build info: %v", err)
+		}
+		if build == nil {
+			t.Fatal("expected build info response")
+		}
+		if build.Data.ID != first.ID {
+			t.Fatalf("expected build ID %q, got %q", first.ID, build.Data.ID)
+		}
+		if build.Data.Attributes.Version == "" {
+			t.Fatal("expected build version to be set")
+		}
+
+		sortedCtx, sortedCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer sortedCancel()
+		sorted, err := client.GetBuilds(
+			sortedCtx,
+			appID,
+			WithBuildsSort("-uploadedDate"),
+			WithBuildsLimit(5),
+		)
+		if err != nil {
+			t.Fatalf("failed to fetch sorted builds: %v", err)
+		}
+		if sorted == nil {
+			t.Fatal("expected sorted builds response")
+		}
+		assertLimit(t, len(sorted.Data), 5)
+		if len(sorted.Data) < 2 {
+			t.Skip("not enough builds to validate sort")
+		}
+		uploadedDates := make([]string, 0, len(sorted.Data))
+		for _, item := range sorted.Data {
+			uploadedDates = append(uploadedDates, item.Attributes.UploadedDate)
+		}
+		assertSortedByCreatedDateDesc(t, uploadedDates)
+
+		if expireID := os.Getenv("ASC_EXPIRE_BUILD_ID"); expireID != "" {
+			expireCtx, expireCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer expireCancel()
+			expired, err := client.ExpireBuild(expireCtx, expireID)
+			if err != nil {
+				t.Fatalf("failed to expire build: %v", err)
+			}
+			if expired == nil {
+				t.Fatal("expected expire build response")
+			}
+			if !expired.Data.Attributes.Expired {
+				t.Fatalf("expected build %q to be expired", expireID)
+			}
+		}
+	})
 }
 
 func assertLimit(t *testing.T, count, limit int) {
