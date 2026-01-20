@@ -24,6 +24,11 @@ A **fast**, **lightweight**, and **AI-agent friendly** CLI for App Store Connect
 # Via Homebrew (coming soon)
 brew install rudrank/tap/asc
 
+# Install script (macOS/Linux)
+curl -fsSL https://raw.githubusercontent.com/rudrankriyam/App-Store-Connect-CLI/main/install.sh | bash
+
+# Installs to ~/.local/bin by default (ensure it's on your PATH)
+
 # Or build from source
 git clone https://github.com/rudrankriyam/App-Store-Connect-CLI.git
 cd App-Store-Connect-CLI
