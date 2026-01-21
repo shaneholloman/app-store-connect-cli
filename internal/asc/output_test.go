@@ -1009,3 +1009,87 @@ func TestPrintTable_AnalyticsReportRequests(t *testing.T) {
 		t.Fatalf("expected request ID in output, got: %s", output)
 	}
 }
+
+func TestPrintTable_SandboxTesters(t *testing.T) {
+	resp := &SandboxTestersResponse{
+		Data: []Resource[SandboxTesterAttributes]{
+			{
+				ID: "tester-1",
+				Attributes: SandboxTesterAttributes{
+					AccountName: "tester@example.com",
+					FirstName:   "Test",
+					LastName:    "User",
+					Territory:   "USA",
+				},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Email") || !strings.Contains(output, "Territory") {
+		t.Fatalf("expected sandbox tester headers, got: %s", output)
+	}
+	if !strings.Contains(output, "tester@example.com") {
+		t.Fatalf("expected tester email in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_SandboxTesterDeleteResult(t *testing.T) {
+	result := &SandboxTesterDeleteResult{
+		ID:      "tester-1",
+		Email:   "tester@example.com",
+		Deleted: true,
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(result)
+	})
+
+	if !strings.Contains(output, "| ID | Email | Deleted |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "tester@example.com") {
+		t.Fatalf("expected tester email in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_SandboxTesterClearHistoryResult(t *testing.T) {
+	result := &SandboxTesterClearHistoryResult{
+		RequestID: "request-1",
+		TesterID:  "tester-1",
+		Cleared:   true,
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(result)
+	})
+
+	if !strings.Contains(output, "Request ID") {
+		t.Fatalf("expected request header, got: %s", output)
+	}
+	if !strings.Contains(output, "tester-1") {
+		t.Fatalf("expected tester ID in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_SandboxTesterClearHistoryResult(t *testing.T) {
+	result := &SandboxTesterClearHistoryResult{
+		RequestID: "request-1",
+		TesterID:  "tester-1",
+		Cleared:   true,
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(result)
+	})
+
+	if !strings.Contains(output, "| Request ID | Tester ID | Cleared |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "request-1") {
+		t.Fatalf("expected request ID in output, got: %s", output)
+	}
+}

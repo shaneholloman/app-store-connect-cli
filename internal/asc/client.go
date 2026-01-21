@@ -64,6 +64,8 @@ const (
 	ResourceTypeBetaGroups                   ResourceType = "betaGroups"
 	ResourceTypeBetaTesters                  ResourceType = "betaTesters"
 	ResourceTypeBetaTesterInvitations        ResourceType = "betaTesterInvitations"
+	ResourceTypeSandboxTesters               ResourceType = "sandboxTesters"
+	ResourceTypeSandboxTestersClearHistory   ResourceType = "sandboxTestersClearPurchaseHistoryRequest"
 	ResourceTypeAppStoreVersionLocalizations ResourceType = "appStoreVersionLocalizations"
 	ResourceTypeAppInfoLocalizations         ResourceType = "appInfoLocalizations"
 	ResourceTypeAppInfos                     ResourceType = "appInfos"
@@ -2380,6 +2382,10 @@ func PrintMarkdown(data interface{}) error {
 		return printBetaTestersMarkdown(v)
 	case *BetaTesterResponse:
 		return printBetaTestersMarkdown(&BetaTestersResponse{Data: []Resource[BetaTesterAttributes]{v.Data}})
+	case *SandboxTestersResponse:
+		return printSandboxTestersMarkdown(v)
+	case *SandboxTesterResponse:
+		return printSandboxTestersMarkdown(&SandboxTestersResponse{Data: []Resource[SandboxTesterAttributes]{v.Data}})
 	case *LocalizationDownloadResult:
 		return printLocalizationDownloadResultMarkdown(v)
 	case *LocalizationUploadResult:
@@ -2414,6 +2420,10 @@ func PrintMarkdown(data interface{}) error {
 		return printBetaTesterDeleteResultMarkdown(v)
 	case *BetaTesterInvitationResult:
 		return printBetaTesterInvitationResultMarkdown(v)
+	case *SandboxTesterDeleteResult:
+		return printSandboxTesterDeleteResultMarkdown(v)
+	case *SandboxTesterClearHistoryResult:
+		return printSandboxTesterClearHistoryResultMarkdown(v)
 	default:
 		return PrintJSON(data)
 	}
@@ -2448,6 +2458,10 @@ func PrintTable(data interface{}) error {
 		return printBetaTestersTable(v)
 	case *BetaTesterResponse:
 		return printBetaTestersTable(&BetaTestersResponse{Data: []Resource[BetaTesterAttributes]{v.Data}})
+	case *SandboxTestersResponse:
+		return printSandboxTestersTable(v)
+	case *SandboxTesterResponse:
+		return printSandboxTestersTable(&SandboxTestersResponse{Data: []Resource[SandboxTesterAttributes]{v.Data}})
 	case *LocalizationDownloadResult:
 		return printLocalizationDownloadResultTable(v)
 	case *LocalizationUploadResult:
@@ -2482,6 +2496,10 @@ func PrintTable(data interface{}) error {
 		return printBetaTesterDeleteResultTable(v)
 	case *BetaTesterInvitationResult:
 		return printBetaTesterInvitationResultTable(v)
+	case *SandboxTesterDeleteResult:
+		return printSandboxTesterDeleteResultTable(v)
+	case *SandboxTesterClearHistoryResult:
+		return printSandboxTesterClearHistoryResultTable(v)
 	default:
 		return PrintJSON(data)
 	}
@@ -2522,7 +2540,8 @@ func IsNotFound(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "not_found") ||
 		strings.Contains(message, "not found") ||
-		strings.Contains(message, "resource does not exist")
+		strings.Contains(message, "resource does not exist") ||
+		strings.Contains(message, "does not exist")
 }
 
 // IsUnauthorized checks if the error is an "unauthorized" error

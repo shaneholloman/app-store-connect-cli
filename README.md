@@ -152,6 +152,52 @@ Notes:
 - Use `ASC_TIMEOUT` or `ASC_TIMEOUT_SECONDS` for long analytics pagination
 - `asc analytics get --date ... --paginate` will scan all report pages (slower, but avoids missing instances)
 
+### Sandbox Testers
+
+```bash
+# List sandbox testers
+asc sandbox list
+
+# Filter by email or territory
+asc sandbox list --email "tester@example.com"
+asc sandbox list --territory "USA"
+
+# Create a sandbox tester
+asc sandbox create \
+  --email "tester@example.com" \
+  --first-name "Test" \
+  --last-name "User" \
+  --password "Passwordtest1" \
+  --confirm-password "Passwordtest1" \
+  --secret-question "Question" \
+  --secret-answer "Answer" \
+  --birth-date "1980-03-01" \
+  --territory "USA"
+
+# Get sandbox tester details
+asc sandbox get --id "SANDBOX_TESTER_ID"
+asc sandbox get --email "tester@example.com"
+
+# Delete a sandbox tester
+asc sandbox delete --id "SANDBOX_TESTER_ID" --confirm
+
+# Update a sandbox tester
+asc sandbox update --id "SANDBOX_TESTER_ID" --territory "USA"
+asc sandbox update --email "tester@example.com" --interrupt-purchases
+asc sandbox update --id "SANDBOX_TESTER_ID" --subscription-renewal-rate "MONTHLY_RENEWAL_EVERY_ONE_HOUR"
+
+# Clear purchase history
+asc sandbox clear-history --id "SANDBOX_TESTER_ID" --confirm
+```
+
+Notes:
+- Required create fields: email, first/last name, password + confirm, secret question/answer, birth date, territory
+- Password must be 8+ chars with uppercase, lowercase, and a number
+- Secret question/answer require 6+ characters
+- Territory uses 3-letter App Store territory codes (e.g., `USA`, `JPN`)
+- Sandbox list/get use the v2 API; create/delete use v1 endpoints (may be unavailable on some accounts)
+- Update/clear-history use the v2 API
+
 ### Apps & Builds
 
 ```bash
