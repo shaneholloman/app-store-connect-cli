@@ -686,9 +686,10 @@ func TestWithRetry_AttemptCountInErrorMessage(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 	errMsg := err.Error()
-	// "after 2 retries" means we tried 3 times (initial + 2 retries)
-	if !strings.Contains(errMsg, "after 2 retries") {
-		t.Fatalf("error message should mention 'after 2 retries', got: %s", errMsg)
+	// With MaxRetries=2, we try 3 times total (initial + 2 retries)
+	// Error message should say "after 3 retries"
+	if !strings.Contains(errMsg, "after 3 retries") {
+		t.Fatalf("error message should mention 'after 3 retries', got: %s", errMsg)
 	}
 }
 
