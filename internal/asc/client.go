@@ -2390,6 +2390,8 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 		result = &BetaTestersResponse{Links: Links{}}
 	case *SandboxTestersResponse:
 		result = &SandboxTestersResponse{Links: Links{}}
+	case *AnalyticsReportRequestsResponse:
+		result = &AnalyticsReportRequestsResponse{Links: Links{}}
 	default:
 		return nil, fmt.Errorf("unsupported response type for pagination")
 	}
@@ -2420,6 +2422,8 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 			result.(*BetaTestersResponse).Data = append(result.(*BetaTestersResponse).Data, p.Data...)
 		case *SandboxTestersResponse:
 			result.(*SandboxTestersResponse).Data = append(result.(*SandboxTestersResponse).Data, p.Data...)
+		case *AnalyticsReportRequestsResponse:
+			result.(*AnalyticsReportRequestsResponse).Data = append(result.(*AnalyticsReportRequestsResponse).Data, p.Data...)
 		}
 
 		// Check for next page
@@ -2470,6 +2474,8 @@ func typeOf(p PaginatedResponse) string {
 		return "BetaTestersResponse"
 	case *SandboxTestersResponse:
 		return "SandboxTestersResponse"
+	case *AnalyticsReportRequestsResponse:
+		return "AnalyticsReportRequestsResponse"
 	default:
 		return "unknown"
 	}

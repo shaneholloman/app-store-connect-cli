@@ -241,6 +241,7 @@ func AnalyticsRequestsCommand() *ffcli.Command {
 	state := fs.String("state", "", "Filter by state: PROCESSING, COMPLETED, FAILED")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
+	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
 	output := fs.String("output", "json", "Output format: json (default), table, markdown")
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
 
@@ -254,7 +255,8 @@ Examples:
   asc analytics requests --app "123456789"
   asc analytics requests --app "123456789" --state COMPLETED
   asc analytics requests --app "123456789" --request-id "REQUEST_ID"
-  asc analytics requests --next "<links.next>"`,
+  asc analytics requests --next "<links.next>"
+  asc analytics requests --app "123456789" --paginate`,
 		FlagSet:   fs,
 		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -311,6 +313,26 @@ Examples:
 				if normalizedState != "" {
 					opts = append(opts, asc.WithAnalyticsReportRequestsState(string(normalizedState)))
 				}
+
+				if *paginate {
+					// Fetch first page with limit set for consistent pagination
+					paginateOpts := append(opts, asc.WithAnalyticsReportRequestsLimit(200))
+					firstPage, err := client.GetAnalyticsReportRequests(requestCtx, resolvedAppID, paginateOpts...)
+					if err != nil {
+						return fmt.Errorf("analytics requests: failed to fetch: %w", err)
+					}
+
+					// Fetch all remaining pages
+					paginated, err := asc.PaginateAll(requestCtx, firstPage, func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+						return client.GetAnalyticsReportRequests(ctx, resolvedAppID, asc.WithAnalyticsReportRequestsNextURL(nextURL))
+					})
+					if err != nil {
+						return fmt.Errorf("analytics requests: %w", err)
+					}
+
+					return printOutput(paginated, *output, *pretty)
+				}
+
 				response, err = client.GetAnalyticsReportRequests(requestCtx, resolvedAppID, opts...)
 				if err != nil {
 					return fmt.Errorf("analytics requests: failed to fetch: %w", err)

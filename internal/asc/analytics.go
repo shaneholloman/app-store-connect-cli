@@ -113,6 +113,16 @@ type AnalyticsReportRequestsResponse struct {
 	Links Links                            `json:"links,omitempty"`
 }
 
+// GetLinks returns the links field for pagination
+func (r *AnalyticsReportRequestsResponse) GetLinks() *Links {
+	return &r.Links
+}
+
+// GetData returns the data field for aggregation
+func (r *AnalyticsReportRequestsResponse) GetData() interface{} {
+	return r.Data
+}
+
 // AnalyticsReportRequestCreateRequest is a request to create an analytics report request.
 type AnalyticsReportRequestCreateRequest struct {
 	Data AnalyticsReportRequestCreateData `json:"data"`
