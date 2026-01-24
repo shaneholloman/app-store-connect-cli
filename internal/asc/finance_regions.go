@@ -1,6 +1,15 @@
 package asc
 
 // FinanceRegion describes a finance report region code and currency.
+//
+// Region codes are used with the --region flag for 'asc finance reports'.
+// Special region codes:
+//   - ZZ: Consolidated Financial Reports (all regions, use with FINANCIAL)
+//   - Z1: Financial Detail Reports (all regions, required for FINANCE_DETAIL)
+//   - EU, LL, AP, WW: Regional aggregates (use with FINANCIAL)
+//   - US, AU, JP, etc.: Individual country reports (use with FINANCIAL)
+//
+// Reference: https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/
 type FinanceRegion struct {
 	ReportRegion       string `json:"reportRegion"`
 	ReportCurrency     string `json:"reportCurrency"`

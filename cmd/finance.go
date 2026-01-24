@@ -45,9 +45,9 @@ func FinanceReportsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("reports", flag.ExitOnError)
 
 	vendor := fs.String("vendor", "", "Vendor number (or ASC_VENDOR_NUMBER env)")
-	reportType := fs.String("report-type", "", "Report type: FINANCIAL or FINANCE_DETAIL")
-	region := fs.String("region", "", "Region code (e.g., US; use Z1 for FINANCE_DETAIL, see 'asc finance regions')")
-	date := fs.String("date", "", "Report date (YYYY-MM)")
+	reportType := fs.String("report-type", "", "Report type: FINANCIAL or FINANCE_DETAIL (see help for UI mapping)")
+	region := fs.String("region", "", "Region code (e.g., US, ZZ, Z1; see 'asc finance regions')")
+	date := fs.String("date", "", "Report date (YYYY-MM, Apple fiscal month)")
 	output := fs.String("output", "", "Output file path (default: finance_report_{date}_{type}_{region}.tsv.gz)")
 	decompress := fs.Bool("decompress", false, "Decompress gzip output to .tsv")
 	outputFormat := fs.String("output-format", "json", "Output format for metadata: json (default), table, markdown")
@@ -61,9 +61,44 @@ func FinanceReportsCommand() *ffcli.Command {
 
 Requires Account Holder, Admin, or Finance role.
 
+REPORT TYPES (API to UI mapping):
+
+The App Store Connect UI shows four report types, but only two are available via API:
+
+  FINANCIAL       Aggregated monthly financial report
+                  UI: "All Countries or Regions (Single File)" with --region ZZ
+                  UI: "All Countries or Regions (Multiple Files)" with --region US, EU, etc.
+
+  FINANCE_DETAIL  Detailed report with transaction and settlement dates
+                  UI: "All Countries or Regions (Detailed)"
+                  IMPORTANT: Requires --region Z1 (the only valid region for this type)
+
+  Transaction Tax reports are NOT available via API. Download them manually from
+  App Store Connect: Payments and Financial Reports > Create Reports > Transaction Tax.
+
+REGION CODES:
+
+  Individual countries: US, AU, CA, JP, GB, etc.
+  Euro-Zone aggregate:  EU
+  Latin America:        LL
+  Asia-Pacific:         AP
+  Rest of World:        WW
+  Consolidated (all):   ZZ (for FINANCIAL)
+  Financial Detail:     Z1 (required for FINANCE_DETAIL)
+
+  Run 'asc finance regions' for the complete list.
+
 Examples:
+  # Download single consolidated report (all regions)
+  asc finance reports --vendor "12345678" --report-type FINANCIAL --region "ZZ" --date "2025-12"
+
+  # Download US-only report
   asc finance reports --vendor "12345678" --report-type FINANCIAL --region "US" --date "2025-12"
+
+  # Download detailed report (transaction-level data)
   asc finance reports --vendor "12345678" --report-type FINANCE_DETAIL --region "Z1" --date "2025-12" --decompress
+
+  # Save to custom path
   asc finance reports --vendor "12345678" --report-type FINANCIAL --region "US" --date "2025-12" --output "reports/finance.tsv.gz"`,
 		FlagSet:   fs,
 		UsageFunc: DefaultUsageFunc,
@@ -162,6 +197,13 @@ func FinanceRegionsCommand() *ffcli.Command {
 		ShortUsage: "asc finance regions [flags]",
 		ShortHelp:  "List finance report region codes and currencies.",
 		LongHelp: `List finance report region codes and currencies.
+
+Use these codes with 'asc finance reports --region <code>':
+
+  - Individual countries: US, AU, CA, JP, GB, etc. (with FINANCIAL)
+  - Regional aggregates:  EU, LL, AP, WW (with FINANCIAL)
+  - Consolidated:         ZZ (with FINANCIAL, all regions in one file)
+  - Detailed:             Z1 (required for FINANCE_DETAIL)
 
 Source: https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/
 

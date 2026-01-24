@@ -242,23 +242,37 @@ Notes:
 ### Finance Reports
 
 ```bash
-# Download monthly finance report (writes .tsv.gz)
+# Download consolidated report (all regions in one file)
+asc finance reports --vendor "12345678" --report-type FINANCIAL --region "ZZ" --date "2025-12"
+
+# Download US-only monthly report
 asc finance reports --vendor "12345678" --report-type FINANCIAL --region "US" --date "2025-12"
 
-# Download detailed finance report and decompress
+# Download detailed report (transaction-level data) and decompress
 asc finance reports --vendor "12345678" --report-type FINANCE_DETAIL --region "Z1" --date "2025-12" --decompress
 
 # List finance report region codes and currencies
 asc finance regions --output table
 ```
 
-Notes:
+**Report Types (API to UI mapping):**
+
+| API Report Type  | UI Option                              | Region Code(s)          |
+|------------------|----------------------------------------|-------------------------|
+| `FINANCIAL`      | All Countries or Regions (Single File) | `ZZ` (consolidated)     |
+| `FINANCIAL`      | All Countries or Regions (Multiple Files) | `US`, `EU`, `JP`, etc. |
+| `FINANCE_DETAIL` | All Countries or Regions (Detailed)    | `Z1` (required)         |
+| Not available    | Transaction Tax (Single File)          | N/A - manual download   |
+
+**Notes:**
 - Report date format: `YYYY-MM` (Apple fiscal month)
 - Reports typically appear the first Friday of the following fiscal month
-- Region codes are listed by Apple: https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/
-- `FINANCE_DETAIL` reports require region code `Z1` (financial detail consolidated)
-- Use `asc finance regions` to list valid region codes and currencies
+- `FINANCE_DETAIL` requires region code `Z1` (the only valid region for detailed reports)
+- Transaction Tax reports are not available via API - download manually from App Store Connect
+- Use `asc finance regions` to list all valid region codes and currencies
 - Requires Account Holder, Admin, or Finance role
+
+**Region codes reference:** https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/
 
 ### Sandbox Testers
 

@@ -256,9 +256,25 @@ Analytics & sales env:
 - Vendor number comes from Sales and Trends → Reports URL (`vendorNumber=...`)
 - Use `--paginate` with `asc analytics get --date` to avoid missing instances on later pages
 - Long analytics runs can require raising `ASC_TIMEOUT`
-- Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months
-- `FINANCE_DETAIL` reports require region code `Z1` (financial detail consolidated)
+
+## Finance Reports Notes
+
+Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
+
+**API Report Types (mapping to App Store Connect UI):**
+
+| API `--report-type` | UI Option                               | `--region` Code(s)      |
+|---------------------|-----------------------------------------|-------------------------|
+| `FINANCIAL`         | All Countries or Regions (Single File)  | `ZZ` (consolidated)     |
+| `FINANCIAL`         | All Countries or Regions (Multiple Files) | `US`, `EU`, `JP`, etc. |
+| `FINANCE_DETAIL`    | All Countries or Regions (Detailed)     | `Z1` (required)         |
+| Not available       | Transaction Tax (Single File)           | N/A                     |
+
+**Important:**
+- `FINANCE_DETAIL` reports require region code `Z1` (the only valid region for detailed reports)
+- Transaction Tax reports are NOT available via API; download manually from App Store Connect
 - Region codes reference: https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/
+- Use `asc finance regions` to see all available region codes
 
 ## Sandbox Testers Notes
 
