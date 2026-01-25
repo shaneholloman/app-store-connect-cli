@@ -753,6 +753,62 @@ func TestPrintMarkdown_Builds(t *testing.T) {
 	}
 }
 
+func TestPrintTable_BuildExpireAllResult(t *testing.T) {
+	result := &BuildExpireAllResult{
+		DryRun: true,
+		Builds: []BuildExpireAllItem{
+			{
+				ID:           "BUILD_1",
+				Version:      "1.2.3",
+				UploadedDate: "2026-01-20T00:00:00Z",
+				AgeDays:      10,
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(result)
+	})
+
+	if !strings.Contains(output, "Age Days") || !strings.Contains(output, "Status") {
+		t.Fatalf("expected expire-all header in output, got: %s", output)
+	}
+	if !strings.Contains(output, "would-expire") {
+		t.Fatalf("expected dry-run status in output, got: %s", output)
+	}
+	if !strings.Contains(output, "BUILD_1") {
+		t.Fatalf("expected build id in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_BuildExpireAllResult(t *testing.T) {
+	result := &BuildExpireAllResult{
+		DryRun: true,
+		Builds: []BuildExpireAllItem{
+			{
+				ID:           "BUILD_1",
+				Version:      "1.2.3",
+				UploadedDate: "2026-01-20T00:00:00Z",
+				AgeDays:      10,
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(result)
+	})
+
+	if !strings.Contains(output, "| ID | Version | Uploaded | Age Days | Status |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "would-expire") {
+		t.Fatalf("expected dry-run status in output, got: %s", output)
+	}
+	if !strings.Contains(output, "BUILD_1") {
+		t.Fatalf("expected build id in output, got: %s", output)
+	}
+}
+
 func TestPrintTable_AppStoreVersions(t *testing.T) {
 	resp := &AppStoreVersionsResponse{
 		Data: []Resource[AppStoreVersionAttributes]{

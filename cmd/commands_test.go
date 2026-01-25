@@ -172,6 +172,56 @@ func TestBuildsExpireRequiresBuildID(t *testing.T) {
 	}
 }
 
+func TestBuildsExpireAllValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "builds expire-all missing app",
+			args:    []string{"builds", "expire-all", "--older-than", "90d"},
+			wantErr: "Error: --app is required",
+		},
+		{
+			name:    "builds expire-all missing filter",
+			args:    []string{"builds", "expire-all", "--app", "APP_ID", "--confirm"},
+			wantErr: "--older-than or --keep-latest is required",
+		},
+		{
+			name:    "builds expire-all missing confirm",
+			args:    []string{"builds", "expire-all", "--app", "APP_ID", "--older-than", "90d"},
+			wantErr: "--confirm is required to expire builds",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := RootCommand("1.2.3")
+			root.FlagSet.SetOutput(io.Discard)
+
+			stdout, stderr := captureOutput(t, func() {
+				if err := root.Parse(test.args); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				err := root.Run(context.Background())
+				if !errors.Is(err, flag.ErrHelp) {
+					t.Fatalf("expected ErrHelp, got %v", err)
+				}
+			})
+
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
+			}
+		})
+	}
+}
+
 func TestBuildsGroupValidationErrors(t *testing.T) {
 	tests := []struct {
 		name    string

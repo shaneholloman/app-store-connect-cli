@@ -433,6 +433,10 @@ asc builds info --build "BUILD_ID"
 # Expire a build (irreversible)
 asc builds expire --build "BUILD_ID"
 
+# Expire builds in bulk (use --dry-run to preview)
+asc builds expire-all --app "123456789" --older-than 90d --dry-run
+asc builds expire-all --app "123456789" --older-than 90d --confirm
+
 # Prepare a build upload
 asc builds upload --app "123456789" --ipa "app.ipa"
 

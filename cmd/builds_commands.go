@@ -322,6 +322,7 @@ Examples:
   asc builds latest --app "123456789"
   asc builds info --build "BUILD_ID"
   asc builds expire --build "BUILD_ID"
+  asc builds expire-all --app "123456789" --older-than 90d --dry-run
   asc builds upload --app "123456789" --ipa "app.ipa"
   asc builds test-notes list --build "BUILD_ID"
   asc builds add-groups --build "BUILD_ID" --group "GROUP_ID"
@@ -333,6 +334,7 @@ Examples:
 			BuildsLatestCommand(),
 			BuildsInfoCommand(),
 			BuildsExpireCommand(),
+			BuildsExpireAllCommand(),
 			BuildsUploadCommand(),
 			BuildsTestNotesCommand(),
 			BuildsAddGroupsCommand(),
