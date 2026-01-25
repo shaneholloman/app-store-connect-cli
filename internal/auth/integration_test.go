@@ -312,6 +312,9 @@ func filterEnv(env []string, remove ...string) []string {
 	return filtered
 }
 
+// findASCBinary locates the asc binary for integration tests.
+// It searches from the current directory up to the project root.
+// If the binary is not found, it attempts to build it automatically.
 func findASCBinary(t *testing.T) string {
 	t.Helper()
 
@@ -320,21 +323,14 @@ func findASCBinary(t *testing.T) string {
 		t.Fatalf("failed to get cwd: %v", err)
 	}
 
-	// Walk up to find project root and return absolute path
+	// Find project root (contains go.mod)
+	projectRoot := ""
 	dir := cwd
 	for {
-		candidate := filepath.Join(dir, "asc")
-		if info, err := os.Stat(candidate); err == nil {
-			// Make sure it's a file, not a directory
-			if !info.IsDir() && info.Mode().IsRegular() {
-				absPath, err := filepath.Abs(candidate)
-				if err != nil {
-					t.Fatalf("failed to get absolute path: %v", err)
-				}
-				return absPath
-			}
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			projectRoot = dir
+			break
 		}
-
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
@@ -342,11 +338,29 @@ func findASCBinary(t *testing.T) string {
 		dir = parent
 	}
 
-	// Try PATH
-	if path, err := exec.LookPath("asc"); err == nil {
-		return path
+	if projectRoot == "" {
+		t.Fatal("could not find project root (go.mod)")
 	}
 
-	t.Fatal("asc binary not found - run 'make build' first")
-	return ""
+	binaryPath := filepath.Join(projectRoot, "asc")
+
+	// Check if binary exists
+	if info, err := os.Stat(binaryPath); err == nil && !info.IsDir() {
+		return binaryPath
+	}
+
+	// Binary not found - try to build it
+	t.Log("asc binary not found, attempting to build...")
+	cmd := exec.Command("go", "build", "-o", "asc", ".")
+	cmd.Dir = projectRoot
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to build asc binary: %v\nOutput: %s", err, output)
+	}
+
+	// Verify binary was created
+	if info, err := os.Stat(binaryPath); err != nil || info.IsDir() {
+		t.Fatal("asc binary not found after build")
+	}
+
+	return binaryPath
 }
