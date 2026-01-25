@@ -519,6 +519,103 @@ func TestIntegrationEndpoints(t *testing.T) {
 	})
 }
 
+func TestIntegrationDevicesReadOnly(t *testing.T) {
+	keyID := os.Getenv("ASC_KEY_ID")
+	issuerID := os.Getenv("ASC_ISSUER_ID")
+	keyPath := os.Getenv("ASC_PRIVATE_KEY_PATH")
+
+	if keyID == "" || issuerID == "" || keyPath == "" {
+		t.Skip("integration tests require ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY_PATH")
+	}
+
+	client, err := NewClient(keyID, issuerID, keyPath)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	t.Run("devices", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		devices, err := client.GetDevices(ctx, WithDevicesLimit(5))
+		if err != nil {
+			t.Fatalf("failed to fetch devices: %v", err)
+		}
+		if devices == nil {
+			t.Fatal("expected devices response")
+		}
+		assertLimit(t, len(devices.Data), 5)
+		assertASCLink(t, devices.Links.Self)
+		assertASCLink(t, devices.Links.Next)
+
+		if devices.Links.Next != "" {
+			nextCtx, nextCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer nextCancel()
+			nextDevices, err := client.GetDevices(nextCtx, WithDevicesNextURL(devices.Links.Next))
+			if err != nil {
+				t.Fatalf("failed to fetch devices next page: %v", err)
+			}
+			if nextDevices == nil {
+				t.Fatal("expected devices next page response")
+			}
+			assertASCLink(t, nextDevices.Links.Self)
+			assertASCLink(t, nextDevices.Links.Next)
+		}
+
+		if len(devices.Data) == 0 {
+			t.Skip("no devices available to validate filters")
+		}
+
+		first := devices.Data[0]
+		if first.ID == "" {
+			t.Fatal("expected device ID to be set")
+		}
+		if first.Attributes.UDID == "" {
+			t.Skip("device UDID is missing; cannot validate UDID filter")
+		}
+
+		filteredCtx, filteredCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer filteredCancel()
+		filtered, err := client.GetDevices(
+			filteredCtx,
+			WithDevicesUDIDs([]string{first.Attributes.UDID}),
+			WithDevicesLimit(5),
+		)
+		if err != nil {
+			t.Fatalf("failed to fetch filtered devices by UDID: %v", err)
+		}
+		assertLimit(t, len(filtered.Data), 5)
+		if len(filtered.Data) == 0 {
+			t.Skip("no devices returned for UDID filter")
+		}
+		for _, item := range filtered.Data {
+			if item.Attributes.UDID != first.Attributes.UDID {
+				t.Fatalf("expected UDID %q, got %q", first.Attributes.UDID, item.Attributes.UDID)
+			}
+		}
+
+		fieldsCtx, fieldsCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer fieldsCancel()
+		_, err = client.GetDevices(fieldsCtx, WithDevicesFields([]string{"name", "udid", "platform", "status"}), WithDevicesLimit(1))
+		if err != nil {
+			t.Fatalf("failed to fetch devices with fields: %v", err)
+		}
+
+		getCtx, getCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer getCancel()
+		device, err := client.GetDevice(getCtx, first.ID, []string{"name", "udid", "platform", "status"})
+		if err != nil {
+			t.Fatalf("failed to fetch device: %v", err)
+		}
+		if device == nil {
+			t.Fatal("expected device response")
+		}
+		if device.Data.ID != first.ID {
+			t.Fatalf("expected device ID %q, got %q", first.ID, device.Data.ID)
+		}
+	})
+}
+
 // TestIntegrationErrorHandling tests API error responses for invalid inputs.
 func TestIntegrationErrorHandling(t *testing.T) {
 	keyID := os.Getenv("ASC_KEY_ID")
