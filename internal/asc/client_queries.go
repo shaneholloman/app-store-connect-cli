@@ -75,6 +75,11 @@ type appStoreVersionLocalizationsQuery struct {
 	locales []string
 }
 
+type betaBuildLocalizationsQuery struct {
+	listQuery
+	locales []string
+}
+
 type appInfoLocalizationsQuery struct {
 	listQuery
 	locales []string
@@ -135,6 +140,7 @@ type buildBetaDetailsQuery struct {
 type betaRecruitmentCriterionOptionsQuery struct {
 	listQuery
 }
+
 func buildReviewQuery(opts []ReviewOption) string {
 	query := &reviewQuery{}
 	for _, opt := range opts {
@@ -316,6 +322,13 @@ func buildPreReleaseVersionsQuery(appID string, query *preReleaseVersionsQuery) 
 }
 
 func buildAppStoreVersionLocalizationsQuery(query *appStoreVersionLocalizationsQuery) string {
+	values := url.Values{}
+	addCSV(values, "filter[locale]", query.locales)
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
+func buildBetaBuildLocalizationsQuery(query *betaBuildLocalizationsQuery) string {
 	values := url.Values{}
 	addCSV(values, "filter[locale]", query.locales)
 	addLimit(values, query.limit)

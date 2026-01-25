@@ -376,6 +376,135 @@ func TestPrintMarkdown_AppStoreVersionLocalizationDeleteResult(t *testing.T) {
 	}
 }
 
+func TestPrintTable_BetaBuildLocalizations(t *testing.T) {
+	resp := &BetaBuildLocalizationsResponse{
+		Data: []Resource[BetaBuildLocalizationAttributes]{
+			{
+				ID: "loc-1",
+				Attributes: BetaBuildLocalizationAttributes{
+					Locale:   "en-US",
+					WhatsNew: "Test the new feature",
+				},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "What to Test") {
+		t.Fatalf("expected header in output, got: %s", output)
+	}
+	if !strings.Contains(output, "en-US") {
+		t.Fatalf("expected locale in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_BetaBuildLocalization(t *testing.T) {
+	resp := &BetaBuildLocalizationResponse{
+		Data: Resource[BetaBuildLocalizationAttributes]{
+			ID: "loc-1",
+			Attributes: BetaBuildLocalizationAttributes{
+				Locale:   "en-US",
+				WhatsNew: "Test the new feature",
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "en-US") {
+		t.Fatalf("expected locale in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_BetaBuildLocalizations(t *testing.T) {
+	resp := &BetaBuildLocalizationsResponse{
+		Data: []Resource[BetaBuildLocalizationAttributes]{
+			{
+				ID: "loc-1",
+				Attributes: BetaBuildLocalizationAttributes{
+					Locale:   "en-US",
+					WhatsNew: "Test the new feature",
+				},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Locale | What to Test |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "en-US") {
+		t.Fatalf("expected locale in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_BetaBuildLocalization(t *testing.T) {
+	resp := &BetaBuildLocalizationResponse{
+		Data: Resource[BetaBuildLocalizationAttributes]{
+			ID: "loc-1",
+			Attributes: BetaBuildLocalizationAttributes{
+				Locale:   "en-US",
+				WhatsNew: "Test the new feature",
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Locale | What to Test |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "en-US") {
+		t.Fatalf("expected locale in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_BetaBuildLocalizationDeleteResult(t *testing.T) {
+	result := &BetaBuildLocalizationDeleteResult{
+		ID:      "loc-1",
+		Deleted: true,
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(result)
+	})
+
+	if !strings.Contains(output, "Deleted") {
+		t.Fatalf("expected deleted header, got: %s", output)
+	}
+	if !strings.Contains(output, "loc-1") {
+		t.Fatalf("expected id in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_BetaBuildLocalizationDeleteResult(t *testing.T) {
+	result := &BetaBuildLocalizationDeleteResult{
+		ID:      "loc-1",
+		Deleted: true,
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(result)
+	})
+
+	if !strings.Contains(output, "| ID | Deleted |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "loc-1") {
+		t.Fatalf("expected id in output, got: %s", output)
+	}
+}
+
 func TestPrintTable_AppInfoLocalizations(t *testing.T) {
 	resp := &AppInfoLocalizationsResponse{
 		Data: []Resource[AppInfoLocalizationAttributes]{

@@ -297,6 +297,28 @@ func TestBuildAppStoreVersionLocalizationsQuery(t *testing.T) {
 	}
 }
 
+func TestBuildBetaBuildLocalizationsQuery(t *testing.T) {
+	query := &betaBuildLocalizationsQuery{}
+	opts := []BetaBuildLocalizationsOption{
+		WithBetaBuildLocalizationsLimit(25),
+		WithBetaBuildLocalizationLocales([]string{"en-US", "fr-FR"}),
+	}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	values, err := url.ParseQuery(buildBetaBuildLocalizationsQuery(query))
+	if err != nil {
+		t.Fatalf("failed to parse query: %v", err)
+	}
+	if got := values.Get("filter[locale]"); got != "en-US,fr-FR" {
+		t.Fatalf("expected filter[locale]=en-US,fr-FR, got %q", got)
+	}
+	if got := values.Get("limit"); got != "25" {
+		t.Fatalf("expected limit=25, got %q", got)
+	}
+}
+
 func TestBuildAppInfoLocalizationsQuery(t *testing.T) {
 	query := &appInfoLocalizationsQuery{}
 	opts := []AppInfoLocalizationsOption{

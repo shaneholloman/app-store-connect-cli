@@ -59,6 +59,10 @@ func PrintMarkdown(data interface{}) error {
 		return printAppStoreVersionLocalizationsMarkdown(v)
 	case *AppStoreVersionLocalizationResponse:
 		return printAppStoreVersionLocalizationsMarkdown(&AppStoreVersionLocalizationsResponse{Data: []Resource[AppStoreVersionLocalizationAttributes]{v.Data}})
+	case *BetaBuildLocalizationsResponse:
+		return printBetaBuildLocalizationsMarkdown(v)
+	case *BetaBuildLocalizationResponse:
+		return printBetaBuildLocalizationsMarkdown(&BetaBuildLocalizationsResponse{Data: []Resource[BetaBuildLocalizationAttributes]{v.Data}})
 	case *AppInfoLocalizationsResponse:
 		return printAppInfoLocalizationsMarkdown(v)
 	case *BetaGroupsResponse:
@@ -153,6 +157,8 @@ func PrintMarkdown(data interface{}) error {
 		return printBetaTesterGroupsUpdateResultMarkdown(v)
 	case *AppStoreVersionLocalizationDeleteResult:
 		return printAppStoreVersionLocalizationDeleteResultMarkdown(v)
+	case *BetaBuildLocalizationDeleteResult:
+		return printBetaBuildLocalizationDeleteResultMarkdown(v)
 	case *BetaTesterInvitationResult:
 		return printBetaTesterInvitationResultMarkdown(v)
 	case *SandboxTesterDeleteResult:
@@ -221,6 +227,10 @@ func PrintTable(data interface{}) error {
 		return printAppStoreVersionLocalizationsTable(v)
 	case *AppStoreVersionLocalizationResponse:
 		return printAppStoreVersionLocalizationsTable(&AppStoreVersionLocalizationsResponse{Data: []Resource[AppStoreVersionLocalizationAttributes]{v.Data}})
+	case *BetaBuildLocalizationsResponse:
+		return printBetaBuildLocalizationsTable(v)
+	case *BetaBuildLocalizationResponse:
+		return printBetaBuildLocalizationsTable(&BetaBuildLocalizationsResponse{Data: []Resource[BetaBuildLocalizationAttributes]{v.Data}})
 	case *AppInfoLocalizationsResponse:
 		return printAppInfoLocalizationsTable(v)
 	case *BetaGroupsResponse:
@@ -315,6 +325,8 @@ func PrintTable(data interface{}) error {
 		return printBetaTesterGroupsUpdateResultTable(v)
 	case *AppStoreVersionLocalizationDeleteResult:
 		return printAppStoreVersionLocalizationDeleteResultTable(v)
+	case *BetaBuildLocalizationDeleteResult:
+		return printBetaBuildLocalizationDeleteResultTable(v)
 	case *BetaTesterInvitationResult:
 		return printBetaTesterInvitationResultTable(v)
 	case *SandboxTesterDeleteResult:

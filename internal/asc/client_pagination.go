@@ -63,6 +63,8 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 		result = &PreReleaseVersionsResponse{Links: Links{}}
 	case *AppStoreVersionLocalizationsResponse:
 		result = &AppStoreVersionLocalizationsResponse{Links: Links{}}
+	case *BetaBuildLocalizationsResponse:
+		result = &BetaBuildLocalizationsResponse{Links: Links{}}
 	case *AppInfoLocalizationsResponse:
 		result = &AppInfoLocalizationsResponse{Links: Links{}}
 	case *BetaGroupsResponse:
@@ -113,6 +115,8 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 			result.(*PreReleaseVersionsResponse).Data = append(result.(*PreReleaseVersionsResponse).Data, p.Data...)
 		case *AppStoreVersionLocalizationsResponse:
 			result.(*AppStoreVersionLocalizationsResponse).Data = append(result.(*AppStoreVersionLocalizationsResponse).Data, p.Data...)
+		case *BetaBuildLocalizationsResponse:
+			result.(*BetaBuildLocalizationsResponse).Data = append(result.(*BetaBuildLocalizationsResponse).Data, p.Data...)
 		case *AppInfoLocalizationsResponse:
 			result.(*AppInfoLocalizationsResponse).Data = append(result.(*AppInfoLocalizationsResponse).Data, p.Data...)
 		case *BetaGroupsResponse:
