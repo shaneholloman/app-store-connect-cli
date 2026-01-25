@@ -1432,6 +1432,144 @@ func TestDeleteAppStoreVersionLocalization_SendsRequest(t *testing.T) {
 	}
 }
 
+func TestGetBetaBuildLocalizations_WithFilters(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"betaBuildLocalizations","id":"loc-1","attributes":{"locale":"en-US"}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/builds/build-1/betaBuildLocalizations" {
+			t.Fatalf("expected path /v1/builds/build-1/betaBuildLocalizations, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("filter[locale]") != "en-US" {
+			t.Fatalf("expected filter[locale]=en-US, got %q", values.Get("filter[locale]"))
+		}
+		if values.Get("limit") != "5" {
+			t.Fatalf("expected limit=5, got %q", values.Get("limit"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetBetaBuildLocalizations(
+		context.Background(),
+		"build-1",
+		WithBetaBuildLocalizationLocales([]string{"en-US"}),
+		WithBetaBuildLocalizationsLimit(5),
+	); err != nil {
+		t.Fatalf("GetBetaBuildLocalizations() error: %v", err)
+	}
+}
+
+func TestGetBetaBuildLocalization_ByID(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"betaBuildLocalizations","id":"loc-1","attributes":{"locale":"en-US"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/betaBuildLocalizations/loc-1" {
+			t.Fatalf("expected path /v1/betaBuildLocalizations/loc-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetBetaBuildLocalization(context.Background(), "loc-1"); err != nil {
+		t.Fatalf("GetBetaBuildLocalization() error: %v", err)
+	}
+}
+
+func TestCreateBetaBuildLocalization_SendsRequest(t *testing.T) {
+	response := jsonResponse(http.StatusCreated, `{"data":{"type":"betaBuildLocalizations","id":"loc-1","attributes":{"locale":"en-US"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/betaBuildLocalizations" {
+			t.Fatalf("expected path /v1/betaBuildLocalizations, got %s", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+		var payload BetaBuildLocalizationCreateRequest
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeBetaBuildLocalizations {
+			t.Fatalf("expected type betaBuildLocalizations, got %q", payload.Data.Type)
+		}
+		if payload.Data.Attributes.Locale != "en-US" {
+			t.Fatalf("expected locale en-US, got %q", payload.Data.Attributes.Locale)
+		}
+		if payload.Data.Relationships == nil || payload.Data.Relationships.Build == nil {
+			t.Fatalf("expected build relationship")
+		}
+		if payload.Data.Relationships.Build.Data.ID != "build-1" {
+			t.Fatalf("expected build id build-1, got %q", payload.Data.Relationships.Build.Data.ID)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	attrs := BetaBuildLocalizationAttributes{
+		Locale:   "en-US",
+		WhatsNew: "Test the new feature",
+	}
+	if _, err := client.CreateBetaBuildLocalization(context.Background(), "build-1", attrs); err != nil {
+		t.Fatalf("CreateBetaBuildLocalization() error: %v", err)
+	}
+}
+
+func TestUpdateBetaBuildLocalization_SendsRequest(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"betaBuildLocalizations","id":"loc-1","attributes":{"whatsNew":"Updated"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/betaBuildLocalizations/loc-1" {
+			t.Fatalf("expected path /v1/betaBuildLocalizations/loc-1, got %s", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+		var payload BetaBuildLocalizationUpdateRequest
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeBetaBuildLocalizations {
+			t.Fatalf("expected type betaBuildLocalizations, got %q", payload.Data.Type)
+		}
+		if payload.Data.ID != "loc-1" {
+			t.Fatalf("expected id loc-1, got %q", payload.Data.ID)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	attrs := BetaBuildLocalizationAttributes{
+		WhatsNew: "Updated",
+	}
+	if _, err := client.UpdateBetaBuildLocalization(context.Background(), "loc-1", attrs); err != nil {
+		t.Fatalf("UpdateBetaBuildLocalization() error: %v", err)
+	}
+}
+
+func TestDeleteBetaBuildLocalization_SendsRequest(t *testing.T) {
+	response := jsonResponse(http.StatusNoContent, "")
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/betaBuildLocalizations/loc-1" {
+			t.Fatalf("expected path /v1/betaBuildLocalizations/loc-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if err := client.DeleteBetaBuildLocalization(context.Background(), "loc-1"); err != nil {
+		t.Fatalf("DeleteBetaBuildLocalization() error: %v", err)
+	}
+}
+
 func TestGetAppInfoLocalizations_WithFilters(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"appInfoLocalizations","id":"loc-1","attributes":{"locale":"en-US"}}]}`)
 	client := newTestClient(t, func(req *http.Request) {

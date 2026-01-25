@@ -975,6 +975,64 @@ func TestBuildLocalizationsValidationErrors(t *testing.T) {
 	}
 }
 
+func TestBuildsTestNotesValidationErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "builds test-notes list missing build",
+			args:    []string{"builds", "test-notes", "list"},
+			wantErr: "--build is required",
+		},
+		{
+			name:    "builds test-notes create missing locale",
+			args:    []string{"builds", "test-notes", "create", "--build", "BUILD_ID", "--whats-new", "Notes"},
+			wantErr: "--locale is required",
+		},
+		{
+			name:    "builds test-notes create missing whats-new",
+			args:    []string{"builds", "test-notes", "create", "--build", "BUILD_ID", "--locale", "en-US"},
+			wantErr: "--whats-new is required",
+		},
+		{
+			name:    "builds test-notes update missing id",
+			args:    []string{"builds", "test-notes", "update", "--whats-new", "Notes"},
+			wantErr: "--id is required",
+		},
+		{
+			name:    "builds test-notes delete missing confirm",
+			args:    []string{"builds", "test-notes", "delete", "--id", "LOC_ID"},
+			wantErr: "--confirm is required",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := RootCommand("1.2.3")
+			root.FlagSet.SetOutput(io.Discard)
+
+			stdout, stderr := captureOutput(t, func() {
+				if err := root.Parse(test.args); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				err := root.Run(context.Background())
+				if !errors.Is(err, flag.ErrHelp) {
+					t.Fatalf("expected ErrHelp, got %v", err)
+				}
+			})
+
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
+			}
+		})
+	}
+}
+
 func TestBuildsUploadValidationErrors(t *testing.T) {
 	t.Setenv("ASC_APP_ID", "")
 
@@ -1042,6 +1100,16 @@ func TestPublishValidationErrors(t *testing.T) {
 			name:    "publish testflight missing group",
 			args:    []string{"publish", "testflight", "--app", "APP_123", "--ipa", "app.ipa"},
 			wantErr: "Error: --group is required",
+		},
+		{
+			name:    "publish testflight test-notes missing locale",
+			args:    []string{"publish", "testflight", "--app", "APP_123", "--ipa", "app.ipa", "--group", "GROUP_ID", "--test-notes", "Notes"},
+			wantErr: "Error: --locale is required with --test-notes",
+		},
+		{
+			name:    "publish testflight locale missing test-notes",
+			args:    []string{"publish", "testflight", "--app", "APP_123", "--ipa", "app.ipa", "--group", "GROUP_ID", "--locale", "en-US"},
+			wantErr: "Error: --test-notes is required with --locale",
 		},
 		{
 			name:    "publish appstore missing app",

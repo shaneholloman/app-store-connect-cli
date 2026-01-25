@@ -22,6 +22,7 @@ const (
 	ResourceTypeBetaAppReviewDetails            ResourceType = "betaAppReviewDetails"
 	ResourceTypeBetaAppReviewSubmissions        ResourceType = "betaAppReviewSubmissions"
 	ResourceTypeBuildBetaDetails                ResourceType = "buildBetaDetails"
+	ResourceTypeBetaBuildLocalizations          ResourceType = "betaBuildLocalizations"
 	ResourceTypeBetaRecruitmentCriteria         ResourceType = "betaRecruitmentCriteria"
 	ResourceTypeBetaRecruitmentCriterionOptions ResourceType = "betaRecruitmentCriterionOptions"
 	ResourceTypeSandboxTesters                  ResourceType = "sandboxTesters"
