@@ -505,6 +505,67 @@ func TestPrintMarkdown_BetaBuildLocalizationDeleteResult(t *testing.T) {
 	}
 }
 
+func TestPrintTable_AgeRatingDeclaration(t *testing.T) {
+	boolPtr := func(value bool) *bool { return &value }
+	stringPtr := func(value string) *string { return &value }
+
+	resp := &AgeRatingDeclarationResponse{
+		Data: Resource[AgeRatingDeclarationAttributes]{
+			Type: ResourceTypeAgeRatingDeclarations,
+			ID:   "age-1",
+			Attributes: AgeRatingDeclarationAttributes{
+				Gambling:          boolPtr(false),
+				KidsAgeBand:       stringPtr("FIVE_AND_UNDER"),
+				ViolenceRealistic: stringPtr("NONE"),
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Gambling") {
+		t.Fatalf("expected gambling header, got: %s", output)
+	}
+	if !strings.Contains(output, "false") {
+		t.Fatalf("expected gambling value, got: %s", output)
+	}
+	if !strings.Contains(output, "FIVE_AND_UNDER") {
+		t.Fatalf("expected kids age band, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_AgeRatingDeclaration(t *testing.T) {
+	boolPtr := func(value bool) *bool { return &value }
+	stringPtr := func(value string) *string { return &value }
+
+	resp := &AgeRatingDeclarationResponse{
+		Data: Resource[AgeRatingDeclarationAttributes]{
+			Type: ResourceTypeAgeRatingDeclarations,
+			ID:   "age-1",
+			Attributes: AgeRatingDeclarationAttributes{
+				Gambling:    boolPtr(true),
+				KidsAgeBand: stringPtr("SIX_TO_EIGHT"),
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Field | Value |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "true") {
+		t.Fatalf("expected gambling value, got: %s", output)
+	}
+	if !strings.Contains(output, "SIX_TO_EIGHT") {
+		t.Fatalf("expected kids age band, got: %s", output)
+	}
+}
+
 func TestPrintTable_AppInfoLocalizations(t *testing.T) {
 	resp := &AppInfoLocalizationsResponse{
 		Data: []Resource[AppInfoLocalizationAttributes]{

@@ -1691,6 +1691,77 @@ func TestGetAppInfos(t *testing.T) {
 	}
 }
 
+func TestGetAgeRatingDeclarationForAppInfo(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"ageRatingDeclarations","id":"age-1","attributes":{"gambling":false}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appInfos/info-1/ageRatingDeclaration" {
+			t.Fatalf("expected path /v1/appInfos/info-1/ageRatingDeclaration, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAgeRatingDeclarationForAppInfo(context.Background(), "info-1"); err != nil {
+		t.Fatalf("GetAgeRatingDeclarationForAppInfo() error: %v", err)
+	}
+}
+
+func TestGetAgeRatingDeclarationForAppStoreVersion(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"ageRatingDeclarations","id":"age-2","attributes":{"gambling":true}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreVersions/ver-1/ageRatingDeclaration" {
+			t.Fatalf("expected path /v1/appStoreVersions/ver-1/ageRatingDeclaration, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAgeRatingDeclarationForAppStoreVersion(context.Background(), "ver-1"); err != nil {
+		t.Fatalf("GetAgeRatingDeclarationForAppStoreVersion() error: %v", err)
+	}
+}
+
+func TestUpdateAgeRatingDeclaration(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"ageRatingDeclarations","id":"age-3","attributes":{"gambling":true}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/ageRatingDeclarations/age-3" {
+			t.Fatalf("expected path /v1/ageRatingDeclarations/age-3, got %s", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+		var payload AgeRatingDeclarationUpdateRequest
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAgeRatingDeclarations {
+			t.Fatalf("expected type ageRatingDeclarations, got %q", payload.Data.Type)
+		}
+		if payload.Data.ID != "age-3" {
+			t.Fatalf("expected id age-3, got %q", payload.Data.ID)
+		}
+		if payload.Data.Attributes.Gambling == nil || !*payload.Data.Attributes.Gambling {
+			t.Fatalf("expected gambling=true in request")
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	attrs := AgeRatingDeclarationAttributes{
+		Gambling: func() *bool { value := true; return &value }(),
+	}
+	if _, err := client.UpdateAgeRatingDeclaration(context.Background(), "age-3", attrs); err != nil {
+		t.Fatalf("UpdateAgeRatingDeclaration() error: %v", err)
+	}
+}
+
 func TestGetFeedback_BuildsQuery(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"betaFeedbackScreenshotSubmissions","id":"1","attributes":{"createdDate":"2026-01-20T00:00:00Z","comment":"Nice","email":"tester@example.com"}}]}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -2725,6 +2796,7 @@ func TestSetUserVisibleApps_SendsRequest(t *testing.T) {
 		t.Fatalf("SetUserVisibleApps() error: %v", err)
 	}
 }
+
 func TestGetBetaAppReviewDetails_WithAppFilter(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"betaAppReviewDetails","id":"detail-1","attributes":{"contactEmail":"dev@example.com"}}]}`)
 	client := newTestClient(t, func(req *http.Request) {

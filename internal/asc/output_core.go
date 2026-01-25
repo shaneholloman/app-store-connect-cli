@@ -97,6 +97,8 @@ func PrintMarkdown(data interface{}) error {
 		return printBuildBetaDetailsMarkdown(v)
 	case *BuildBetaDetailResponse:
 		return printBuildBetaDetailMarkdown(v)
+	case *AgeRatingDeclarationResponse:
+		return printAgeRatingDeclarationMarkdown(v)
 	case *BetaRecruitmentCriterionOptionsResponse:
 		return printBetaRecruitmentCriterionOptionsMarkdown(v)
 	case *BetaRecruitmentCriteriaResponse:
@@ -265,6 +267,8 @@ func PrintTable(data interface{}) error {
 		return printBuildBetaDetailsTable(v)
 	case *BuildBetaDetailResponse:
 		return printBuildBetaDetailTable(v)
+	case *AgeRatingDeclarationResponse:
+		return printAgeRatingDeclarationTable(v)
 	case *BetaRecruitmentCriterionOptionsResponse:
 		return printBetaRecruitmentCriterionOptionsTable(v)
 	case *BetaRecruitmentCriteriaResponse:

@@ -30,6 +30,7 @@ const (
 	ResourceTypeAppStoreVersionLocalizations    ResourceType = "appStoreVersionLocalizations"
 	ResourceTypeAppInfoLocalizations            ResourceType = "appInfoLocalizations"
 	ResourceTypeAppInfos                        ResourceType = "appInfos"
+	ResourceTypeAgeRatingDeclarations           ResourceType = "ageRatingDeclarations"
 	ResourceTypeAnalyticsReportRequests         ResourceType = "analyticsReportRequests"
 	ResourceTypeAnalyticsReports                ResourceType = "analyticsReports"
 	ResourceTypeAnalyticsReportInstances        ResourceType = "analyticsReportInstances"
