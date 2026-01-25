@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -393,6 +394,8 @@ func TestTestFlightAppsValidationErrors(t *testing.T) {
 	t.Setenv("ASC_KEY_ID", "")
 	t.Setenv("ASC_ISSUER_ID", "")
 	t.Setenv("ASC_PRIVATE_KEY_PATH", "")
+	// Isolate from user's config file
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
 	tests := []struct {
 		name     string

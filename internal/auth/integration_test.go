@@ -95,28 +95,29 @@ func TestIntegrationAuthConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("auth_login_bypass_keychain", func(t *testing.T) {
+	t.Run("auth_login_bypass_keychain_local", func(t *testing.T) {
 		tempDir := t.TempDir()
-		configPath := filepath.Join(tempDir, "config.json")
 
-		// Login with bypass-keychain
+		// Login with bypass-keychain --local writes to .asc/config.json in cwd
 		cmd := exec.Command(ascBinary, "auth", "login",
 			"--bypass-keychain",
+			"--local",
 			"--name", "TestKey",
 			"--key-id", keyID,
 			"--issuer-id", issuerID,
 			"--private-key", keyPath,
 		)
-		cmd.Env = append(os.Environ(), "ASC_CONFIG_PATH="+configPath)
+		cmd.Dir = tempDir
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			t.Fatalf("auth login --bypass-keychain failed: %v\nOutput: %s", err, output)
+			t.Fatalf("auth login --bypass-keychain --local failed: %v\nOutput: %s", err, output)
 		}
 
-		// Verify config file was created with credentials
+		// Verify config file was created at .asc/config.json
+		configPath := filepath.Join(tempDir, ".asc", "config.json")
 		data, err := os.ReadFile(configPath)
 		if err != nil {
-			t.Fatalf("failed to read config: %v", err)
+			t.Fatalf("failed to read config at %s: %v", configPath, err)
 		}
 
 		var cfg config.Config
@@ -238,16 +239,19 @@ func TestIntegrationAuthConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("auth_logout_clears_config", func(t *testing.T) {
+	t.Run("auth_logout_clears_credentials_preserves_settings", func(t *testing.T) {
 		tempDir := t.TempDir()
 		configPath := filepath.Join(tempDir, "config.json")
 
-		// Create config with credentials
+		// Create config with credentials AND other settings
 		cfg := &config.Config{
 			KeyID:          keyID,
 			IssuerID:       issuerID,
 			PrivateKeyPath: keyPath,
 			DefaultKeyName: "LogoutTestKey",
+			AppID:          "12345",
+			VendorNumber:   "67890",
+			Timeout:        "60s",
 		}
 		if err := config.SaveAt(configPath, cfg); err != nil {
 			t.Fatalf("failed to save config: %v", err)
@@ -261,9 +265,32 @@ func TestIntegrationAuthConfig(t *testing.T) {
 			t.Fatalf("auth logout failed: %v\nOutput: %s", err, output)
 		}
 
-		// Verify config was removed
-		if _, err := os.Stat(configPath); !os.IsNotExist(err) {
-			t.Fatal("auth logout should remove config file")
+		// Verify config still exists
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Fatalf("config file should still exist: %v", err)
+		}
+
+		// Verify credentials are cleared but settings are preserved
+		var loadedCfg config.Config
+		if err := json.Unmarshal(data, &loadedCfg); err != nil {
+			t.Fatalf("failed to parse config: %v", err)
+		}
+
+		// Credentials should be cleared
+		if loadedCfg.KeyID != "" || loadedCfg.IssuerID != "" || loadedCfg.PrivateKeyPath != "" {
+			t.Fatal("credentials should be cleared after logout")
+		}
+
+		// Settings should be preserved
+		if loadedCfg.AppID != "12345" {
+			t.Fatalf("AppID should be preserved, got %q", loadedCfg.AppID)
+		}
+		if loadedCfg.VendorNumber != "67890" {
+			t.Fatalf("VendorNumber should be preserved, got %q", loadedCfg.VendorNumber)
+		}
+		if loadedCfg.Timeout != "60s" {
+			t.Fatalf("Timeout should be preserved, got %q", loadedCfg.Timeout)
 		}
 	})
 }

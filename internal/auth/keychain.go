@@ -275,31 +275,13 @@ func RemoveCredentials(name string) error {
 func RemoveAllCredentials() error {
 	if err := removeAllFromKeychain(); err == nil {
 		_ = removeAllFromLegacyKeychain()
-		return removeConfigFiles()
+		// Clear config credentials but preserve other settings (app_id, timeout, etc.)
+		return clearConfigCredentials()
 	} else if !isKeyringUnavailable(err) {
 		return err
 	}
-	return removeConfigFiles()
-}
-
-func removeConfigFiles() error {
-	activePath, err := config.Path()
-	if err != nil {
-		return err
-	}
-	globalPath, err := config.GlobalPath()
-	if err != nil {
-		return err
-	}
-	if err := config.RemoveAt(activePath); err != nil {
-		return err
-	}
-	if !sameConfigPath(activePath, globalPath) {
-		if err := config.RemoveAt(globalPath); err != nil {
-			return err
-		}
-	}
-	return nil
+	// Clear config credentials but preserve other settings
+	return clearConfigCredentials()
 }
 
 func sameConfigPath(left, right string) bool {
