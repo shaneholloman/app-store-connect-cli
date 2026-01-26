@@ -110,6 +110,7 @@ type betaTestersQuery struct {
 
 type bundleIDsQuery struct {
 	listQuery
+	identifier string
 }
 
 type bundleIDCapabilitiesQuery struct {
@@ -123,6 +124,7 @@ type certificatesQuery struct {
 
 type profilesQuery struct {
 	listQuery
+	bundleID     string
 	profileTypes []string
 }
 
@@ -287,6 +289,9 @@ func buildBetaTestersQuery(appID string, query *betaTestersQuery) string {
 
 func buildBundleIDsQuery(query *bundleIDsQuery) string {
 	values := url.Values{}
+	if strings.TrimSpace(query.identifier) != "" {
+		values.Set("filter[identifier]", strings.TrimSpace(query.identifier))
+	}
 	addLimit(values, query.limit)
 	return values.Encode()
 }
@@ -305,6 +310,9 @@ func buildCertificatesQuery(query *certificatesQuery) string {
 
 func buildProfilesQuery(query *profilesQuery) string {
 	values := url.Values{}
+	if strings.TrimSpace(query.bundleID) != "" {
+		values.Set("filter[bundleId]", strings.TrimSpace(query.bundleID))
+	}
 	addCSV(values, "filter[profileType]", query.profileTypes)
 	addLimit(values, query.limit)
 	return values.Encode()

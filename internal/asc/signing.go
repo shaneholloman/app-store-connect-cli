@@ -133,16 +133,23 @@ type CertificatesResponse = Response[CertificateAttributes]
 // CertificateResponse is the response from certificate detail endpoint.
 type CertificateResponse = SingleResponse[CertificateAttributes]
 
+// ProfileState represents profile state values.
+type ProfileState string
+
+const (
+	ProfileStateActive ProfileState = "ACTIVE"
+)
+
 // ProfileAttributes describes a profile resource.
 type ProfileAttributes struct {
-	Name           string   `json:"name"`
-	Platform       Platform `json:"platform,omitempty"`
-	ProfileType    string   `json:"profileType"`
-	ProfileState   string   `json:"profileState,omitempty"`
-	ProfileContent string   `json:"profileContent,omitempty"`
-	UUID           string   `json:"uuid,omitempty"`
-	CreatedDate    string   `json:"createdDate,omitempty"`
-	ExpirationDate string   `json:"expirationDate,omitempty"`
+	Name           string       `json:"name"`
+	Platform       Platform     `json:"platform,omitempty"`
+	ProfileType    string       `json:"profileType"`
+	ProfileState   ProfileState `json:"profileState,omitempty"`
+	ProfileContent string       `json:"profileContent,omitempty"`
+	UUID           string       `json:"uuid,omitempty"`
+	CreatedDate    string       `json:"createdDate,omitempty"`
+	ExpirationDate string       `json:"expirationDate,omitempty"`
 }
 
 // ProfileCreateAttributes describes attributes for creating a profile.

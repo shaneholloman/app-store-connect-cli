@@ -95,6 +95,8 @@ func PrintMarkdown(data interface{}) error {
 		return printUsersMarkdown(&UsersResponse{Data: []Resource[UserAttributes]{v.Data}})
 	case *DevicesResponse:
 		return printDevicesMarkdown(v)
+	case *DeviceLocalUDIDResult:
+		return printDeviceLocalUDIDMarkdown(v)
 	case *DeviceResponse:
 		return printDevicesMarkdown(&DevicesResponse{Data: []Resource[DeviceAttributes]{v.Data}})
 	case *UserInvitationsResponse:
@@ -203,6 +205,8 @@ func PrintMarkdown(data interface{}) error {
 		return printProfileDeleteResultMarkdown(v)
 	case *ProfileDownloadResult:
 		return printProfileDownloadResultMarkdown(v)
+	case *SigningFetchResult:
+		return printSigningFetchResultMarkdown(v)
 	case *XcodeCloudRunResult:
 		return printXcodeCloudRunResultMarkdown(v)
 	case *XcodeCloudStatusResult:
@@ -301,6 +305,8 @@ func PrintTable(data interface{}) error {
 		return printUsersTable(&UsersResponse{Data: []Resource[UserAttributes]{v.Data}})
 	case *DevicesResponse:
 		return printDevicesTable(v)
+	case *DeviceLocalUDIDResult:
+		return printDeviceLocalUDIDTable(v)
 	case *DeviceResponse:
 		return printDevicesTable(&DevicesResponse{Data: []Resource[DeviceAttributes]{v.Data}})
 	case *UserInvitationsResponse:
@@ -409,6 +415,8 @@ func PrintTable(data interface{}) error {
 		return printProfileDeleteResultTable(v)
 	case *ProfileDownloadResult:
 		return printProfileDownloadResultTable(v)
+	case *SigningFetchResult:
+		return printSigningFetchResultTable(v)
 	case *XcodeCloudRunResult:
 		return printXcodeCloudRunResultTable(v)
 	case *XcodeCloudStatusResult:

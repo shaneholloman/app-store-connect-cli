@@ -580,6 +580,16 @@ func WithBundleIDsNextURL(next string) BundleIDsOption {
 	}
 }
 
+// WithBundleIDsFilterIdentifier filters bundle IDs by identifier (supports CSV).
+func WithBundleIDsFilterIdentifier(identifier string) BundleIDsOption {
+	return func(q *bundleIDsQuery) {
+		normalized := normalizeCSVString(identifier)
+		if normalized != "" {
+			q.identifier = normalized
+		}
+	}
+}
+
 // WithBundleIDCapabilitiesLimit sets the max number of capabilities to return.
 func WithBundleIDCapabilitiesLimit(limit int) BundleIDCapabilitiesOption {
 	return func(q *bundleIDCapabilitiesQuery) {
@@ -623,6 +633,17 @@ func WithCertificatesTypes(types []string) CertificatesOption {
 	}
 }
 
+// WithCertificatesFilterType filters certificates by certificate type (supports CSV).
+func WithCertificatesFilterType(certType string) CertificatesOption {
+	return func(q *certificatesQuery) {
+		normalized := normalizeUpperCSVString(certType)
+		if normalized == "" {
+			return
+		}
+		q.certificateTypes = strings.Split(normalized, ",")
+	}
+}
+
 // WithProfilesLimit sets the max number of profiles to return.
 func WithProfilesLimit(limit int) ProfilesOption {
 	return func(q *profilesQuery) {
@@ -645,6 +666,26 @@ func WithProfilesNextURL(next string) ProfilesOption {
 func WithProfilesTypes(types []string) ProfilesOption {
 	return func(q *profilesQuery) {
 		q.profileTypes = normalizeUpperList(types)
+	}
+}
+
+// WithProfilesFilterBundleID filters profiles by bundle ID.
+func WithProfilesFilterBundleID(bundleID string) ProfilesOption {
+	return func(q *profilesQuery) {
+		if strings.TrimSpace(bundleID) != "" {
+			q.bundleID = strings.TrimSpace(bundleID)
+		}
+	}
+}
+
+// WithProfilesFilterType filters profiles by profile type (supports CSV).
+func WithProfilesFilterType(profileType string) ProfilesOption {
+	return func(q *profilesQuery) {
+		normalized := normalizeUpperCSVString(profileType)
+		if normalized == "" {
+			return
+		}
+		q.profileTypes = strings.Split(normalized, ",")
 	}
 }
 
@@ -686,6 +727,33 @@ func WithDevicesLimit(limit int) DevicesOption {
 		if limit > 0 {
 			q.limit = limit
 		}
+	}
+}
+
+// WithDevicesFilterUDIDs filters devices by UDID(s).
+func WithDevicesFilterUDIDs(udids []string) DevicesOption {
+	return WithDevicesUDIDs(udids)
+}
+
+// WithDevicesFilterPlatforms filters devices by platform(s).
+func WithDevicesFilterPlatforms(platforms []string) DevicesOption {
+	return func(q *devicesQuery) {
+		normalized := normalizeUpperList(platforms)
+		if len(normalized) == 0 {
+			return
+		}
+		q.platforms = normalized
+	}
+}
+
+// WithDevicesFilterStatuses filters devices by status (e.g., ENABLED, DISABLED).
+func WithDevicesFilterStatuses(statuses []string) DevicesOption {
+	return func(q *devicesQuery) {
+		normalized := normalizeUpperList(statuses)
+		if len(normalized) == 0 {
+			return
+		}
+		q.status = strings.Join(normalized, ",")
 	}
 }
 

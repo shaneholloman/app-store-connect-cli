@@ -2725,6 +2725,27 @@ func TestResolveGitReferenceByName_NoMatch(t *testing.T) {
 	}
 }
 
+func TestGetBundleIDs_WithIdentifierFilter(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"bundleIds","id":"bid-1","attributes":{"identifier":"com.example.app"}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/bundleIds" {
+			t.Fatalf("expected path /v1/bundleIds, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("filter[identifier]") != "com.example.app" {
+			t.Fatalf("expected filter[identifier]=com.example.app, got %q", values.Get("filter[identifier]"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetBundleIDs(context.Background(), WithBundleIDsFilterIdentifier("com.example.app")); err != nil {
+		t.Fatalf("GetBundleIDs() error: %v", err)
+	}
+}
+
 func TestGetBundleIDs_WithLimit(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"bundleIds","id":"b1","attributes":{"name":"Demo","identifier":"com.example.demo","platform":"IOS"}}]}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -3849,6 +3870,37 @@ func TestGetBetaGroupTesterUsages(t *testing.T) {
 
 	if _, err := client.GetBetaGroupTesterUsages(context.Background(), "group-1"); err != nil {
 		t.Fatalf("GetBetaGroupTesterUsages() error: %v", err)
+	}
+}
+
+func TestGetDevices_WithFilters(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"devices","id":"device-1","attributes":{"udid":"UDID1","platform":"IOS","status":"ENABLED"}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/devices" {
+			t.Fatalf("expected path /v1/devices, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("filter[udid]") != "UDID1,UDID2" {
+			t.Fatalf("expected filter[udid]=UDID1,UDID2, got %q", values.Get("filter[udid]"))
+		}
+		if values.Get("filter[platform]") != "IOS" {
+			t.Fatalf("expected filter[platform]=IOS, got %q", values.Get("filter[platform]"))
+		}
+		if values.Get("filter[status]") != "ENABLED" {
+			t.Fatalf("expected filter[status]=ENABLED, got %q", values.Get("filter[status]"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetDevices(context.Background(),
+		WithDevicesFilterUDIDs([]string{"UDID1", "UDID2"}),
+		WithDevicesFilterPlatforms([]string{"ios"}),
+		WithDevicesFilterStatuses([]string{"enabled"}),
+	); err != nil {
+		t.Fatalf("GetDevices() error: %v", err)
 	}
 }
 

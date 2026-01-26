@@ -58,6 +58,7 @@ func RootCommand(version string) *ffcli.Command {
 			BetaGroupsCommand(),
 			BetaTestersCommand(),
 			SandboxCommand(),
+			SigningCommand(),
 			SubmitCommand(),
 			XcodeCloudCommand(),
 			CategoriesCommand(),

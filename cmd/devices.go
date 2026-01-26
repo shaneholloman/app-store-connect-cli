@@ -27,6 +27,7 @@ func DevicesCommand() *ffcli.Command {
 Examples:
   asc devices list
   asc devices get --id "DEVICE_ID"
+  asc devices local-udid
   asc devices register --name "iPhone 15" --udid "UDID" --platform IOS
   asc devices update --id "DEVICE_ID" --status DISABLED`,
 		FlagSet:   fs,
@@ -34,6 +35,7 @@ Examples:
 		Subcommands: []*ffcli.Command{
 			DevicesListCommand(),
 			DevicesGetCommand(),
+			DevicesLocalUDIDCommand(),
 			DevicesRegisterCommand(),
 			DevicesUpdateCommand(),
 		},
@@ -203,6 +205,40 @@ Examples:
 			}
 
 			return printOutput(device, *output, *pretty)
+		},
+	}
+}
+
+// DevicesLocalUDIDCommand returns the devices local-udid subcommand.
+func DevicesLocalUDIDCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("local-udid", flag.ExitOnError)
+
+	output := fs.String("output", "json", "Output format: json (default), table, markdown")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
+
+	return &ffcli.Command{
+		Name:       "local-udid",
+		ShortUsage: "asc devices local-udid [flags]",
+		ShortHelp:  "Get the local macOS hardware UDID.",
+		LongHelp: `Get the local macOS hardware UDID.
+
+Examples:
+  asc devices local-udid
+  asc devices local-udid --output table`,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
+		Exec: func(ctx context.Context, args []string) error {
+			localUDID, err := localMacUDID()
+			if err != nil {
+				return fmt.Errorf("devices local-udid: %w", err)
+			}
+
+			result := &asc.DeviceLocalUDIDResult{
+				UDID:     localUDID,
+				Platform: "MAC_OS",
+			}
+
+			return printOutput(result, *output, *pretty)
 		},
 	}
 }
