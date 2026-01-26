@@ -1414,6 +1414,110 @@ func TestVersionsValidationErrors(t *testing.T) {
 	}
 }
 
+func TestAppInfoValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "app-info get missing app",
+			args:    []string{"app-info", "get"},
+			wantErr: "--app is required",
+		},
+		{
+			name:    "app-info get version missing platform",
+			args:    []string{"app-info", "get", "--app", "APP_ID", "--version", "1.0.0"},
+			wantErr: "--platform is required with --version",
+		},
+		{
+			name:    "app-info set missing locale",
+			args:    []string{"app-info", "set", "--app", "APP_ID", "--whats-new", "Fixes"},
+			wantErr: "--locale is required",
+		},
+		{
+			name:    "app-info set missing update fields",
+			args:    []string{"app-info", "set", "--app", "APP_ID", "--locale", "en-US"},
+			wantErr: "at least one update flag is required",
+		},
+		{
+			name:    "app-info set missing app",
+			args:    []string{"app-info", "set", "--locale", "en-US", "--whats-new", "Fixes"},
+			wantErr: "--app is required",
+		},
+		{
+			name:    "app-info set version missing platform",
+			args:    []string{"app-info", "set", "--app", "APP_ID", "--version", "1.0.0", "--locale", "en-US", "--whats-new", "Fixes"},
+			wantErr: "--platform is required with --version",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := RootCommand("1.2.3")
+			root.FlagSet.SetOutput(io.Discard)
+
+			stdout, stderr := captureOutput(t, func() {
+				if err := root.Parse(test.args); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				err := root.Run(context.Background())
+				if !errors.Is(err, flag.ErrHelp) {
+					t.Fatalf("expected ErrHelp, got %v", err)
+				}
+			})
+
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
+			}
+		})
+	}
+}
+
+func TestAppInfoMutualExclusiveFlags(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "app-info get version and version-id are mutually exclusive",
+			args:    []string{"app-info", "get", "--app", "APP_ID", "--version", "1.0.0", "--version-id", "VERSION_ID"},
+			wantErr: "--version and --version-id are mutually exclusive",
+		},
+		{
+			name:    "app-info set version and version-id are mutually exclusive",
+			args:    []string{"app-info", "set", "--app", "APP_ID", "--version", "1.0.0", "--version-id", "VERSION_ID", "--locale", "en-US", "--whats-new", "Fixes"},
+			wantErr: "--version and --version-id are mutually exclusive",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := RootCommand("1.2.3")
+			root.FlagSet.SetOutput(io.Discard)
+
+			_, _ = captureOutput(t, func() {
+				if err := root.Parse(test.args); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				err := root.Run(context.Background())
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", test.wantErr, err)
+				}
+			})
+		})
+	}
+}
+
 func TestPreReleaseVersionsValidationErrors(t *testing.T) {
 	t.Setenv("ASC_APP_ID", "")
 

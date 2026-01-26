@@ -36,6 +36,7 @@ A **fast**, **lightweight**, and **AI-agent friendly** CLI for App Store Connect
   - [Apps & Builds](#apps--builds)
   - [Categories](#categories)
   - [Versions](#versions)
+  - [App Info](#app-info)
   - [Pre-Release Versions](#pre-release-versions)
   - [Localizations](#localizations)
   - [Build Localizations](#build-localizations)
@@ -551,6 +552,19 @@ asc versions phased-release get --version-id "VERSION_ID"
 asc versions phased-release create --version-id "VERSION_ID"
 asc versions phased-release update --id "PHASED_ID" --state PAUSED
 asc versions phased-release delete --id "PHASED_ID" --confirm
+```
+
+### App Info
+
+```bash
+# Get App Store metadata for the latest version
+asc app-info get --app "123456789"
+
+# Get metadata for a specific version
+asc app-info get --app "123456789" --version "1.2.3" --platform IOS
+
+# Update metadata for a locale
+asc app-info set --app "123456789" --locale "en-US" --whats-new "Bug fixes"
 ```
 
 ### Pre-Release Versions

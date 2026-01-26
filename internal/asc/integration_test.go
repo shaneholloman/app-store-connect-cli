@@ -6,6 +6,8 @@ import (
 	"context"
 	"net/url"
 	"os"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -24,6 +26,40 @@ func TestIntegrationEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
+
+	t.Run("app_store_version_localizations", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		versions, err := client.GetAppStoreVersions(ctx, appID, WithAppStoreVersionsLimit(50))
+		if err != nil {
+			t.Fatalf("failed to fetch app store versions: %v", err)
+		}
+		if versions == nil {
+			t.Fatal("expected app store versions response")
+		}
+		if len(versions.Data) == 0 {
+			t.Skip("no app store versions available")
+		}
+
+		selected := selectLatestAppStoreVersionForTest(versions.Data)
+		if strings.TrimSpace(selected.ID) == "" {
+			t.Skip("no app store version id available")
+		}
+
+		localizations, err := client.GetAppStoreVersionLocalizations(ctx, selected.ID, WithAppStoreVersionLocalizationsLimit(1))
+		if err != nil {
+			t.Fatalf("failed to fetch app store version localizations: %v", err)
+		}
+		if localizations == nil {
+			t.Fatal("expected localizations response")
+		}
+		if len(localizations.Data) == 0 {
+			t.Skip("no app store version localizations available")
+		}
+		assertASCLink(t, localizations.Links.Self)
+		assertASCLink(t, localizations.Links.Next)
+	})
 
 	t.Run("feedback", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -712,6 +748,27 @@ func assertASCLink(t *testing.T, link string) {
 	if parsed.Scheme != "" && parsed.Scheme != "https" {
 		t.Fatalf("expected https scheme, got %q", parsed.Scheme)
 	}
+}
+
+func selectLatestAppStoreVersionForTest(versions []Resource[AppStoreVersionAttributes]) Resource[AppStoreVersionAttributes] {
+	sort.SliceStable(versions, func(i, j int) bool {
+		return parseAppStoreVersionCreatedDateForTest(versions[i]).After(parseAppStoreVersionCreatedDateForTest(versions[j]))
+	})
+	return versions[0]
+}
+
+func parseAppStoreVersionCreatedDateForTest(version Resource[AppStoreVersionAttributes]) time.Time {
+	created := strings.TrimSpace(version.Attributes.CreatedDate)
+	if created == "" {
+		return time.Time{}
+	}
+	if parsed, err := time.Parse(time.RFC3339, created); err == nil {
+		return parsed
+	}
+	if parsed, err := time.Parse(time.RFC3339Nano, created); err == nil {
+		return parsed
+	}
+	return time.Time{}
 }
 
 // assertSortedByDateDesc verifies dates are in descending order.
