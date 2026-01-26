@@ -126,7 +126,7 @@ func AgeRatingSetCommand() *ffcli.Command {
 	violenceCartoon := fs.String("violence-cartoon", "", "Cartoon/fantasy violence: NONE, INFREQUENT_OR_MILD, FREQUENT_OR_INTENSE")
 	violenceRealistic := fs.String("violence-realistic", "", "Realistic violence: NONE, INFREQUENT_OR_MILD, FREQUENT_OR_INTENSE")
 	violenceRealisticGraphic := fs.String("violence-realistic-graphic", "", "Prolonged graphic/sadistic violence: NONE, INFREQUENT_OR_MILD, FREQUENT_OR_INTENSE")
-	seventeenPlus := fs.String("seventeen-plus", "", "17+ content (true/false)")
+	seventeenPlus := fs.String("seventeen-plus", "", "17+ content (true/false, not supported by API)")
 	unrestrictedWebAccess := fs.String("unrestricted-web-access", "", "Unrestricted web access (true/false)")
 	kidsAgeBand := fs.String("kids-age-band", "", "Kids age band: FIVE_AND_UNDER, SIX_TO_EIGHT, NINE_TO_ELEVEN")
 
@@ -141,7 +141,7 @@ func AgeRatingSetCommand() *ffcli.Command {
 
 Examples:
   asc age-rating set --id DECLARATION_ID --gambling false --kids-age-band FIVE_AND_UNDER
-  asc age-rating set --app APP_ID --violence-realistic FREQUENT_OR_INTENSE --seventeen-plus true`,
+  asc age-rating set --app APP_ID --violence-realistic FREQUENT_OR_INTENSE --unrestricted-web-access true`,
 		FlagSet:   fs,
 		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -252,9 +252,8 @@ func buildAgeRatingAttributes(values map[string]string) (asc.AgeRatingDeclaratio
 	if err != nil {
 		return attrs, err
 	}
-	seventeenPlus, err := parseOptionalBoolFlag("--seventeen-plus", values["seventeen-plus"])
-	if err != nil {
-		return attrs, err
+	if strings.TrimSpace(values["seventeen-plus"]) != "" {
+		return attrs, fmt.Errorf("--seventeen-plus is not supported by the App Store Connect API")
 	}
 	unrestrictedWebAccess, err := parseOptionalBoolFlag("--unrestricted-web-access", values["unrestricted-web-access"])
 	if err != nil {
@@ -315,7 +314,6 @@ func buildAgeRatingAttributes(values map[string]string) (asc.AgeRatingDeclaratio
 	}
 
 	attrs.Gambling = gambling
-	attrs.SeventeenPlus = seventeenPlus
 	attrs.UnrestrictedWebAccess = unrestrictedWebAccess
 	attrs.GamblingSimulated = gamblingSimulated
 	attrs.AlcoholTobaccoOrDrugUseOrReferences = alcoholTobaccoDrug
@@ -336,7 +334,6 @@ func buildAgeRatingAttributes(values map[string]string) (asc.AgeRatingDeclaratio
 
 func hasAgeRatingUpdates(attrs asc.AgeRatingDeclarationAttributes) bool {
 	return attrs.Gambling != nil ||
-		attrs.SeventeenPlus != nil ||
 		attrs.UnrestrictedWebAccess != nil ||
 		attrs.GamblingSimulated != nil ||
 		attrs.AlcoholTobaccoOrDrugUseOrReferences != nil ||
