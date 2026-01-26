@@ -38,11 +38,23 @@ type BetaGroupTestersOption func(*betaGroupTestersQuery)
 // BetaTestersOption is a functional option for GetBetaTesters.
 type BetaTestersOption func(*betaTestersQuery)
 
-// UsersOption is a functional option for GetUsers.
-type UsersOption func(*usersQuery)
+// BundleIDsOption is a functional option for GetBundleIDs.
+type BundleIDsOption func(*bundleIDsQuery)
+
+// BundleIDCapabilitiesOption is a functional option for GetBundleIDCapabilities.
+type BundleIDCapabilitiesOption func(*bundleIDCapabilitiesQuery)
+
+// CertificatesOption is a functional option for GetCertificates.
+type CertificatesOption func(*certificatesQuery)
 
 // DevicesOption is a functional option for GetDevices.
 type DevicesOption func(*devicesQuery)
+
+// ProfilesOption is a functional option for GetProfiles.
+type ProfilesOption func(*profilesQuery)
+
+// UsersOption is a functional option for GetUsers.
+type UsersOption func(*usersQuery)
 
 // UserInvitationsOption is a functional option for GetUserInvitations.
 type UserInvitationsOption func(*userInvitationsQuery)
@@ -550,6 +562,92 @@ func WithBetaTestersBuildID(buildID string) BetaTestersOption {
 	}
 }
 
+// WithBundleIDsLimit sets the max number of bundle IDs to return.
+func WithBundleIDsLimit(limit int) BundleIDsOption {
+	return func(q *bundleIDsQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithBundleIDsNextURL uses a next page URL directly.
+func WithBundleIDsNextURL(next string) BundleIDsOption {
+	return func(q *bundleIDsQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithBundleIDCapabilitiesLimit sets the max number of capabilities to return.
+func WithBundleIDCapabilitiesLimit(limit int) BundleIDCapabilitiesOption {
+	return func(q *bundleIDCapabilitiesQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithBundleIDCapabilitiesNextURL uses a next page URL directly.
+func WithBundleIDCapabilitiesNextURL(next string) BundleIDCapabilitiesOption {
+	return func(q *bundleIDCapabilitiesQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithCertificatesLimit sets the max number of certificates to return.
+func WithCertificatesLimit(limit int) CertificatesOption {
+	return func(q *certificatesQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithCertificatesNextURL uses a next page URL directly.
+func WithCertificatesNextURL(next string) CertificatesOption {
+	return func(q *certificatesQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithCertificatesTypes filters certificates by type.
+func WithCertificatesTypes(types []string) CertificatesOption {
+	return func(q *certificatesQuery) {
+		q.certificateTypes = normalizeUpperList(types)
+	}
+}
+
+// WithProfilesLimit sets the max number of profiles to return.
+func WithProfilesLimit(limit int) ProfilesOption {
+	return func(q *profilesQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithProfilesNextURL uses a next page URL directly.
+func WithProfilesNextURL(next string) ProfilesOption {
+	return func(q *profilesQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithProfilesTypes filters profiles by profile type.
+func WithProfilesTypes(types []string) ProfilesOption {
+	return func(q *profilesQuery) {
+		q.profileTypes = normalizeUpperList(types)
+	}
+}
+
 // WithUsersLimit sets the max number of users to return.
 func WithUsersLimit(limit int) UsersOption {
 	return func(q *usersQuery) {
@@ -638,8 +736,15 @@ func WithDevicesNames(names []string) DevicesOption {
 func WithDevicesPlatform(platform string) DevicesOption {
 	return func(q *devicesQuery) {
 		if strings.TrimSpace(platform) != "" {
-			q.platform = strings.ToUpper(strings.TrimSpace(platform))
+			q.platforms = []string{strings.ToUpper(strings.TrimSpace(platform))}
 		}
+	}
+}
+
+// WithDevicesPlatforms filters devices by platform(s).
+func WithDevicesPlatforms(platforms []string) DevicesOption {
+	return func(q *devicesQuery) {
+		q.platforms = normalizeUpperList(platforms)
 	}
 }
 

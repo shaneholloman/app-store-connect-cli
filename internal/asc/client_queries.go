@@ -108,6 +108,24 @@ type betaTestersQuery struct {
 	filterBuilds string
 }
 
+type bundleIDsQuery struct {
+	listQuery
+}
+
+type bundleIDCapabilitiesQuery struct {
+	listQuery
+}
+
+type certificatesQuery struct {
+	listQuery
+	certificateTypes []string
+}
+
+type profilesQuery struct {
+	listQuery
+	profileTypes []string
+}
+
 type usersQuery struct {
 	listQuery
 	email string
@@ -116,13 +134,13 @@ type usersQuery struct {
 
 type devicesQuery struct {
 	listQuery
-	names    []string
-	platform string
-	status   string
-	udids    []string
-	ids      []string
-	sort     string
-	fields   []string
+	names     []string
+	platforms []string
+	status    string
+	udids     []string
+	ids       []string
+	sort      string
+	fields    []string
 }
 
 type userInvitationsQuery struct {
@@ -267,6 +285,31 @@ func buildBetaTestersQuery(appID string, query *betaTestersQuery) string {
 	return values.Encode()
 }
 
+func buildBundleIDsQuery(query *bundleIDsQuery) string {
+	values := url.Values{}
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
+func buildBundleIDCapabilitiesQuery(_ *bundleIDCapabilitiesQuery) string {
+	// Bundle ID capabilities endpoint does not support limit/pagination params.
+	return ""
+}
+
+func buildCertificatesQuery(query *certificatesQuery) string {
+	values := url.Values{}
+	addCSV(values, "filter[certificateType]", query.certificateTypes)
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
+func buildProfilesQuery(query *profilesQuery) string {
+	values := url.Values{}
+	addCSV(values, "filter[profileType]", query.profileTypes)
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
 func buildUsersQuery(query *usersQuery) string {
 	values := url.Values{}
 	if strings.TrimSpace(query.email) != "" {
@@ -280,9 +323,7 @@ func buildUsersQuery(query *usersQuery) string {
 func buildDevicesQuery(query *devicesQuery) string {
 	values := url.Values{}
 	addCSV(values, "filter[name]", query.names)
-	if strings.TrimSpace(query.platform) != "" {
-		values.Set("filter[platform]", strings.TrimSpace(query.platform))
-	}
+	addCSV(values, "filter[platform]", query.platforms)
 	if strings.TrimSpace(query.status) != "" {
 		values.Set("filter[status]", strings.TrimSpace(query.status))
 	}

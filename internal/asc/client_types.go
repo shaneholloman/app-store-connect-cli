@@ -5,6 +5,8 @@ type ResourceType string
 
 const (
 	ResourceTypeApps                                 ResourceType = "apps"
+	ResourceTypeBundleIds                            ResourceType = "bundleIds"
+	ResourceTypeBundleIdCapabilities                 ResourceType = "bundleIdCapabilities"
 	ResourceTypeAppCategories                        ResourceType = "appCategories"
 	ResourceTypeAppAvailabilities                    ResourceType = "appAvailabilities"
 	ResourceTypeAppPricePoints                       ResourceType = "appPricePoints"
@@ -13,6 +15,7 @@ const (
 	ResourceTypeBuilds                               ResourceType = "builds"
 	ResourceTypeBuildUploads                         ResourceType = "buildUploads"
 	ResourceTypeBuildUploadFiles                     ResourceType = "buildUploadFiles"
+	ResourceTypeCertificates                         ResourceType = "certificates"
 	ResourceTypeAppStoreVersions                     ResourceType = "appStoreVersions"
 	ResourceTypePreReleaseVersions                   ResourceType = "preReleaseVersions"
 	ResourceTypeAppStoreVersionSubmissions           ResourceType = "appStoreVersionSubmissions"
@@ -35,8 +38,6 @@ const (
 	ResourceTypeAnalyticsReports                     ResourceType = "analyticsReports"
 	ResourceTypeAnalyticsReportInstances             ResourceType = "analyticsReportInstances"
 	ResourceTypeAnalyticsReportSegments              ResourceType = "analyticsReportSegments"
-	ResourceTypeBundleIDs                            ResourceType = "bundleIds"
-	ResourceTypeCertificates                         ResourceType = "certificates"
 	ResourceTypeDevices                              ResourceType = "devices"
 	ResourceTypeProfiles                             ResourceType = "profiles"
 	ResourceTypeTerritories                          ResourceType = "territories"

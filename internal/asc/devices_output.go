@@ -6,6 +6,29 @@ import (
 	"text/tabwriter"
 )
 
+// DeviceLocalUDIDResult represents CLI output for local device UDID lookup.
+type DeviceLocalUDIDResult struct {
+	UDID     string `json:"udid"`
+	Platform string `json:"platform"`
+}
+
+func printDeviceLocalUDIDTable(result *DeviceLocalUDIDResult) error {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "UDID\tPlatform")
+	fmt.Fprintf(w, "%s\t%s\n", result.UDID, result.Platform)
+	return w.Flush()
+}
+
+func printDeviceLocalUDIDMarkdown(result *DeviceLocalUDIDResult) error {
+	fmt.Fprintln(os.Stdout, "| UDID | Platform |")
+	fmt.Fprintln(os.Stdout, "| --- | --- |")
+	fmt.Fprintf(os.Stdout, "| %s | %s |\n",
+		escapeMarkdown(result.UDID),
+		escapeMarkdown(result.Platform),
+	)
+	return nil
+}
+
 func printDevicesTable(resp *DevicesResponse) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tName\tUDID\tPlatform\tStatus\tClass\tModel\tAdded")
