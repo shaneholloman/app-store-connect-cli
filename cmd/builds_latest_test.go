@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
@@ -11,7 +12,8 @@ import (
 
 func TestBuildsLatestCommand_MissingApp(t *testing.T) {
 	// Clear env var to ensure --app is required
-	os.Unsetenv("ASC_APP_ID")
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
 	cmd := BuildsLatestCommand()
 

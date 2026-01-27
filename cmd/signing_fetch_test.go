@@ -97,13 +97,13 @@ func TestSigningFetchWriteFiles_NoOverwrite(t *testing.T) {
 
 	if err := writeProfileFile(profilePath, profileData); err == nil {
 		t.Fatal("expected error when overwriting profile file")
-	} else if !strings.Contains(err.Error(), "output file already exists") {
-		t.Fatalf("expected overwrite error, got %v", err)
+	} else if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("expected ErrExist, got %v", err)
 	}
 
 	if err := writeBinaryFile(certPath, certData); err == nil {
 		t.Fatal("expected error when overwriting certificate file")
-	} else if !strings.Contains(err.Error(), "output file already exists") {
-		t.Fatalf("expected overwrite error, got %v", err)
+	} else if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("expected ErrExist, got %v", err)
 	}
 }

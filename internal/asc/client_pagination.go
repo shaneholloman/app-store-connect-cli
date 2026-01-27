@@ -23,6 +23,16 @@ func (r *Response[T]) GetData() interface{} {
 }
 
 // GetLinks returns the links field for pagination.
+func (r *LinkagesResponse) GetLinks() *Links {
+	return &r.Links
+}
+
+// GetData returns the data field for aggregation.
+func (r *LinkagesResponse) GetData() interface{} {
+	return r.Data
+}
+
+// GetLinks returns the links field for pagination.
 func (r *PreReleaseVersionsResponse) GetLinks() *Links {
 	return &r.Links
 }
@@ -52,6 +62,10 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 		result = &ReviewsResponse{Links: Links{}}
 	case *AppsResponse:
 		result = &AppsResponse{Links: Links{}}
+	case *AppTagsResponse:
+		result = &AppTagsResponse{Links: Links{}}
+	case *LinkagesResponse:
+		result = &LinkagesResponse{Links: Links{}}
 	case *BundleIDsResponse:
 		result = &BundleIDsResponse{Links: Links{}}
 	case *InAppPurchasesV2Response:
@@ -68,6 +82,10 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 		result = &AppStoreVersionsResponse{Links: Links{}}
 	case *PreReleaseVersionsResponse:
 		result = &PreReleaseVersionsResponse{Links: Links{}}
+	case *AccessibilityDeclarationsResponse:
+		result = &AccessibilityDeclarationsResponse{Links: Links{}}
+	case *AppStoreReviewAttachmentsResponse:
+		result = &AppStoreReviewAttachmentsResponse{Links: Links{}}
 	case *AppStoreVersionLocalizationsResponse:
 		result = &AppStoreVersionLocalizationsResponse{Links: Links{}}
 	case *BetaBuildLocalizationsResponse:
@@ -191,6 +209,10 @@ func typeOf(p PaginatedResponse) string {
 		return "ReviewsResponse"
 	case *AppsResponse:
 		return "AppsResponse"
+	case *AppTagsResponse:
+		return "AppTagsResponse"
+	case *LinkagesResponse:
+		return "LinkagesResponse"
 	case *BundleIDsResponse:
 		return "BundleIDsResponse"
 	case *InAppPurchasesV2Response:
@@ -207,6 +229,10 @@ func typeOf(p PaginatedResponse) string {
 		return "AppStoreVersionsResponse"
 	case *PreReleaseVersionsResponse:
 		return "PreReleaseVersionsResponse"
+	case *AccessibilityDeclarationsResponse:
+		return "AccessibilityDeclarationsResponse"
+	case *AppStoreReviewAttachmentsResponse:
+		return "AppStoreReviewAttachmentsResponse"
 	case *AppStoreVersionLocalizationsResponse:
 		return "AppStoreVersionLocalizationsResponse"
 	case *BetaBuildLocalizationsResponse:

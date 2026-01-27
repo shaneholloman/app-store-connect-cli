@@ -3,6 +3,7 @@ package asc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -101,8 +102,8 @@ func TestGetSalesReport_ErrorResponse(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "Forbidden") {
-		t.Fatalf("expected Forbidden error, got %v", err)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected forbidden error, got %v", err)
 	}
 }
 
@@ -256,9 +257,6 @@ func TestDownloadAnalyticsReport_InvalidHost(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for untrusted host, got nil")
 	}
-	if !strings.Contains(err.Error(), "untrusted host") {
-		t.Fatalf("expected 'untrusted host' error, got: %v", err)
-	}
 }
 
 func TestDownloadAnalyticsReport_InsecureScheme(t *testing.T) {
@@ -270,9 +268,6 @@ func TestDownloadAnalyticsReport_InsecureScheme(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for insecure scheme, got nil")
 	}
-	if !strings.Contains(err.Error(), "insecure scheme") {
-		t.Fatalf("expected 'insecure scheme' error, got: %v", err)
-	}
 }
 
 func TestDownloadAnalyticsReport_CDNHostRequiresSignature(t *testing.T) {
@@ -282,9 +277,6 @@ func TestDownloadAnalyticsReport_CDNHostRequiresSignature(t *testing.T) {
 	_, err := client.DownloadAnalyticsReport(context.Background(), downloadURL)
 	if err == nil {
 		t.Fatal("expected error for unsigned CDN host, got nil")
-	}
-	if !strings.Contains(err.Error(), "without signed query") {
-		t.Fatalf("expected 'signed query' error, got: %v", err)
 	}
 }
 

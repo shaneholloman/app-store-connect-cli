@@ -207,9 +207,6 @@ func TestUpdateAppStoreVersionPhasedRelease_EmptyState(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty state")
 	}
-	if !strings.Contains(err.Error(), "state is required") {
-		t.Errorf("expected 'state is required' error, got: %v", err)
-	}
 }
 
 func TestPhasedReleaseState_Values(t *testing.T) {

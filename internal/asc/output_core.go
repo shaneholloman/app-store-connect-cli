@@ -33,6 +33,12 @@ func PrintMarkdown(data interface{}) error {
 		return printAppCategoriesMarkdown(v)
 	case *AppResponse:
 		return printAppsMarkdown(&AppsResponse{Data: []Resource[AppAttributes]{v.Data}})
+	case *AppTagsResponse:
+		return printAppTagsMarkdown(v)
+	case *AppTagResponse:
+		return printAppTagsMarkdown(&AppTagsResponse{Data: []Resource[AppTagAttributes]{v.Data}})
+	case *LinkagesResponse:
+		return printLinkagesMarkdown(v)
 	case *BundleIDsResponse:
 		return printBundleIDsMarkdown(v)
 	case *BundleIDResponse:
@@ -139,6 +145,16 @@ func PrintMarkdown(data interface{}) error {
 		return printBuildBetaDetailMarkdown(v)
 	case *AgeRatingDeclarationResponse:
 		return printAgeRatingDeclarationMarkdown(v)
+	case *AccessibilityDeclarationsResponse:
+		return printAccessibilityDeclarationsMarkdown(v)
+	case *AccessibilityDeclarationResponse:
+		return printAccessibilityDeclarationMarkdown(v)
+	case *AppStoreReviewDetailResponse:
+		return printAppStoreReviewDetailMarkdown(v)
+	case *AppStoreReviewAttachmentsResponse:
+		return printAppStoreReviewAttachmentsMarkdown(v)
+	case *AppStoreReviewAttachmentResponse:
+		return printAppStoreReviewAttachmentMarkdown(v)
 	case *BetaRecruitmentCriterionOptionsResponse:
 		return printBetaRecruitmentCriterionOptionsMarkdown(v)
 	case *BetaRecruitmentCriteriaResponse:
@@ -195,6 +211,8 @@ func PrintMarkdown(data interface{}) error {
 		return printAppStoreVersionAttachBuildMarkdown(v)
 	case *AppStoreVersionReleaseRequestResult:
 		return printAppStoreVersionReleaseRequestMarkdown(v)
+	case *AppStoreVersionPromotionCreateResult:
+		return printAppStoreVersionPromotionCreateMarkdown(v)
 	case *AppStoreVersionPhasedReleaseResponse:
 		return printAppStoreVersionPhasedReleaseMarkdown(v)
 	case *AppStoreVersionPhasedReleaseDeleteResult:
@@ -245,10 +263,18 @@ func PrintMarkdown(data interface{}) error {
 		return printCiBuildRunsMarkdown(v)
 	case *CiBuildActionsResponse:
 		return printCiBuildActionsMarkdown(v)
+	case *EndUserLicenseAgreementResponse:
+		return printEndUserLicenseAgreementMarkdown(v)
+	case *EndUserLicenseAgreementDeleteResult:
+		return printEndUserLicenseAgreementDeleteResultMarkdown(v)
 	case *CustomerReviewResponseResponse:
 		return printCustomerReviewResponseMarkdown(v)
 	case *CustomerReviewResponseDeleteResult:
 		return printCustomerReviewResponseDeleteResultMarkdown(v)
+	case *AccessibilityDeclarationDeleteResult:
+		return printAccessibilityDeclarationDeleteResultMarkdown(v)
+	case *AppStoreReviewAttachmentDeleteResult:
+		return printAppStoreReviewAttachmentDeleteResultMarkdown(v)
 	default:
 		return PrintJSON(data)
 	}
@@ -269,6 +295,12 @@ func PrintTable(data interface{}) error {
 		return printAppCategoriesTable(v)
 	case *AppResponse:
 		return printAppsTable(&AppsResponse{Data: []Resource[AppAttributes]{v.Data}})
+	case *AppTagsResponse:
+		return printAppTagsTable(v)
+	case *AppTagResponse:
+		return printAppTagsTable(&AppTagsResponse{Data: []Resource[AppTagAttributes]{v.Data}})
+	case *LinkagesResponse:
+		return printLinkagesTable(v)
 	case *BundleIDsResponse:
 		return printBundleIDsTable(v)
 	case *BundleIDResponse:
@@ -375,6 +407,16 @@ func PrintTable(data interface{}) error {
 		return printBuildBetaDetailTable(v)
 	case *AgeRatingDeclarationResponse:
 		return printAgeRatingDeclarationTable(v)
+	case *AccessibilityDeclarationsResponse:
+		return printAccessibilityDeclarationsTable(v)
+	case *AccessibilityDeclarationResponse:
+		return printAccessibilityDeclarationTable(v)
+	case *AppStoreReviewDetailResponse:
+		return printAppStoreReviewDetailTable(v)
+	case *AppStoreReviewAttachmentsResponse:
+		return printAppStoreReviewAttachmentsTable(v)
+	case *AppStoreReviewAttachmentResponse:
+		return printAppStoreReviewAttachmentTable(v)
 	case *BetaRecruitmentCriterionOptionsResponse:
 		return printBetaRecruitmentCriterionOptionsTable(v)
 	case *BetaRecruitmentCriteriaResponse:
@@ -431,6 +473,8 @@ func PrintTable(data interface{}) error {
 		return printAppStoreVersionAttachBuildTable(v)
 	case *AppStoreVersionReleaseRequestResult:
 		return printAppStoreVersionReleaseRequestTable(v)
+	case *AppStoreVersionPromotionCreateResult:
+		return printAppStoreVersionPromotionCreateTable(v)
 	case *AppStoreVersionPhasedReleaseResponse:
 		return printAppStoreVersionPhasedReleaseTable(v)
 	case *AppStoreVersionPhasedReleaseDeleteResult:
@@ -465,6 +509,10 @@ func PrintTable(data interface{}) error {
 		return printCertificateRevokeResultTable(v)
 	case *ProfileDeleteResult:
 		return printProfileDeleteResultTable(v)
+	case *EndUserLicenseAgreementResponse:
+		return printEndUserLicenseAgreementTable(v)
+	case *EndUserLicenseAgreementDeleteResult:
+		return printEndUserLicenseAgreementDeleteResultTable(v)
 	case *ProfileDownloadResult:
 		return printProfileDownloadResultTable(v)
 	case *SigningFetchResult:
@@ -485,6 +533,10 @@ func PrintTable(data interface{}) error {
 		return printCustomerReviewResponseTable(v)
 	case *CustomerReviewResponseDeleteResult:
 		return printCustomerReviewResponseDeleteResultTable(v)
+	case *AccessibilityDeclarationDeleteResult:
+		return printAccessibilityDeclarationDeleteResultTable(v)
+	case *AppStoreReviewAttachmentDeleteResult:
+		return printAppStoreReviewAttachmentDeleteResultTable(v)
 	default:
 		return PrintJSON(data)
 	}

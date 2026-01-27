@@ -2,9 +2,9 @@ package asc
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
-	"strings"
 	"testing"
 )
 
@@ -86,7 +86,7 @@ func TestDownloadFinanceReport_ErrorResponse(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "Forbidden") {
-		t.Fatalf("expected Forbidden error, got %v", err)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected forbidden error, got %v", err)
 	}
 }

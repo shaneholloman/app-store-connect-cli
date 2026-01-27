@@ -14,6 +14,9 @@ type ReviewOption func(*reviewQuery)
 // AppsOption is a functional option for GetApps.
 type AppsOption func(*appsQuery)
 
+// AppTagsOption is a functional option for GetAppTags.
+type AppTagsOption func(*appTagsQuery)
+
 // BuildsOption is a functional option for GetBuilds.
 type BuildsOption func(*buildsQuery)
 
@@ -83,8 +86,17 @@ type AppInfoLocalizationsOption func(*appInfoLocalizationsQuery)
 // TerritoriesOption is a functional option for GetTerritories.
 type TerritoriesOption func(*territoriesQuery)
 
+// LinkagesOption is a functional option for linkages endpoints.
+type LinkagesOption func(*linkagesQuery)
+
 // PricePointsOption is a functional option for GetAppPricePoints.
 type PricePointsOption func(*pricePointsQuery)
+
+// AccessibilityDeclarationsOption is a functional option for accessibility declarations.
+type AccessibilityDeclarationsOption func(*accessibilityDeclarationsQuery)
+
+// AppStoreReviewAttachmentsOption is a functional option for review attachments.
+type AppStoreReviewAttachmentsOption func(*appStoreReviewAttachmentsQuery)
 
 // WithFeedbackDeviceModels filters feedback by device model(s).
 func WithFeedbackDeviceModels(models []string) FeedbackOption {
@@ -245,6 +257,84 @@ func WithCrashLimit(limit int) CrashOption {
 	}
 }
 
+// WithAccessibilityDeclarationsDeviceFamilies filters declarations by device family.
+func WithAccessibilityDeclarationsDeviceFamilies(families []string) AccessibilityDeclarationsOption {
+	return func(q *accessibilityDeclarationsQuery) {
+		q.deviceFamilies = normalizeUpperList(families)
+	}
+}
+
+// WithAccessibilityDeclarationsStates filters declarations by state.
+func WithAccessibilityDeclarationsStates(states []string) AccessibilityDeclarationsOption {
+	return func(q *accessibilityDeclarationsQuery) {
+		q.states = normalizeUpperList(states)
+	}
+}
+
+// WithAccessibilityDeclarationsFields includes specific fields.
+func WithAccessibilityDeclarationsFields(fields []string) AccessibilityDeclarationsOption {
+	return func(q *accessibilityDeclarationsQuery) {
+		q.fields = normalizeList(fields)
+	}
+}
+
+// WithAccessibilityDeclarationsLimit sets the max number of declarations to return.
+func WithAccessibilityDeclarationsLimit(limit int) AccessibilityDeclarationsOption {
+	return func(q *accessibilityDeclarationsQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithAccessibilityDeclarationsNextURL uses a next page URL directly.
+func WithAccessibilityDeclarationsNextURL(next string) AccessibilityDeclarationsOption {
+	return func(q *accessibilityDeclarationsQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithAppStoreReviewAttachmentsFields includes specific attachment fields.
+func WithAppStoreReviewAttachmentsFields(fields []string) AppStoreReviewAttachmentsOption {
+	return func(q *appStoreReviewAttachmentsQuery) {
+		q.fieldsAttachments = normalizeList(fields)
+	}
+}
+
+// WithAppStoreReviewAttachmentReviewDetailFields includes fields for review detail when included.
+func WithAppStoreReviewAttachmentReviewDetailFields(fields []string) AppStoreReviewAttachmentsOption {
+	return func(q *appStoreReviewAttachmentsQuery) {
+		q.fieldsReviewDetails = normalizeList(fields)
+	}
+}
+
+// WithAppStoreReviewAttachmentsInclude includes related resources.
+func WithAppStoreReviewAttachmentsInclude(include []string) AppStoreReviewAttachmentsOption {
+	return func(q *appStoreReviewAttachmentsQuery) {
+		q.include = normalizeList(include)
+	}
+}
+
+// WithAppStoreReviewAttachmentsLimit sets the max number of attachments to return.
+func WithAppStoreReviewAttachmentsLimit(limit int) AppStoreReviewAttachmentsOption {
+	return func(q *appStoreReviewAttachmentsQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithAppStoreReviewAttachmentsNextURL uses a next page URL directly.
+func WithAppStoreReviewAttachmentsNextURL(next string) AppStoreReviewAttachmentsOption {
+	return func(q *appStoreReviewAttachmentsQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
 // WithCrashNextURL uses a next page URL directly.
 func WithCrashNextURL(next string) CrashOption {
 	return func(q *crashQuery) {
@@ -353,6 +443,70 @@ func WithAppsNames(names []string) AppsOption {
 func WithAppsSKUs(skus []string) AppsOption {
 	return func(q *appsQuery) {
 		q.skus = normalizeList(skus)
+	}
+}
+
+// WithAppTagsLimit sets the max number of app tags to return.
+func WithAppTagsLimit(limit int) AppTagsOption {
+	return func(q *appTagsQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithAppTagsNextURL uses a next page URL directly.
+func WithAppTagsNextURL(next string) AppTagsOption {
+	return func(q *appTagsQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithAppTagsVisibleInAppStore filters app tags by visibility.
+func WithAppTagsVisibleInAppStore(values []string) AppTagsOption {
+	return func(q *appTagsQuery) {
+		q.visibleInAppStore = normalizeList(values)
+	}
+}
+
+// WithAppTagsSort sets the sort order for app tags.
+func WithAppTagsSort(sort string) AppTagsOption {
+	return func(q *appTagsQuery) {
+		if strings.TrimSpace(sort) != "" {
+			q.sort = strings.TrimSpace(sort)
+		}
+	}
+}
+
+// WithAppTagsFields sets fields[appTags] for app tag responses.
+func WithAppTagsFields(fields []string) AppTagsOption {
+	return func(q *appTagsQuery) {
+		q.fields = normalizeList(fields)
+	}
+}
+
+// WithAppTagsInclude sets include for app tag responses.
+func WithAppTagsInclude(include []string) AppTagsOption {
+	return func(q *appTagsQuery) {
+		q.include = normalizeList(include)
+	}
+}
+
+// WithAppTagsTerritoryFields sets fields[territories] for included territory responses.
+func WithAppTagsTerritoryFields(fields []string) AppTagsOption {
+	return func(q *appTagsQuery) {
+		q.territoryFields = normalizeList(fields)
+	}
+}
+
+// WithAppTagsTerritoryLimit sets limit[territories] for included territories.
+func WithAppTagsTerritoryLimit(limit int) AppTagsOption {
+	return func(q *appTagsQuery) {
+		if limit > 0 {
+			q.territoryLimit = limit
+		}
 	}
 }
 
@@ -1019,6 +1173,31 @@ func WithTerritoriesLimit(limit int) TerritoriesOption {
 // WithTerritoriesNextURL uses a next page URL directly.
 func WithTerritoriesNextURL(next string) TerritoriesOption {
 	return func(q *territoriesQuery) {
+		if strings.TrimSpace(next) != "" {
+			q.nextURL = strings.TrimSpace(next)
+		}
+	}
+}
+
+// WithTerritoriesFields sets fields[territories] for territory responses.
+func WithTerritoriesFields(fields []string) TerritoriesOption {
+	return func(q *territoriesQuery) {
+		q.fields = normalizeList(fields)
+	}
+}
+
+// WithLinkagesLimit sets the max number of linkages to return.
+func WithLinkagesLimit(limit int) LinkagesOption {
+	return func(q *linkagesQuery) {
+		if limit > 0 {
+			q.limit = limit
+		}
+	}
+}
+
+// WithLinkagesNextURL uses a next page URL directly.
+func WithLinkagesNextURL(next string) LinkagesOption {
+	return func(q *linkagesQuery) {
 		if strings.TrimSpace(next) != "" {
 			q.nextURL = strings.TrimSpace(next)
 		}

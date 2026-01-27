@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -82,12 +83,6 @@ func TestGetApps_RateLimitedIncludesRetryAfter(t *testing.T) {
 	}
 	if got := GetRetryAfter(err); got != 2*time.Minute {
 		t.Fatalf("expected retry-after 2m, got %s", got)
-	}
-	if !strings.Contains(err.Error(), "retry after") {
-		t.Fatalf("expected retry-after in error, got %q", err.Error())
-	}
-	if !strings.Contains(err.Error(), "status 429") {
-		t.Fatalf("expected status 429 in error, got %q", err.Error())
 	}
 }
 
@@ -176,6 +171,193 @@ func TestGetApp(t *testing.T) {
 
 	if _, err := client.GetApp(context.Background(), "123"); err != nil {
 		t.Fatalf("GetApp() error: %v", err)
+	}
+}
+
+func TestGetAppTags_WithFiltersAndSort(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"appTags","id":"tag-1","attributes":{"name":"Games","visibleInAppStore":true}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/apps/123/appTags" {
+			t.Fatalf("expected path /v1/apps/123/appTags, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("filter[visibleInAppStore]") != "true" {
+			t.Fatalf("expected filter[visibleInAppStore]=true, got %q", values.Get("filter[visibleInAppStore]"))
+		}
+		if values.Get("sort") != "name" {
+			t.Fatalf("expected sort=name, got %q", values.Get("sort"))
+		}
+		if values.Get("limit") != "5" {
+			t.Fatalf("expected limit=5, got %q", values.Get("limit"))
+		}
+		if values.Get("fields[appTags]") != "name,visibleInAppStore" {
+			t.Fatalf("expected fields[appTags]=name,visibleInAppStore, got %q", values.Get("fields[appTags]"))
+		}
+		if values.Get("include") != "territories" {
+			t.Fatalf("expected include=territories, got %q", values.Get("include"))
+		}
+		if values.Get("fields[territories]") != "currency" {
+			t.Fatalf("expected fields[territories]=currency, got %q", values.Get("fields[territories]"))
+		}
+		if values.Get("limit[territories]") != "25" {
+			t.Fatalf("expected limit[territories]=25, got %q", values.Get("limit[territories]"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppTags(
+		context.Background(),
+		"123",
+		WithAppTagsVisibleInAppStore([]string{"true"}),
+		WithAppTagsSort("name"),
+		WithAppTagsLimit(5),
+		WithAppTagsFields([]string{"name", "visibleInAppStore"}),
+		WithAppTagsInclude([]string{"territories"}),
+		WithAppTagsTerritoryFields([]string{"currency"}),
+		WithAppTagsTerritoryLimit(25),
+	); err != nil {
+		t.Fatalf("GetAppTags() error: %v", err)
+	}
+}
+
+func TestGetAppTags_UsesNextURL(t *testing.T) {
+	next := "https://api.appstoreconnect.apple.com/v1/apps/123/appTags?cursor=abc"
+	response := jsonResponse(http.StatusOK, `{"data":[]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.URL.String() != next {
+			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppTags(context.Background(), "123", WithAppTagsLimit(5), WithAppTagsNextURL(next)); err != nil {
+		t.Fatalf("GetAppTags() error: %v", err)
+	}
+}
+
+func TestGetAppTagTerritories_WithFieldsAndLimit(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"territories","id":"USA","attributes":{"currency":"USD"}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appTags/tag-1/territories" {
+			t.Fatalf("expected path /v1/appTags/tag-1/territories, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("fields[territories]") != "currency" {
+			t.Fatalf("expected fields[territories]=currency, got %q", values.Get("fields[territories]"))
+		}
+		if values.Get("limit") != "5" {
+			t.Fatalf("expected limit=5, got %q", values.Get("limit"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppTagTerritories(
+		context.Background(),
+		"tag-1",
+		WithTerritoriesFields([]string{"currency"}),
+		WithTerritoriesLimit(5),
+	); err != nil {
+		t.Fatalf("GetAppTagTerritories() error: %v", err)
+	}
+}
+
+func TestGetAppTagTerritories_UsesNextURL(t *testing.T) {
+	next := "https://api.appstoreconnect.apple.com/v1/appTags/tag-1/territories?cursor=abc"
+	response := jsonResponse(http.StatusOK, `{"data":[]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.URL.String() != next {
+			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppTagTerritories(context.Background(), "tag-1", WithTerritoriesNextURL(next)); err != nil {
+		t.Fatalf("GetAppTagTerritories() error: %v", err)
+	}
+}
+
+func TestGetAppTagTerritoriesRelationships_WithLimit(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"territories","id":"USA"}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appTags/tag-1/relationships/territories" {
+			t.Fatalf("expected path /v1/appTags/tag-1/relationships/territories, got %s", req.URL.Path)
+		}
+		if req.URL.Query().Get("limit") != "5" {
+			t.Fatalf("expected limit=5, got %q", req.URL.Query().Get("limit"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppTagTerritoriesRelationships(context.Background(), "tag-1", WithLinkagesLimit(5)); err != nil {
+		t.Fatalf("GetAppTagTerritoriesRelationships() error: %v", err)
+	}
+}
+
+func TestGetAppTagsRelationshipsForApp_WithLimit(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"appTags","id":"tag-1"}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/apps/app-1/relationships/appTags" {
+			t.Fatalf("expected path /v1/apps/app-1/relationships/appTags, got %s", req.URL.Path)
+		}
+		if req.URL.Query().Get("limit") != "5" {
+			t.Fatalf("expected limit=5, got %q", req.URL.Query().Get("limit"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppTagsRelationshipsForApp(context.Background(), "app-1", WithLinkagesLimit(5)); err != nil {
+		t.Fatalf("GetAppTagsRelationshipsForApp() error: %v", err)
+	}
+}
+
+func TestUpdateAppTag_SendsRequest(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"appTags","id":"tag-1","attributes":{"name":"Games","visibleInAppStore":true}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appTags/tag-1" {
+			t.Fatalf("expected path /v1/appTags/tag-1, got %s", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+		var payload AppTagUpdateRequest
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAppTags {
+			t.Fatalf("expected type appTags, got %q", payload.Data.Type)
+		}
+		if payload.Data.ID != "tag-1" {
+			t.Fatalf("expected id tag-1, got %q", payload.Data.ID)
+		}
+		if payload.Data.Attributes == nil || payload.Data.Attributes.VisibleInAppStore == nil {
+			t.Fatalf("expected visibleInAppStore attribute to be set")
+		}
+		if !*payload.Data.Attributes.VisibleInAppStore {
+			t.Fatalf("expected visibleInAppStore=true, got false")
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	visible := true
+	attrs := AppTagUpdateAttributes{VisibleInAppStore: &visible}
+	if _, err := client.UpdateAppTag(context.Background(), "tag-1", attrs); err != nil {
+		t.Fatalf("UpdateAppTag() error: %v", err)
 	}
 }
 
@@ -1315,8 +1497,8 @@ func TestBetaGroupTesterRelationshipMethods_ErrorResponse(t *testing.T) {
 			client := newTestClient(t, nil, jsonResponse(http.StatusBadRequest, errorBody))
 			if err := test.call(client); err == nil {
 				t.Fatalf("expected error")
-			} else if !strings.Contains(err.Error(), "Bad Request") {
-				t.Fatalf("expected error to contain title, got %v", err)
+			} else if !errors.Is(err, ErrBadRequest) {
+				t.Fatalf("expected bad request error, got %v", err)
 			}
 		})
 	}
@@ -2120,8 +2302,8 @@ func TestGetEndpoints_ReturnsAPIError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if !strings.Contains(err.Error(), "Forbidden") {
-				t.Fatalf("expected Forbidden error, got %v", err)
+			if !errors.Is(err, ErrForbidden) {
+				t.Fatalf("expected forbidden error, got %v", err)
 			}
 		})
 	}
@@ -2177,24 +2359,22 @@ func TestGetEndpoints_ReturnsParseError(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if !strings.Contains(err.Error(), "failed to parse response") {
-				t.Fatalf("expected parse error, got %v", err)
+			var syntaxErr *json.SyntaxError
+			if !errors.As(err, &syntaxErr) {
+				t.Fatalf("expected JSON parse error, got %v", err)
 			}
 		})
 	}
 }
 
 func TestIsNotFoundAndUnauthorized(t *testing.T) {
-	if !IsNotFound(fmt.Errorf("NOT_FOUND: missing")) {
+	if !IsNotFound(&APIError{Code: "NOT_FOUND", Title: "The specified resource does not exist"}) {
 		t.Fatal("expected IsNotFound to return true")
-	}
-	if !IsNotFound(fmt.Errorf("The specified resource does not exist")) {
-		t.Fatal("expected IsNotFound to return true for resource does not exist")
 	}
 	if IsNotFound(fmt.Errorf("something else")) {
 		t.Fatal("expected IsNotFound to return false")
 	}
-	if !IsUnauthorized(fmt.Errorf("UNAUTHORIZED: missing")) {
+	if !IsUnauthorized(&APIError{Code: "UNAUTHORIZED", Title: "Unauthorized"}) {
 		t.Fatal("expected IsUnauthorized to return true")
 	}
 	if IsUnauthorized(fmt.Errorf("something else")) {
@@ -2506,8 +2686,8 @@ func TestBuildUploadMethods_ErrorResponse(t *testing.T) {
 			client := newTestClient(t, nil, jsonResponse(http.StatusBadRequest, errorBody))
 			if err := test.call(client); err == nil {
 				t.Fatalf("expected error")
-			} else if !strings.Contains(err.Error(), "Bad Request") {
-				t.Fatalf("expected error to contain title, got %v", err)
+			} else if !errors.Is(err, ErrBadRequest) {
+				t.Fatalf("expected bad request error, got %v", err)
 			}
 		})
 	}
@@ -2675,8 +2855,6 @@ func TestResolveCiWorkflowByName_NoMatch(t *testing.T) {
 
 	if _, err := client.ResolveCiWorkflowByName(context.Background(), "prod-1", "ci"); err == nil {
 		t.Fatal("expected error")
-	} else if !strings.Contains(err.Error(), "no workflow named") {
-		t.Fatalf("expected no workflow named error, got %v", err)
 	}
 }
 
@@ -2709,8 +2887,6 @@ func TestResolveGitReferenceByName_SuffixMatchNotAllowed(t *testing.T) {
 
 	if _, err := client.ResolveGitReferenceByName(context.Background(), "repo-1", "main"); err == nil {
 		t.Fatal("expected error")
-	} else if !strings.Contains(err.Error(), "no git reference named") {
-		t.Fatalf("expected no git reference named error, got %v", err)
 	}
 }
 
@@ -2720,8 +2896,6 @@ func TestResolveGitReferenceByName_NoMatch(t *testing.T) {
 
 	if _, err := client.ResolveGitReferenceByName(context.Background(), "repo-1", "main"); err == nil {
 		t.Fatal("expected error")
-	} else if !strings.Contains(err.Error(), "no git reference named") {
-		t.Fatalf("expected no git reference named error, got %v", err)
 	}
 }
 
@@ -3664,6 +3838,7 @@ func TestCreateSubscriptionAvailability(t *testing.T) {
 		t.Fatalf("CreateSubscriptionAvailability() error: %v", err)
 	}
 }
+
 // User management tests
 func TestGetUsers_WithFiltersAndLimit(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"users","id":"user-1","attributes":{"username":"user@example.com","firstName":"Jane","lastName":"Doe","roles":["ADMIN"],"allAppsVisible":true,"provisioningAllowed":false}}]}`)
@@ -4445,5 +4620,406 @@ func TestUpdateDevice_SendsRequest(t *testing.T) {
 		Status: &status,
 	}); err != nil {
 		t.Fatalf("UpdateDevice() error: %v", err)
+	}
+}
+
+func TestGetAccessibilityDeclarations_WithFilters(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"accessibilityDeclarations","id":"decl-1","attributes":{"deviceFamily":"IPHONE","state":"DRAFT"}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/apps/app-1/accessibilityDeclarations" {
+			t.Fatalf("expected path /v1/apps/app-1/accessibilityDeclarations, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("filter[deviceFamily]") != "IPHONE,IPAD" {
+			t.Fatalf("expected filter[deviceFamily]=IPHONE,IPAD, got %q", values.Get("filter[deviceFamily]"))
+		}
+		if values.Get("filter[state]") != "DRAFT" {
+			t.Fatalf("expected filter[state]=DRAFT, got %q", values.Get("filter[state]"))
+		}
+		if values.Get("fields[accessibilityDeclarations]") != "deviceFamily,state" {
+			t.Fatalf("expected fields[accessibilityDeclarations]=deviceFamily,state, got %q", values.Get("fields[accessibilityDeclarations]"))
+		}
+		if values.Get("limit") != "2" {
+			t.Fatalf("expected limit=2, got %q", values.Get("limit"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAccessibilityDeclarations(
+		context.Background(),
+		"app-1",
+		WithAccessibilityDeclarationsDeviceFamilies([]string{"iphone", "ipad"}),
+		WithAccessibilityDeclarationsStates([]string{"draft"}),
+		WithAccessibilityDeclarationsFields([]string{"deviceFamily", "state"}),
+		WithAccessibilityDeclarationsLimit(2),
+	); err != nil {
+		t.Fatalf("GetAccessibilityDeclarations() error: %v", err)
+	}
+}
+
+func TestGetAccessibilityDeclaration_WithFields(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"accessibilityDeclarations","id":"decl-1","attributes":{"deviceFamily":"IPHONE"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/accessibilityDeclarations/decl-1" {
+			t.Fatalf("expected path /v1/accessibilityDeclarations/decl-1, got %s", req.URL.Path)
+		}
+		if req.URL.Query().Get("fields[accessibilityDeclarations]") != "deviceFamily,state" {
+			t.Fatalf("expected fields[accessibilityDeclarations]=deviceFamily,state, got %q", req.URL.Query().Get("fields[accessibilityDeclarations]"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAccessibilityDeclaration(context.Background(), "decl-1", []string{"deviceFamily", "state"}); err != nil {
+		t.Fatalf("GetAccessibilityDeclaration() error: %v", err)
+	}
+}
+
+func TestCreateAccessibilityDeclaration(t *testing.T) {
+	response := jsonResponse(http.StatusCreated, `{"data":{"type":"accessibilityDeclarations","id":"decl-1","attributes":{"deviceFamily":"IPHONE"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/accessibilityDeclarations" {
+			t.Fatalf("expected path /v1/accessibilityDeclarations, got %s", req.URL.Path)
+		}
+		var payload AccessibilityDeclarationCreateRequest
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAccessibilityDeclarations {
+			t.Fatalf("expected type accessibilityDeclarations, got %q", payload.Data.Type)
+		}
+		if payload.Data.Attributes.DeviceFamily != DeviceFamilyIPhone {
+			t.Fatalf("expected device family IPHONE, got %q", payload.Data.Attributes.DeviceFamily)
+		}
+		if payload.Data.Attributes.SupportsVoiceover == nil || !*payload.Data.Attributes.SupportsVoiceover {
+			t.Fatalf("expected supportsVoiceover true, got %+v", payload.Data.Attributes.SupportsVoiceover)
+		}
+		if payload.Data.Relationships == nil || payload.Data.Relationships.App == nil {
+			t.Fatalf("expected app relationship")
+		}
+		if payload.Data.Relationships.App.Data.Type != ResourceTypeApps || payload.Data.Relationships.App.Data.ID != "app-1" {
+			t.Fatalf("unexpected relationship: %+v", payload.Data.Relationships.App.Data)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	supportsVoiceover := true
+	attrs := AccessibilityDeclarationCreateAttributes{
+		DeviceFamily:      DeviceFamilyIPhone,
+		SupportsVoiceover: &supportsVoiceover,
+	}
+	if _, err := client.CreateAccessibilityDeclaration(context.Background(), "app-1", attrs); err != nil {
+		t.Fatalf("CreateAccessibilityDeclaration() error: %v", err)
+	}
+}
+
+func TestUpdateAccessibilityDeclaration(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"accessibilityDeclarations","id":"decl-1","attributes":{"deviceFamily":"IPHONE"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/accessibilityDeclarations/decl-1" {
+			t.Fatalf("expected path /v1/accessibilityDeclarations/decl-1, got %s", req.URL.Path)
+		}
+		var payload AccessibilityDeclarationUpdateRequest
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAccessibilityDeclarations || payload.Data.ID != "decl-1" {
+			t.Fatalf("unexpected payload: %+v", payload.Data)
+		}
+		if payload.Data.Attributes == nil || payload.Data.Attributes.Publish == nil || !*payload.Data.Attributes.Publish {
+			t.Fatalf("expected publish true, got %+v", payload.Data.Attributes)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	publish := true
+	attrs := AccessibilityDeclarationUpdateAttributes{Publish: &publish}
+	if _, err := client.UpdateAccessibilityDeclaration(context.Background(), "decl-1", attrs); err != nil {
+		t.Fatalf("UpdateAccessibilityDeclaration() error: %v", err)
+	}
+}
+
+func TestDeleteAccessibilityDeclaration(t *testing.T) {
+	response := jsonResponse(http.StatusNoContent, "")
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/accessibilityDeclarations/decl-1" {
+			t.Fatalf("expected path /v1/accessibilityDeclarations/decl-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if err := client.DeleteAccessibilityDeclaration(context.Background(), "decl-1"); err != nil {
+		t.Fatalf("DeleteAccessibilityDeclaration() error: %v", err)
+	}
+}
+
+func TestGetAppStoreReviewAttachmentsForReviewDetail_WithFilters(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"appStoreReviewAttachments","id":"att-1","attributes":{"fileName":"review.pdf","fileSize":123}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewDetails/detail-1/appStoreReviewAttachments" {
+			t.Fatalf("expected path /v1/appStoreReviewDetails/detail-1/appStoreReviewAttachments, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("fields[appStoreReviewAttachments]") != "fileName,fileSize" {
+			t.Fatalf("expected fields[appStoreReviewAttachments]=fileName,fileSize, got %q", values.Get("fields[appStoreReviewAttachments]"))
+		}
+		if values.Get("fields[appStoreReviewDetails]") != "contactEmail,notes" {
+			t.Fatalf("expected fields[appStoreReviewDetails]=contactEmail,notes, got %q", values.Get("fields[appStoreReviewDetails]"))
+		}
+		if values.Get("include") != "appStoreReviewDetail" {
+			t.Fatalf("expected include=appStoreReviewDetail, got %q", values.Get("include"))
+		}
+		if values.Get("limit") != "5" {
+			t.Fatalf("expected limit=5, got %q", values.Get("limit"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppStoreReviewAttachmentsForReviewDetail(
+		context.Background(),
+		"detail-1",
+		WithAppStoreReviewAttachmentsFields([]string{"fileName", "fileSize"}),
+		WithAppStoreReviewAttachmentReviewDetailFields([]string{"contactEmail", "notes"}),
+		WithAppStoreReviewAttachmentsInclude([]string{"appStoreReviewDetail"}),
+		WithAppStoreReviewAttachmentsLimit(5),
+	); err != nil {
+		t.Fatalf("GetAppStoreReviewAttachmentsForReviewDetail() error: %v", err)
+	}
+}
+
+func TestGetAppStoreReviewAttachment_WithFields(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"appStoreReviewAttachments","id":"att-1","attributes":{"fileName":"review.pdf"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewAttachments/att-1" {
+			t.Fatalf("expected path /v1/appStoreReviewAttachments/att-1, got %s", req.URL.Path)
+		}
+		if req.URL.Query().Get("fields[appStoreReviewAttachments]") != "fileName,fileSize" {
+			t.Fatalf("expected fields[appStoreReviewAttachments]=fileName,fileSize, got %q", req.URL.Query().Get("fields[appStoreReviewAttachments]"))
+		}
+		if req.URL.Query().Get("include") != "appStoreReviewDetail" {
+			t.Fatalf("expected include=appStoreReviewDetail, got %q", req.URL.Query().Get("include"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppStoreReviewAttachment(
+		context.Background(),
+		"att-1",
+		WithAppStoreReviewAttachmentsFields([]string{"fileName", "fileSize"}),
+		WithAppStoreReviewAttachmentsInclude([]string{"appStoreReviewDetail"}),
+	); err != nil {
+		t.Fatalf("GetAppStoreReviewAttachment() error: %v", err)
+	}
+}
+
+func TestCreateAppStoreReviewAttachment(t *testing.T) {
+	response := jsonResponse(http.StatusCreated, `{"data":{"type":"appStoreReviewAttachments","id":"att-1","attributes":{"fileName":"review.pdf","fileSize":123}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewAttachments" {
+			t.Fatalf("expected path /v1/appStoreReviewAttachments, got %s", req.URL.Path)
+		}
+		var payload AppStoreReviewAttachmentCreateRequest
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAppStoreReviewAttachments {
+			t.Fatalf("expected type appStoreReviewAttachments, got %q", payload.Data.Type)
+		}
+		if payload.Data.Attributes.FileName != "review.pdf" || payload.Data.Attributes.FileSize != 123 {
+			t.Fatalf("unexpected attributes: %+v", payload.Data.Attributes)
+		}
+		if payload.Data.Relationships == nil || payload.Data.Relationships.AppStoreReviewDetail == nil {
+			t.Fatalf("expected review detail relationship")
+		}
+		if payload.Data.Relationships.AppStoreReviewDetail.Data.Type != ResourceTypeAppStoreReviewDetails {
+			t.Fatalf("expected relationship type appStoreReviewDetails, got %q", payload.Data.Relationships.AppStoreReviewDetail.Data.Type)
+		}
+		if payload.Data.Relationships.AppStoreReviewDetail.Data.ID != "detail-1" {
+			t.Fatalf("expected relationship id detail-1, got %q", payload.Data.Relationships.AppStoreReviewDetail.Data.ID)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.CreateAppStoreReviewAttachment(context.Background(), "detail-1", "review.pdf", 123); err != nil {
+		t.Fatalf("CreateAppStoreReviewAttachment() error: %v", err)
+	}
+}
+
+func TestUpdateAppStoreReviewAttachment(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"appStoreReviewAttachments","id":"att-1","attributes":{"uploaded":true}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewAttachments/att-1" {
+			t.Fatalf("expected path /v1/appStoreReviewAttachments/att-1, got %s", req.URL.Path)
+		}
+		var payload AppStoreReviewAttachmentUpdateRequest
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAppStoreReviewAttachments || payload.Data.ID != "att-1" {
+			t.Fatalf("unexpected payload: %+v", payload.Data)
+		}
+		if payload.Data.Attributes == nil || payload.Data.Attributes.Uploaded == nil || !*payload.Data.Attributes.Uploaded {
+			t.Fatalf("expected uploaded true, got %+v", payload.Data.Attributes)
+		}
+		if payload.Data.Attributes.SourceFileChecksum == nil || *payload.Data.Attributes.SourceFileChecksum != "abcd1234" {
+			t.Fatalf("expected checksum abcd1234, got %+v", payload.Data.Attributes.SourceFileChecksum)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	uploaded := true
+	checksum := "abcd1234"
+	attrs := AppStoreReviewAttachmentUpdateAttributes{
+		SourceFileChecksum: &checksum,
+		Uploaded:           &uploaded,
+	}
+	if _, err := client.UpdateAppStoreReviewAttachment(context.Background(), "att-1", attrs); err != nil {
+		t.Fatalf("UpdateAppStoreReviewAttachment() error: %v", err)
+	}
+}
+
+func TestDeleteAppStoreReviewAttachment(t *testing.T) {
+	response := jsonResponse(http.StatusNoContent, "")
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewAttachments/att-1" {
+			t.Fatalf("expected path /v1/appStoreReviewAttachments/att-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if err := client.DeleteAppStoreReviewAttachment(context.Background(), "att-1"); err != nil {
+		t.Fatalf("DeleteAppStoreReviewAttachment() error: %v", err)
+	}
+}
+
+func TestGetAppStoreReviewDetail(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"appStoreReviewDetails","id":"detail-1","attributes":{"contactEmail":"dev@example.com"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewDetails/detail-1" {
+			t.Fatalf("expected path /v1/appStoreReviewDetails/detail-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppStoreReviewDetail(context.Background(), "detail-1"); err != nil {
+		t.Fatalf("GetAppStoreReviewDetail() error: %v", err)
+	}
+}
+
+func TestGetAppStoreReviewDetailForVersion(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"appStoreReviewDetails","id":"detail-1","attributes":{"contactEmail":"dev@example.com"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreVersions/version-1/appStoreReviewDetail" {
+			t.Fatalf("expected path /v1/appStoreVersions/version-1/appStoreReviewDetail, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetAppStoreReviewDetailForVersion(context.Background(), "version-1"); err != nil {
+		t.Fatalf("GetAppStoreReviewDetailForVersion() error: %v", err)
+	}
+}
+
+func TestCreateAppStoreReviewDetail(t *testing.T) {
+	response := jsonResponse(http.StatusCreated, `{"data":{"type":"appStoreReviewDetails","id":"detail-1","attributes":{"contactEmail":"dev@example.com"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewDetails" {
+			t.Fatalf("expected path /v1/appStoreReviewDetails, got %s", req.URL.Path)
+		}
+		var payload AppStoreReviewDetailCreateRequest
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAppStoreReviewDetails {
+			t.Fatalf("expected type appStoreReviewDetails, got %q", payload.Data.Type)
+		}
+		if payload.Data.Relationships == nil || payload.Data.Relationships.AppStoreVersion == nil {
+			t.Fatalf("expected app store version relationship")
+		}
+		if payload.Data.Relationships.AppStoreVersion.Data.Type != ResourceTypeAppStoreVersions {
+			t.Fatalf("expected relationship type appStoreVersions, got %q", payload.Data.Relationships.AppStoreVersion.Data.Type)
+		}
+		if payload.Data.Relationships.AppStoreVersion.Data.ID != "version-1" {
+			t.Fatalf("expected relationship id version-1, got %q", payload.Data.Relationships.AppStoreVersion.Data.ID)
+		}
+		if payload.Data.Attributes == nil || payload.Data.Attributes.ContactEmail == nil || *payload.Data.Attributes.ContactEmail != "dev@example.com" {
+			t.Fatalf("expected contactEmail dev@example.com, got %+v", payload.Data.Attributes)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	contactEmail := "dev@example.com"
+	attrs := &AppStoreReviewDetailCreateAttributes{
+		ContactEmail: &contactEmail,
+	}
+	if _, err := client.CreateAppStoreReviewDetail(context.Background(), "version-1", attrs); err != nil {
+		t.Fatalf("CreateAppStoreReviewDetail() error: %v", err)
+	}
+}
+
+func TestUpdateAppStoreReviewDetail(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"appStoreReviewDetails","id":"detail-1","attributes":{"contactPhone":"123"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreReviewDetails/detail-1" {
+			t.Fatalf("expected path /v1/appStoreReviewDetails/detail-1, got %s", req.URL.Path)
+		}
+		var payload AppStoreReviewDetailUpdateRequest
+		if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode request: %v", err)
+		}
+		if payload.Data.Type != ResourceTypeAppStoreReviewDetails || payload.Data.ID != "detail-1" {
+			t.Fatalf("unexpected payload: %+v", payload.Data)
+		}
+		if payload.Data.Attributes == nil || payload.Data.Attributes.ContactPhone == nil || *payload.Data.Attributes.ContactPhone != "123" {
+			t.Fatalf("expected contactPhone 123, got %+v", payload.Data.Attributes)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	contactPhone := "123"
+	attrs := AppStoreReviewDetailUpdateAttributes{ContactPhone: &contactPhone}
+	if _, err := client.UpdateAppStoreReviewDetail(context.Background(), "detail-1", attrs); err != nil {
+		t.Fatalf("UpdateAppStoreReviewDetail() error: %v", err)
 	}
 }

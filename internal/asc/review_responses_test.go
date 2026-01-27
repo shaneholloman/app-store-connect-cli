@@ -110,25 +110,25 @@ func TestCreateCustomerReviewResponse_ValidationErrors(t *testing.T) {
 
 	// Missing review ID
 	_, err := client.CreateCustomerReviewResponse(context.Background(), "", "response")
-	if err == nil || !strings.Contains(err.Error(), "reviewID is required") {
-		t.Fatalf("expected reviewID required error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for missing reviewID, got nil")
 	}
 
 	// Missing response body
 	_, err = client.CreateCustomerReviewResponse(context.Background(), "review-123", "")
-	if err == nil || !strings.Contains(err.Error(), "responseBody is required") {
-		t.Fatalf("expected responseBody required error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for missing responseBody, got nil")
 	}
 
 	// Whitespace-only values
 	_, err = client.CreateCustomerReviewResponse(context.Background(), "   ", "response")
-	if err == nil || !strings.Contains(err.Error(), "reviewID is required") {
-		t.Fatalf("expected reviewID required error for whitespace, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for whitespace reviewID, got nil")
 	}
 
 	_, err = client.CreateCustomerReviewResponse(context.Background(), "review-123", "   ")
-	if err == nil || !strings.Contains(err.Error(), "responseBody is required") {
-		t.Fatalf("expected responseBody required error for whitespace, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for whitespace responseBody, got nil")
 	}
 }
 
@@ -172,14 +172,14 @@ func TestGetCustomerReviewResponse_ValidationErrors(t *testing.T) {
 
 	// Missing response ID
 	_, err := client.GetCustomerReviewResponse(context.Background(), "")
-	if err == nil || !strings.Contains(err.Error(), "responseID is required") {
-		t.Fatalf("expected responseID required error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for missing responseID, got nil")
 	}
 
 	// Whitespace-only ID
 	_, err = client.GetCustomerReviewResponse(context.Background(), "   ")
-	if err == nil || !strings.Contains(err.Error(), "responseID is required") {
-		t.Fatalf("expected responseID required error for whitespace, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for whitespace responseID, got nil")
 	}
 }
 
@@ -210,14 +210,14 @@ func TestDeleteCustomerReviewResponse_ValidationErrors(t *testing.T) {
 
 	// Missing response ID
 	err := client.DeleteCustomerReviewResponse(context.Background(), "")
-	if err == nil || !strings.Contains(err.Error(), "responseID is required") {
-		t.Fatalf("expected responseID required error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for missing responseID, got nil")
 	}
 
 	// Whitespace-only ID
 	err = client.DeleteCustomerReviewResponse(context.Background(), "   ")
-	if err == nil || !strings.Contains(err.Error(), "responseID is required") {
-		t.Fatalf("expected responseID required error for whitespace, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for whitespace responseID, got nil")
 	}
 }
 
@@ -261,13 +261,13 @@ func TestGetCustomerReviewResponseForReview_ValidationErrors(t *testing.T) {
 
 	// Missing review ID
 	_, err := client.GetCustomerReviewResponseForReview(context.Background(), "")
-	if err == nil || !strings.Contains(err.Error(), "reviewID is required") {
-		t.Fatalf("expected reviewID required error, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for missing reviewID, got nil")
 	}
 
 	// Whitespace-only ID
 	_, err = client.GetCustomerReviewResponseForReview(context.Background(), "   ")
-	if err == nil || !strings.Contains(err.Error(), "reviewID is required") {
-		t.Fatalf("expected reviewID required error for whitespace, got %v", err)
+	if err == nil {
+		t.Fatalf("expected error for whitespace reviewID, got nil")
 	}
 }

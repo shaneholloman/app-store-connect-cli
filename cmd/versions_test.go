@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
@@ -11,7 +10,7 @@ import (
 
 func TestFetchOptionalBuild_NotFound(t *testing.T) {
 	resp, err := fetchOptionalBuild(context.Background(), "VERSION_ID", func(ctx context.Context, versionID string) (*asc.BuildResponse, error) {
-		return nil, fmt.Errorf("NOT_FOUND: missing")
+		return nil, &asc.APIError{Code: "NOT_FOUND", Title: "Not Found"}
 	})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
@@ -52,7 +51,7 @@ func TestFetchOptionalBuild_Success(t *testing.T) {
 
 func TestFetchOptionalSubmission_NotFound(t *testing.T) {
 	resp, err := fetchOptionalSubmission(context.Background(), "VERSION_ID", func(ctx context.Context, versionID string) (*asc.AppStoreVersionSubmissionResourceResponse, error) {
-		return nil, fmt.Errorf("NOT_FOUND: missing")
+		return nil, &asc.APIError{Code: "NOT_FOUND", Title: "Not Found"}
 	})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)

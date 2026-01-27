@@ -52,7 +52,7 @@ Before tagging a release, verify:
 make test
 
 # 2. Audit help output for all parent commands
-for cmd in auth analytics finance apps testflight builds versions \
+for cmd in auth analytics finance apps app-tags testflight builds versions \
            pre-release-versions localizations build-localizations \
            beta-groups beta-testers sandbox submit xcode-cloud reviews; do
   echo "=== $cmd ===" && ./asc $cmd --help 2>&1

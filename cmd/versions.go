@@ -58,6 +58,7 @@ func VersionsCommand() *ffcli.Command {
 			VersionsAttachBuildCommand(),
 			VersionsReleaseCommand(),
 			PhasedReleaseCommand(),
+			VersionsPromotionsCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp

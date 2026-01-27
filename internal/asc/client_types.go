@@ -1,10 +1,13 @@
 package asc
 
+import "encoding/json"
+
 // ResourceType represents an ASC resource type.
 type ResourceType string
 
 const (
 	ResourceTypeApps                                 ResourceType = "apps"
+	ResourceTypeAppTags                              ResourceType = "appTags"
 	ResourceTypeBundleIds                            ResourceType = "bundleIds"
 	ResourceTypeBundleIdCapabilities                 ResourceType = "bundleIdCapabilities"
 	ResourceTypeAppCategories                        ResourceType = "appCategories"
@@ -17,6 +20,8 @@ const (
 	ResourceTypeBuildUploadFiles                     ResourceType = "buildUploadFiles"
 	ResourceTypeCertificates                         ResourceType = "certificates"
 	ResourceTypeAppStoreVersions                     ResourceType = "appStoreVersions"
+	ResourceTypeAppStoreVersionPromotions            ResourceType = "appStoreVersionPromotions"
+	ResourceTypeAppStoreVersionExperimentTreatments  ResourceType = "appStoreVersionExperimentTreatments"
 	ResourceTypePreReleaseVersions                   ResourceType = "preReleaseVersions"
 	ResourceTypeAppStoreVersionSubmissions           ResourceType = "appStoreVersionSubmissions"
 	ResourceTypeBetaGroups                           ResourceType = "betaGroups"
@@ -34,6 +39,7 @@ const (
 	ResourceTypeAppInfoLocalizations                 ResourceType = "appInfoLocalizations"
 	ResourceTypeAppInfos                             ResourceType = "appInfos"
 	ResourceTypeAgeRatingDeclarations                ResourceType = "ageRatingDeclarations"
+	ResourceTypeAccessibilityDeclarations            ResourceType = "accessibilityDeclarations"
 	ResourceTypeAnalyticsReportRequests              ResourceType = "analyticsReportRequests"
 	ResourceTypeAnalyticsReports                     ResourceType = "analyticsReports"
 	ResourceTypeAnalyticsReportInstances             ResourceType = "analyticsReportInstances"
@@ -48,9 +54,12 @@ const (
 	ResourceTypeDevices                              ResourceType = "devices"
 	ResourceTypeProfiles                             ResourceType = "profiles"
 	ResourceTypeTerritories                          ResourceType = "territories"
+	ResourceTypeEndUserLicenseAgreements             ResourceType = "endUserLicenseAgreements"
 	ResourceTypeTerritoryAvailabilities              ResourceType = "territoryAvailabilities"
 	ResourceTypeReviewSubmissions                    ResourceType = "reviewSubmissions"
 	ResourceTypeReviewSubmissionItems                ResourceType = "reviewSubmissionItems"
+	ResourceTypeAppStoreReviewDetails                ResourceType = "appStoreReviewDetails"
+	ResourceTypeAppStoreReviewAttachments            ResourceType = "appStoreReviewAttachments"
 	ResourceTypeUsers                                ResourceType = "users"
 	ResourceTypeUserInvitations                      ResourceType = "userInvitations"
 	ResourceTypeSubscriptionOfferCodes               ResourceType = "subscriptionOfferCodes"
@@ -59,21 +68,34 @@ const (
 
 // Resource is a generic ASC API resource wrapper.
 type Resource[T any] struct {
-	Type       ResourceType `json:"type"`
-	ID         string       `json:"id"`
-	Attributes T            `json:"attributes"`
+	Type          ResourceType    `json:"type"`
+	ID            string          `json:"id"`
+	Attributes    T               `json:"attributes"`
+	Relationships json.RawMessage `json:"relationships,omitempty"`
+	Links         json.RawMessage `json:"links,omitempty"`
 }
 
 // Response is a generic ASC API response wrapper.
 type Response[T any] struct {
-	Data  []Resource[T] `json:"data"`
-	Links Links         `json:"links,omitempty"`
+	Data     []Resource[T]   `json:"data"`
+	Links    Links           `json:"links,omitempty"`
+	Included json.RawMessage `json:"included,omitempty"`
+	Meta     json.RawMessage `json:"meta,omitempty"`
 }
 
 // SingleResponse is a generic ASC API response wrapper for single resources.
 type SingleResponse[T any] struct {
-	Data  Resource[T] `json:"data"`
-	Links Links       `json:"links,omitempty"`
+	Data     Resource[T]     `json:"data"`
+	Links    Links           `json:"links,omitempty"`
+	Included json.RawMessage `json:"included,omitempty"`
+	Meta     json.RawMessage `json:"meta,omitempty"`
+}
+
+// LinkagesResponse is a generic relationship linkages response.
+type LinkagesResponse struct {
+	Data  []ResourceData  `json:"data"`
+	Links Links           `json:"links,omitempty"`
+	Meta  json.RawMessage `json:"meta,omitempty"`
 }
 
 // SingleResourceResponse is a response with a single resource (not an array).
