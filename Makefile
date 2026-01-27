@@ -101,7 +101,7 @@ update-deps:
 .PHONY: update-openapi
 update-openapi:
 	@echo "$(BLUE)Updating OpenAPI paths index...$(NC)"
-	python scripts/update-openapi-index.py
+	python3 scripts/update-openapi-index.py
 
 # Clean build artifacts
 .PHONY: clean
