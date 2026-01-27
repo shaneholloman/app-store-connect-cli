@@ -555,6 +555,42 @@ func TestIntegrationEndpoints(t *testing.T) {
 	})
 }
 
+func TestIntegrationAppStoreVersionReleaseRequest(t *testing.T) {
+	keyID := os.Getenv("ASC_KEY_ID")
+	issuerID := os.Getenv("ASC_ISSUER_ID")
+	keyPath := os.Getenv("ASC_PRIVATE_KEY_PATH")
+	versionID := os.Getenv("ASC_RELEASE_VERSION_ID")
+
+	if keyID == "" || issuerID == "" || keyPath == "" {
+		t.Skip("integration tests require ASC_KEY_ID, ASC_ISSUER_ID, ASC_PRIVATE_KEY_PATH")
+	}
+	if versionID == "" {
+		t.Skip("set ASC_RELEASE_VERSION_ID to a version in Pending Developer Release to test release requests")
+	}
+
+	client, err := NewClient(keyID, issuerID, keyPath)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resp, err := client.CreateAppStoreVersionReleaseRequest(ctx, versionID)
+	if err != nil {
+		t.Fatalf("failed to create release request: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected release request response")
+	}
+	if resp.Data.ID == "" {
+		t.Fatal("expected release request ID to be set")
+	}
+	if resp.Data.Type != ResourceTypeAppStoreVersionReleaseRequests {
+		t.Fatalf("expected type %q, got %q", ResourceTypeAppStoreVersionReleaseRequests, resp.Data.Type)
+	}
+}
+
 func TestIntegrationDevicesReadOnly(t *testing.T) {
 	keyID := os.Getenv("ASC_KEY_ID")
 	issuerID := os.Getenv("ASC_ISSUER_ID")

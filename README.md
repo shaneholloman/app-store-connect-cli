@@ -29,6 +29,7 @@ A **fast**, **lightweight**, and **AI-agent friendly** CLI for App Store Connect
   - [Beta Testers](#beta-testers)
   - [Devices](#devices)
   - [App Store](#app-store)
+  - [App Tags](#app-tags)
   - [Analytics & Sales](#analytics--sales)
   - [Finance Reports](#finance-reports)
   - [Sandbox Testers](#sandbox-testers)
@@ -181,7 +182,7 @@ Config.json keys (same semantics, snake_case):
 
 - JSON output is default for machine parsing; add `--pretty` when debugging.
 - Use `--paginate` to automatically fetch all pages (recommended for AI agents).
-- `--paginate` works on list commands including apps, builds list, promo codes list, devices list, feedback, crashes, reviews, versions list, pre-release versions list, localizations list, build-localizations list, beta-groups list, beta-testers list, sandbox list, analytics requests/get, testflight apps list, and Xcode Cloud workflows/build-runs.
+- `--paginate` works on list commands including apps, builds list, app-tags list, app-tags territories, promo codes list, devices list, feedback, crashes, reviews, versions list, pre-release versions list, localizations list, build-localizations list, beta-groups list, beta-testers list, sandbox list, analytics requests/get, testflight apps list, and Xcode Cloud workflows/build-runs.
 - Use `--limit` + `--next "<links.next>"` for manual pagination control.
 - Sort with `--sort` (prefix `-` for descending):
   - Feedback/Crashes: `createdDate` / `-createdDate`
@@ -325,6 +326,37 @@ asc reviews response for-review --review-id "REVIEW_ID"
 
 # Delete a review response
 asc reviews response delete --id "RESPONSE_ID" --confirm
+```
+
+### App Tags
+
+```bash
+# List app tags for an app
+asc app-tags list --app "APP_ID"
+
+# Filter, sort, and request specific fields
+asc app-tags list --app "APP_ID" --visible-in-app-store true --sort -name --fields "name,visibleInAppStore"
+
+# Include territories (requires explicit include)
+asc app-tags list --app "APP_ID" --include territories --territory-fields currency --territory-limit 50
+
+# Fetch all tag pages
+asc app-tags list --app "APP_ID" --paginate
+
+# Get a tag by ID
+asc app-tags get --app "APP_ID" --id "TAG_ID"
+
+# Update tag visibility (requires confirm)
+asc app-tags update --id "TAG_ID" --visible-in-app-store=false --confirm
+
+# List territories attached to a tag
+asc app-tags territories --id "TAG_ID" --fields currency
+
+# List territory relationships for a tag
+asc app-tags territories-relationships --id "TAG_ID"
+
+# List tag relationships for an app
+asc app-tags relationships --app "APP_ID"
 ```
 
 ### Analytics & Sales
@@ -578,11 +610,17 @@ asc versions get --version-id "VERSION_ID"
 # Attach a build to a version
 asc versions attach-build --version-id "VERSION_ID" --build "BUILD_ID"
 
+# Release a pending developer release version
+asc versions release --version-id "VERSION_ID" --confirm
+
 # Manage phased release
 asc versions phased-release get --version-id "VERSION_ID"
 asc versions phased-release create --version-id "VERSION_ID"
 asc versions phased-release update --id "PHASED_ID" --state PAUSED
 asc versions phased-release delete --id "PHASED_ID" --confirm
+
+# Create a version promotion (create-only in API spec; treatment required)
+asc versions promotions create --version-id "VERSION_ID" --treatment-id "TREATMENT_ID"
 ```
 
 ### App Info
@@ -774,6 +812,7 @@ make install  # Installs to /usr/local/bin
 
 - [CLAUDE.md](CLAUDE.md) - Development guidelines for AI assistants
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
+- [docs/openapi/README.md](docs/openapi/README.md) - Offline OpenAPI snapshot + update steps
 
 ## Security
 

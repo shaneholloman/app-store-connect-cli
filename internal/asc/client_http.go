@@ -385,7 +385,11 @@ func ParseError(body []byte) error {
 	}
 
 	if err := json.Unmarshal(body, &errResp); err == nil && len(errResp.Errors) > 0 {
-		return fmt.Errorf("%s: %s", errResp.Errors[0].Title, errResp.Errors[0].Detail)
+		return &APIError{
+			Code:   errResp.Errors[0].Code,
+			Title:  errResp.Errors[0].Title,
+			Detail: errResp.Errors[0].Detail,
+		}
 	}
 
 	// Sanitize the error body to prevent information disclosure
@@ -430,20 +434,10 @@ func sanitizeTerminal(input string) string {
 
 // IsNotFound checks if the error is a "not found" error
 func IsNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "not_found") ||
-		strings.Contains(message, "not found") ||
-		strings.Contains(message, "resource does not exist") ||
-		strings.Contains(message, "does not exist")
+	return errors.Is(err, ErrNotFound)
 }
 
 // IsUnauthorized checks if the error is an "unauthorized" error
 func IsUnauthorized(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "UNAUTHORIZED")
+	return errors.Is(err, ErrUnauthorized)
 }

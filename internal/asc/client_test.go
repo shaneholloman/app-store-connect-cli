@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -181,6 +182,110 @@ func TestBuildBetaGroupsQuery(t *testing.T) {
 	values, err := url.ParseQuery(buildBetaGroupsQuery(query))
 	if err != nil {
 		t.Fatalf("failed to parse query: %v", err)
+	}
+	if got := values.Get("limit"); got != "10" {
+		t.Fatalf("expected limit=10, got %q", got)
+	}
+}
+
+func TestBuildAppTagsQuery(t *testing.T) {
+	query := &appTagsQuery{}
+	opts := []AppTagsOption{
+		WithAppTagsLimit(25),
+		WithAppTagsVisibleInAppStore([]string{"true", " false "}),
+		WithAppTagsSort("-name"),
+		WithAppTagsFields([]string{"name", "visibleInAppStore"}),
+		WithAppTagsInclude([]string{"territories"}),
+		WithAppTagsTerritoryFields([]string{"currency"}),
+		WithAppTagsTerritoryLimit(50),
+	}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	values, err := url.ParseQuery(buildAppTagsQuery(query))
+	if err != nil {
+		t.Fatalf("failed to parse query: %v", err)
+	}
+	if got := values.Get("filter[visibleInAppStore]"); got != "true,false" {
+		t.Fatalf("expected filter[visibleInAppStore]=true,false, got %q", got)
+	}
+	if got := values.Get("sort"); got != "-name" {
+		t.Fatalf("expected sort=-name, got %q", got)
+	}
+	if got := values.Get("limit"); got != "25" {
+		t.Fatalf("expected limit=25, got %q", got)
+	}
+	if got := values.Get("fields[appTags]"); got != "name,visibleInAppStore" {
+		t.Fatalf("expected fields[appTags]=name,visibleInAppStore, got %q", got)
+	}
+	if got := values.Get("include"); got != "territories" {
+		t.Fatalf("expected include=territories, got %q", got)
+	}
+	if got := values.Get("fields[territories]"); got != "currency" {
+		t.Fatalf("expected fields[territories]=currency, got %q", got)
+	}
+	if got := values.Get("limit[territories]"); got != "50" {
+		t.Fatalf("expected limit[territories]=50, got %q", got)
+	}
+}
+
+func TestBuildAccessibilityDeclarationsQuery(t *testing.T) {
+	query := &accessibilityDeclarationsQuery{}
+	opts := []AccessibilityDeclarationsOption{
+		WithAccessibilityDeclarationsDeviceFamilies([]string{"iphone", " ipad "}),
+		WithAccessibilityDeclarationsStates([]string{"draft", "published"}),
+		WithAccessibilityDeclarationsFields([]string{"deviceFamily", "state"}),
+		WithAccessibilityDeclarationsLimit(5),
+	}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	values, err := url.ParseQuery(buildAccessibilityDeclarationsQuery(query))
+	if err != nil {
+		t.Fatalf("failed to parse query: %v", err)
+	}
+
+	if got := values.Get("filter[deviceFamily]"); got != "IPHONE,IPAD" {
+		t.Fatalf("expected filter[deviceFamily]=IPHONE,IPAD, got %q", got)
+	}
+	if got := values.Get("filter[state]"); got != "DRAFT,PUBLISHED" {
+		t.Fatalf("expected filter[state]=DRAFT,PUBLISHED, got %q", got)
+	}
+	if got := values.Get("fields[accessibilityDeclarations]"); got != "deviceFamily,state" {
+		t.Fatalf("expected fields[accessibilityDeclarations]=deviceFamily,state, got %q", got)
+	}
+	if got := values.Get("limit"); got != "5" {
+		t.Fatalf("expected limit=5, got %q", got)
+	}
+}
+
+func TestBuildAppStoreReviewAttachmentsQuery(t *testing.T) {
+	query := &appStoreReviewAttachmentsQuery{}
+	opts := []AppStoreReviewAttachmentsOption{
+		WithAppStoreReviewAttachmentsFields([]string{"fileName", "fileSize"}),
+		WithAppStoreReviewAttachmentReviewDetailFields([]string{"contactEmail", "notes"}),
+		WithAppStoreReviewAttachmentsInclude([]string{"appStoreReviewDetail"}),
+		WithAppStoreReviewAttachmentsLimit(10),
+	}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	values, err := url.ParseQuery(buildAppStoreReviewAttachmentsQuery(query))
+	if err != nil {
+		t.Fatalf("failed to parse query: %v", err)
+	}
+
+	if got := values.Get("fields[appStoreReviewAttachments]"); got != "fileName,fileSize" {
+		t.Fatalf("expected fields[appStoreReviewAttachments]=fileName,fileSize, got %q", got)
+	}
+	if got := values.Get("fields[appStoreReviewDetails]"); got != "contactEmail,notes" {
+		t.Fatalf("expected fields[appStoreReviewDetails]=contactEmail,notes, got %q", got)
+	}
+	if got := values.Get("include"); got != "appStoreReviewDetail" {
+		t.Fatalf("expected include=appStoreReviewDetail, got %q", got)
 	}
 	if got := values.Get("limit"); got != "10" {
 		t.Fatalf("expected limit=10, got %q", got)
@@ -367,8 +472,12 @@ func TestParseError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "Forbidden") {
-		t.Fatalf("unexpected error message: %v", err)
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError, got %T", err)
+	}
+	if !errors.Is(apiErr, ErrForbidden) {
+		t.Fatalf("expected forbidden error, got %v", err)
 	}
 }
 

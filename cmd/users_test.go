@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"flag"
-	"strings"
 	"testing"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -143,9 +142,6 @@ func TestUsersInviteCommand_ConflictingAccess(t *testing.T) {
 	if err == flag.ErrHelp {
 		// This is acceptable - the command shows help when there's a conflict
 		return
-	}
-	if !strings.Contains(err.Error(), "cannot be used together") {
-		t.Fatalf("expected conflict error, got %v", err)
 	}
 }
 

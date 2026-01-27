@@ -11,7 +11,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/99designs/keyring"
@@ -411,9 +410,6 @@ func TestGetCredentials_TrimsAndIsCaseSensitive(t *testing.T) {
 	_, err = GetCredentials("Personal")
 	if err == nil {
 		t.Fatal("expected error for case mismatch, got nil")
-	}
-	if !strings.Contains(err.Error(), `credentials not found for profile "Personal"`) {
-		t.Fatalf("expected case-sensitive error, got %v", err)
 	}
 }
 

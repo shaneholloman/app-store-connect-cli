@@ -54,6 +54,12 @@ type AppStoreVersionAttachBuildResult struct {
 	Attached  bool   `json:"attached"`
 }
 
+// AppStoreVersionReleaseRequestResult represents CLI output for release requests.
+type AppStoreVersionReleaseRequestResult struct {
+	ReleaseRequestID string `json:"releaseRequestId"`
+	VersionID        string `json:"versionId"`
+}
+
 func printAppStoreVersionsTable(resp *AppStoreVersionsResponse) error {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tVersion\tPlatform\tState\tCreated")
@@ -213,6 +219,13 @@ func printAppStoreVersionAttachBuildTable(result *AppStoreVersionAttachBuildResu
 	return w.Flush()
 }
 
+func printAppStoreVersionReleaseRequestTable(result *AppStoreVersionReleaseRequestResult) error {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "Release Request ID\tVersion ID")
+	fmt.Fprintf(w, "%s\t%s\n", result.ReleaseRequestID, result.VersionID)
+	return w.Flush()
+}
+
 func printAppStoreVersionSubmissionMarkdown(result *AppStoreVersionSubmissionResult) error {
 	fmt.Fprintln(os.Stdout, "| Submission ID | Created Date |")
 	fmt.Fprintln(os.Stdout, "| --- | --- |")
@@ -317,6 +330,16 @@ func printAppStoreVersionAttachBuildMarkdown(result *AppStoreVersionAttachBuildR
 		escapeMarkdown(result.VersionID),
 		escapeMarkdown(result.BuildID),
 		result.Attached,
+	)
+	return nil
+}
+
+func printAppStoreVersionReleaseRequestMarkdown(result *AppStoreVersionReleaseRequestResult) error {
+	fmt.Fprintln(os.Stdout, "| Release Request ID | Version ID |")
+	fmt.Fprintln(os.Stdout, "| --- | --- |")
+	fmt.Fprintf(os.Stdout, "| %s | %s |\n",
+		escapeMarkdown(result.ReleaseRequestID),
+		escapeMarkdown(result.VersionID),
 	)
 	return nil
 }

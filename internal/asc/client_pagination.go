@@ -23,6 +23,16 @@ func (r *Response[T]) GetData() interface{} {
 }
 
 // GetLinks returns the links field for pagination.
+func (r *LinkagesResponse) GetLinks() *Links {
+	return &r.Links
+}
+
+// GetData returns the data field for aggregation.
+func (r *LinkagesResponse) GetData() interface{} {
+	return r.Data
+}
+
+// GetLinks returns the links field for pagination.
 func (r *PreReleaseVersionsResponse) GetLinks() *Links {
 	return &r.Links
 }
@@ -52,6 +62,14 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 		result = &ReviewsResponse{Links: Links{}}
 	case *AppsResponse:
 		result = &AppsResponse{Links: Links{}}
+	case *AppTagsResponse:
+		result = &AppTagsResponse{Links: Links{}}
+	case *LinkagesResponse:
+		result = &LinkagesResponse{Links: Links{}}
+	case *BundleIDsResponse:
+		result = &BundleIDsResponse{Links: Links{}}
+	case *InAppPurchasesV2Response:
+		result = &InAppPurchasesV2Response{Links: Links{}}
 	case *TerritoriesResponse:
 		result = &TerritoriesResponse{Links: Links{}}
 	case *AppPricePointsV3Response:
@@ -68,20 +86,36 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 		result = &ReviewSubmissionItemsResponse{Links: Links{}}
 	case *PreReleaseVersionsResponse:
 		result = &PreReleaseVersionsResponse{Links: Links{}}
+	case *AccessibilityDeclarationsResponse:
+		result = &AccessibilityDeclarationsResponse{Links: Links{}}
+	case *AppStoreReviewAttachmentsResponse:
+		result = &AppStoreReviewAttachmentsResponse{Links: Links{}}
 	case *AppStoreVersionLocalizationsResponse:
 		result = &AppStoreVersionLocalizationsResponse{Links: Links{}}
 	case *BetaBuildLocalizationsResponse:
 		result = &BetaBuildLocalizationsResponse{Links: Links{}}
 	case *AppInfoLocalizationsResponse:
 		result = &AppInfoLocalizationsResponse{Links: Links{}}
+	case *InAppPurchaseLocalizationsResponse:
+		result = &InAppPurchaseLocalizationsResponse{Links: Links{}}
+	case *SubscriptionGroupsResponse:
+		result = &SubscriptionGroupsResponse{Links: Links{}}
+	case *SubscriptionsResponse:
+		result = &SubscriptionsResponse{Links: Links{}}
 	case *BetaGroupsResponse:
 		result = &BetaGroupsResponse{Links: Links{}}
 	case *BetaTestersResponse:
 		result = &BetaTestersResponse{Links: Links{}}
-	case *UsersResponse:
-		result = &UsersResponse{Links: Links{}}
+	case *BundleIDCapabilitiesResponse:
+		result = &BundleIDCapabilitiesResponse{Links: Links{}}
+	case *CertificatesResponse:
+		result = &CertificatesResponse{Links: Links{}}
 	case *DevicesResponse:
 		result = &DevicesResponse{Links: Links{}}
+	case *ProfilesResponse:
+		result = &ProfilesResponse{Links: Links{}}
+	case *UsersResponse:
+		result = &UsersResponse{Links: Links{}}
 	case *UserInvitationsResponse:
 		result = &UserInvitationsResponse{Links: Links{}}
 	case *SandboxTestersResponse:
@@ -179,6 +213,14 @@ func typeOf(p PaginatedResponse) string {
 		return "ReviewsResponse"
 	case *AppsResponse:
 		return "AppsResponse"
+	case *AppTagsResponse:
+		return "AppTagsResponse"
+	case *LinkagesResponse:
+		return "LinkagesResponse"
+	case *BundleIDsResponse:
+		return "BundleIDsResponse"
+	case *InAppPurchasesV2Response:
+		return "InAppPurchasesV2Response"
 	case *TerritoriesResponse:
 		return "TerritoriesResponse"
 	case *AppPricePointsV3Response:
@@ -195,20 +237,36 @@ func typeOf(p PaginatedResponse) string {
 		return "ReviewSubmissionItemsResponse"
 	case *PreReleaseVersionsResponse:
 		return "PreReleaseVersionsResponse"
+	case *AccessibilityDeclarationsResponse:
+		return "AccessibilityDeclarationsResponse"
+	case *AppStoreReviewAttachmentsResponse:
+		return "AppStoreReviewAttachmentsResponse"
 	case *AppStoreVersionLocalizationsResponse:
 		return "AppStoreVersionLocalizationsResponse"
 	case *BetaBuildLocalizationsResponse:
 		return "BetaBuildLocalizationsResponse"
 	case *AppInfoLocalizationsResponse:
 		return "AppInfoLocalizationsResponse"
+	case *InAppPurchaseLocalizationsResponse:
+		return "InAppPurchaseLocalizationsResponse"
+	case *SubscriptionGroupsResponse:
+		return "SubscriptionGroupsResponse"
+	case *SubscriptionsResponse:
+		return "SubscriptionsResponse"
 	case *BetaGroupsResponse:
 		return "BetaGroupsResponse"
 	case *BetaTestersResponse:
 		return "BetaTestersResponse"
-	case *UsersResponse:
-		return "UsersResponse"
+	case *BundleIDCapabilitiesResponse:
+		return "BundleIDCapabilitiesResponse"
+	case *CertificatesResponse:
+		return "CertificatesResponse"
 	case *DevicesResponse:
 		return "DevicesResponse"
+	case *ProfilesResponse:
+		return "ProfilesResponse"
+	case *UsersResponse:
+		return "UsersResponse"
 	case *UserInvitationsResponse:
 		return "UserInvitationsResponse"
 	case *SandboxTestersResponse:

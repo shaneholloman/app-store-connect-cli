@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -25,6 +27,7 @@ func DevicesCommand() *ffcli.Command {
 Examples:
   asc devices list
   asc devices get --id "DEVICE_ID"
+  asc devices local-udid
   asc devices register --name "iPhone 15" --udid "UDID" --platform IOS
   asc devices update --id "DEVICE_ID" --status DISABLED`,
 		FlagSet:   fs,
@@ -32,6 +35,7 @@ Examples:
 		Subcommands: []*ffcli.Command{
 			DevicesListCommand(),
 			DevicesGetCommand(),
+			DevicesLocalUDIDCommand(),
 			DevicesRegisterCommand(),
 			DevicesUpdateCommand(),
 		},
@@ -46,7 +50,7 @@ func DevicesListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
 	name := fs.String("name", "", "Filter by device name(s), comma-separated")
-	platform := fs.String("platform", "", "Filter by platform: IOS, MAC_OS")
+	platform := fs.String("platform", "", "Filter by platform(s), comma-separated: "+strings.Join(devicePlatformList(), ", "))
 	status := fs.String("status", "", "Filter by status: ENABLED, DISABLED")
 	udid := fs.String("udid", "", "Filter by UDID(s), comma-separated")
 	ids := fs.String("id", "", "Filter by device ID(s), comma-separated")
@@ -85,7 +89,7 @@ Examples:
 				return fmt.Errorf("devices list: %w", err)
 			}
 
-			platformValue, err := normalizeDevicePlatform(*platform)
+			platformValues, err := normalizeDevicePlatforms(splitCSV(*platform))
 			if err != nil {
 				return fmt.Errorf("devices list: %w", err)
 			}
@@ -115,8 +119,8 @@ Examples:
 				asc.WithDevicesLimit(*limit),
 				asc.WithDevicesNextURL(*next),
 			}
-			if platformValue != "" {
-				opts = append(opts, asc.WithDevicesPlatform(platformValue))
+			if len(platformValues) > 0 {
+				opts = append(opts, asc.WithDevicesPlatforms(platformValues))
 			}
 			if statusValue != "" {
 				opts = append(opts, asc.WithDevicesStatus(statusValue))
@@ -205,24 +209,60 @@ Examples:
 	}
 }
 
+// DevicesLocalUDIDCommand returns the devices local-udid subcommand.
+func DevicesLocalUDIDCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("local-udid", flag.ExitOnError)
+
+	output := fs.String("output", "json", "Output format: json (default), table, markdown")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
+
+	return &ffcli.Command{
+		Name:       "local-udid",
+		ShortUsage: "asc devices local-udid [flags]",
+		ShortHelp:  "Get the local macOS hardware UDID.",
+		LongHelp: `Get the local macOS hardware UDID.
+
+Examples:
+  asc devices local-udid
+  asc devices local-udid --output table`,
+		FlagSet:   fs,
+		UsageFunc: DefaultUsageFunc,
+		Exec: func(ctx context.Context, args []string) error {
+			localUDID, err := localMacUDID()
+			if err != nil {
+				return fmt.Errorf("devices local-udid: %w", err)
+			}
+
+			result := &asc.DeviceLocalUDIDResult{
+				UDID:     localUDID,
+				Platform: "MAC_OS",
+			}
+
+			return printOutput(result, *output, *pretty)
+		},
+	}
+}
+
 // DevicesRegisterCommand returns the devices register subcommand.
 func DevicesRegisterCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("register", flag.ExitOnError)
 
 	name := fs.String("name", "", "Device name")
-	udid := fs.String("udid", "", "Device UDID")
-	platform := fs.String("platform", "", "Device platform: IOS, MAC_OS")
+	udid := fs.String("udid", "", "Device UDID (required unless --udid-from-system)")
+	udidFromSystem := fs.Bool("udid-from-system", false, "Use local macOS hardware UUID as UDID (macOS only)")
+	platform := fs.String("platform", "", "Device platform: "+strings.Join(devicePlatformList(), ", "))
 	output := fs.String("output", "json", "Output format: json (default), table, markdown")
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
 
 	return &ffcli.Command{
 		Name:       "register",
-		ShortUsage: "asc devices register --name NAME --udid UDID --platform IOS|MAC_OS",
+		ShortUsage: "asc devices register --name NAME --udid UDID --platform " + strings.Join(devicePlatformList(), "|"),
 		ShortHelp:  "Register a new device.",
 		LongHelp: `Register a new device.
 
 Examples:
-  asc devices register --name "iPhone 15" --udid "UDID" --platform IOS`,
+  asc devices register --name "iPhone 15" --udid "UDID" --platform IOS
+  asc devices register --name "My Mac" --udid-from-system --platform MAC_OS`,
 		FlagSet:   fs,
 		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -233,17 +273,36 @@ Examples:
 			}
 
 			udidValue := strings.TrimSpace(*udid)
+			if *udidFromSystem && udidValue != "" {
+				fmt.Fprintln(os.Stderr, "Error: --udid and --udid-from-system are mutually exclusive")
+				return flag.ErrHelp
+			}
+			if *udidFromSystem {
+				localUDID, err := localMacUDID()
+				if err != nil {
+					return fmt.Errorf("devices register: %w", err)
+				}
+				udidValue = localUDID
+			}
 			if udidValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --udid is required")
 				return flag.ErrHelp
 			}
 
-			if strings.TrimSpace(*platform) == "" {
+			platformValue := strings.TrimSpace(*platform)
+			if *udidFromSystem && platformValue == "" {
+				platformValue = "MAC_OS"
+			}
+			if platformValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --platform is required")
 				return flag.ErrHelp
 			}
+			if *udidFromSystem && strings.ToUpper(platformValue) != "MAC_OS" {
+				fmt.Fprintln(os.Stderr, "Error: --udid-from-system requires --platform MAC_OS")
+				return flag.ErrHelp
+			}
 
-			platformValue, err := normalizeDevicePlatform(*platform)
+			platformValue, err := normalizeDevicePlatform(platformValue)
 			if err != nil {
 				return fmt.Errorf("devices register: %w", err)
 			}
@@ -353,6 +412,27 @@ func normalizeDevicePlatform(value string) (string, error) {
 	return "", fmt.Errorf("--platform must be one of: %s", strings.Join(devicePlatformList(), ", "))
 }
 
+func normalizeDevicePlatforms(values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		platform, err := normalizeDevicePlatform(value)
+		if err != nil {
+			return nil, err
+		}
+		if platform != "" {
+			normalized = append(normalized, platform)
+		}
+	}
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+	return normalized, nil
+}
+
 func normalizeDeviceStatus(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -387,7 +467,7 @@ func normalizeDeviceFields(value string) ([]string, error) {
 }
 
 func devicePlatformList() []string {
-	return []string{"IOS", "MAC_OS"}
+	return []string{"IOS", "MAC_OS", "TV_OS", "VISION_OS"}
 }
 
 func deviceStatusList() []string {
@@ -396,4 +476,28 @@ func deviceStatusList() []string {
 
 func deviceFieldsList() []string {
 	return []string{"addedDate", "deviceClass", "model", "name", "platform", "status", "udid"}
+}
+
+func localMacUDID() (string, error) {
+	if runtime.GOOS != "darwin" {
+		return "", fmt.Errorf("--udid-from-system is only supported on macOS")
+	}
+
+	output, err := exec.Command("ioreg", "-rd1", "-c", "IOPlatformExpertDevice").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to read local hardware UUID: %w", err)
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "\"IOPlatformUUID\" = ") {
+			value := strings.TrimPrefix(line, "\"IOPlatformUUID\" = ")
+			value = strings.Trim(value, "\"")
+			if value != "" {
+				return value, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("unable to locate IOPlatformUUID in ioreg output")
 }

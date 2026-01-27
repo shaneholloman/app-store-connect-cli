@@ -33,6 +33,42 @@ func PrintMarkdown(data interface{}) error {
 		return printAppCategoriesMarkdown(v)
 	case *AppResponse:
 		return printAppsMarkdown(&AppsResponse{Data: []Resource[AppAttributes]{v.Data}})
+	case *AppTagsResponse:
+		return printAppTagsMarkdown(v)
+	case *AppTagResponse:
+		return printAppTagsMarkdown(&AppTagsResponse{Data: []Resource[AppTagAttributes]{v.Data}})
+	case *LinkagesResponse:
+		return printLinkagesMarkdown(v)
+	case *BundleIDsResponse:
+		return printBundleIDsMarkdown(v)
+	case *BundleIDResponse:
+		return printBundleIDsMarkdown(&BundleIDsResponse{Data: []Resource[BundleIDAttributes]{v.Data}})
+	case *CertificatesResponse:
+		return printCertificatesMarkdown(v)
+	case *CertificateResponse:
+		return printCertificatesMarkdown(&CertificatesResponse{Data: []Resource[CertificateAttributes]{v.Data}})
+	case *ProfilesResponse:
+		return printProfilesMarkdown(v)
+	case *ProfileResponse:
+		return printProfilesMarkdown(&ProfilesResponse{Data: []Resource[ProfileAttributes]{v.Data}})
+	case *InAppPurchasesV2Response:
+		return printInAppPurchasesMarkdown(v)
+	case *InAppPurchaseV2Response:
+		return printInAppPurchasesMarkdown(&InAppPurchasesV2Response{Data: []Resource[InAppPurchaseV2Attributes]{v.Data}})
+	case *InAppPurchaseLocalizationsResponse:
+		return printInAppPurchaseLocalizationsMarkdown(v)
+	case *SubscriptionGroupsResponse:
+		return printSubscriptionGroupsMarkdown(v)
+	case *SubscriptionGroupResponse:
+		return printSubscriptionGroupsMarkdown(&SubscriptionGroupsResponse{Data: []Resource[SubscriptionGroupAttributes]{v.Data}})
+	case *SubscriptionsResponse:
+		return printSubscriptionsMarkdown(v)
+	case *SubscriptionResponse:
+		return printSubscriptionsMarkdown(&SubscriptionsResponse{Data: []Resource[SubscriptionAttributes]{v.Data}})
+	case *SubscriptionPriceResponse:
+		return printSubscriptionPriceMarkdown(v)
+	case *SubscriptionAvailabilityResponse:
+		return printSubscriptionAvailabilityMarkdown(v)
 	case *TerritoriesResponse:
 		return printTerritoriesMarkdown(v)
 	case *AppPricePointsV3Response:
@@ -83,6 +119,8 @@ func PrintMarkdown(data interface{}) error {
 		return printUsersMarkdown(&UsersResponse{Data: []Resource[UserAttributes]{v.Data}})
 	case *DevicesResponse:
 		return printDevicesMarkdown(v)
+	case *DeviceLocalUDIDResult:
+		return printDeviceLocalUDIDMarkdown(v)
 	case *DeviceResponse:
 		return printDevicesMarkdown(&DevicesResponse{Data: []Resource[DeviceAttributes]{v.Data}})
 	case *UserInvitationsResponse:
@@ -107,6 +145,16 @@ func PrintMarkdown(data interface{}) error {
 		return printBuildBetaDetailMarkdown(v)
 	case *AgeRatingDeclarationResponse:
 		return printAgeRatingDeclarationMarkdown(v)
+	case *AccessibilityDeclarationsResponse:
+		return printAccessibilityDeclarationsMarkdown(v)
+	case *AccessibilityDeclarationResponse:
+		return printAccessibilityDeclarationMarkdown(v)
+	case *AppStoreReviewDetailResponse:
+		return printAppStoreReviewDetailMarkdown(v)
+	case *AppStoreReviewAttachmentsResponse:
+		return printAppStoreReviewAttachmentsMarkdown(v)
+	case *AppStoreReviewAttachmentResponse:
+		return printAppStoreReviewAttachmentMarkdown(v)
 	case *BetaRecruitmentCriterionOptionsResponse:
 		return printBetaRecruitmentCriterionOptionsMarkdown(v)
 	case *BetaRecruitmentCriteriaResponse:
@@ -117,6 +165,10 @@ func PrintMarkdown(data interface{}) error {
 		return printSandboxTestersMarkdown(v)
 	case *SandboxTesterResponse:
 		return printSandboxTestersMarkdown(&SandboxTestersResponse{Data: []Resource[SandboxTesterAttributes]{v.Data}})
+	case *BundleIDCapabilitiesResponse:
+		return printBundleIDCapabilitiesMarkdown(v)
+	case *BundleIDCapabilityResponse:
+		return printBundleIDCapabilitiesMarkdown(&BundleIDCapabilitiesResponse{Data: []Resource[BundleIDCapabilityAttributes]{v.Data}})
 	case *LocalizationDownloadResult:
 		return printLocalizationDownloadResultMarkdown(v)
 	case *LocalizationUploadResult:
@@ -167,12 +219,22 @@ func PrintMarkdown(data interface{}) error {
 		return printReviewSubmissionItemsMarkdown(&ReviewSubmissionItemsResponse{Data: []ReviewSubmissionItemResource{v.Data}, Links: v.Links})
 	case *ReviewSubmissionItemDeleteResult:
 		return printReviewSubmissionItemDeleteResultMarkdown(v)
+	case *AppStoreVersionReleaseRequestResult:
+		return printAppStoreVersionReleaseRequestMarkdown(v)
+	case *AppStoreVersionPromotionCreateResult:
+		return printAppStoreVersionPromotionCreateMarkdown(v)
 	case *AppStoreVersionPhasedReleaseResponse:
 		return printAppStoreVersionPhasedReleaseMarkdown(v)
 	case *AppStoreVersionPhasedReleaseDeleteResult:
 		return printAppStoreVersionPhasedReleaseDeleteResultMarkdown(v)
 	case *BuildBetaGroupsUpdateResult:
 		return printBuildBetaGroupsUpdateMarkdown(v)
+	case *InAppPurchaseDeleteResult:
+		return printInAppPurchaseDeleteResultMarkdown(v)
+	case *SubscriptionGroupDeleteResult:
+		return printSubscriptionGroupDeleteResultMarkdown(v)
+	case *SubscriptionDeleteResult:
+		return printSubscriptionDeleteResultMarkdown(v)
 	case *BetaTesterDeleteResult:
 		return printBetaTesterDeleteResultMarkdown(v)
 	case *BetaTesterGroupsUpdateResult:
@@ -187,6 +249,18 @@ func PrintMarkdown(data interface{}) error {
 		return printSandboxTesterDeleteResultMarkdown(v)
 	case *SandboxTesterClearHistoryResult:
 		return printSandboxTesterClearHistoryResultMarkdown(v)
+	case *BundleIDDeleteResult:
+		return printBundleIDDeleteResultMarkdown(v)
+	case *BundleIDCapabilityDeleteResult:
+		return printBundleIDCapabilityDeleteResultMarkdown(v)
+	case *CertificateRevokeResult:
+		return printCertificateRevokeResultMarkdown(v)
+	case *ProfileDeleteResult:
+		return printProfileDeleteResultMarkdown(v)
+	case *ProfileDownloadResult:
+		return printProfileDownloadResultMarkdown(v)
+	case *SigningFetchResult:
+		return printSigningFetchResultMarkdown(v)
 	case *XcodeCloudRunResult:
 		return printXcodeCloudRunResultMarkdown(v)
 	case *XcodeCloudStatusResult:
@@ -199,10 +273,18 @@ func PrintMarkdown(data interface{}) error {
 		return printCiBuildRunsMarkdown(v)
 	case *CiBuildActionsResponse:
 		return printCiBuildActionsMarkdown(v)
+	case *EndUserLicenseAgreementResponse:
+		return printEndUserLicenseAgreementMarkdown(v)
+	case *EndUserLicenseAgreementDeleteResult:
+		return printEndUserLicenseAgreementDeleteResultMarkdown(v)
 	case *CustomerReviewResponseResponse:
 		return printCustomerReviewResponseMarkdown(v)
 	case *CustomerReviewResponseDeleteResult:
 		return printCustomerReviewResponseDeleteResultMarkdown(v)
+	case *AccessibilityDeclarationDeleteResult:
+		return printAccessibilityDeclarationDeleteResultMarkdown(v)
+	case *AppStoreReviewAttachmentDeleteResult:
+		return printAppStoreReviewAttachmentDeleteResultMarkdown(v)
 	default:
 		return PrintJSON(data)
 	}
@@ -223,6 +305,42 @@ func PrintTable(data interface{}) error {
 		return printAppCategoriesTable(v)
 	case *AppResponse:
 		return printAppsTable(&AppsResponse{Data: []Resource[AppAttributes]{v.Data}})
+	case *AppTagsResponse:
+		return printAppTagsTable(v)
+	case *AppTagResponse:
+		return printAppTagsTable(&AppTagsResponse{Data: []Resource[AppTagAttributes]{v.Data}})
+	case *LinkagesResponse:
+		return printLinkagesTable(v)
+	case *BundleIDsResponse:
+		return printBundleIDsTable(v)
+	case *BundleIDResponse:
+		return printBundleIDsTable(&BundleIDsResponse{Data: []Resource[BundleIDAttributes]{v.Data}})
+	case *CertificatesResponse:
+		return printCertificatesTable(v)
+	case *CertificateResponse:
+		return printCertificatesTable(&CertificatesResponse{Data: []Resource[CertificateAttributes]{v.Data}})
+	case *ProfilesResponse:
+		return printProfilesTable(v)
+	case *ProfileResponse:
+		return printProfilesTable(&ProfilesResponse{Data: []Resource[ProfileAttributes]{v.Data}})
+	case *InAppPurchasesV2Response:
+		return printInAppPurchasesTable(v)
+	case *InAppPurchaseV2Response:
+		return printInAppPurchasesTable(&InAppPurchasesV2Response{Data: []Resource[InAppPurchaseV2Attributes]{v.Data}})
+	case *InAppPurchaseLocalizationsResponse:
+		return printInAppPurchaseLocalizationsTable(v)
+	case *SubscriptionGroupsResponse:
+		return printSubscriptionGroupsTable(v)
+	case *SubscriptionGroupResponse:
+		return printSubscriptionGroupsTable(&SubscriptionGroupsResponse{Data: []Resource[SubscriptionGroupAttributes]{v.Data}})
+	case *SubscriptionsResponse:
+		return printSubscriptionsTable(v)
+	case *SubscriptionResponse:
+		return printSubscriptionsTable(&SubscriptionsResponse{Data: []Resource[SubscriptionAttributes]{v.Data}})
+	case *SubscriptionPriceResponse:
+		return printSubscriptionPriceTable(v)
+	case *SubscriptionAvailabilityResponse:
+		return printSubscriptionAvailabilityTable(v)
 	case *TerritoriesResponse:
 		return printTerritoriesTable(v)
 	case *AppPricePointsV3Response:
@@ -273,6 +391,8 @@ func PrintTable(data interface{}) error {
 		return printUsersTable(&UsersResponse{Data: []Resource[UserAttributes]{v.Data}})
 	case *DevicesResponse:
 		return printDevicesTable(v)
+	case *DeviceLocalUDIDResult:
+		return printDeviceLocalUDIDTable(v)
 	case *DeviceResponse:
 		return printDevicesTable(&DevicesResponse{Data: []Resource[DeviceAttributes]{v.Data}})
 	case *UserInvitationsResponse:
@@ -297,6 +417,16 @@ func PrintTable(data interface{}) error {
 		return printBuildBetaDetailTable(v)
 	case *AgeRatingDeclarationResponse:
 		return printAgeRatingDeclarationTable(v)
+	case *AccessibilityDeclarationsResponse:
+		return printAccessibilityDeclarationsTable(v)
+	case *AccessibilityDeclarationResponse:
+		return printAccessibilityDeclarationTable(v)
+	case *AppStoreReviewDetailResponse:
+		return printAppStoreReviewDetailTable(v)
+	case *AppStoreReviewAttachmentsResponse:
+		return printAppStoreReviewAttachmentsTable(v)
+	case *AppStoreReviewAttachmentResponse:
+		return printAppStoreReviewAttachmentTable(v)
 	case *BetaRecruitmentCriterionOptionsResponse:
 		return printBetaRecruitmentCriterionOptionsTable(v)
 	case *BetaRecruitmentCriteriaResponse:
@@ -307,6 +437,10 @@ func PrintTable(data interface{}) error {
 		return printSandboxTestersTable(v)
 	case *SandboxTesterResponse:
 		return printSandboxTestersTable(&SandboxTestersResponse{Data: []Resource[SandboxTesterAttributes]{v.Data}})
+	case *BundleIDCapabilitiesResponse:
+		return printBundleIDCapabilitiesTable(v)
+	case *BundleIDCapabilityResponse:
+		return printBundleIDCapabilitiesTable(&BundleIDCapabilitiesResponse{Data: []Resource[BundleIDCapabilityAttributes]{v.Data}})
 	case *LocalizationDownloadResult:
 		return printLocalizationDownloadResultTable(v)
 	case *LocalizationUploadResult:
@@ -357,12 +491,22 @@ func PrintTable(data interface{}) error {
 		return printReviewSubmissionItemsTable(&ReviewSubmissionItemsResponse{Data: []ReviewSubmissionItemResource{v.Data}, Links: v.Links})
 	case *ReviewSubmissionItemDeleteResult:
 		return printReviewSubmissionItemDeleteResultTable(v)
+	case *AppStoreVersionReleaseRequestResult:
+		return printAppStoreVersionReleaseRequestTable(v)
+	case *AppStoreVersionPromotionCreateResult:
+		return printAppStoreVersionPromotionCreateTable(v)
 	case *AppStoreVersionPhasedReleaseResponse:
 		return printAppStoreVersionPhasedReleaseTable(v)
 	case *AppStoreVersionPhasedReleaseDeleteResult:
 		return printAppStoreVersionPhasedReleaseDeleteResultTable(v)
 	case *BuildBetaGroupsUpdateResult:
 		return printBuildBetaGroupsUpdateTable(v)
+	case *InAppPurchaseDeleteResult:
+		return printInAppPurchaseDeleteResultTable(v)
+	case *SubscriptionGroupDeleteResult:
+		return printSubscriptionGroupDeleteResultTable(v)
+	case *SubscriptionDeleteResult:
+		return printSubscriptionDeleteResultTable(v)
 	case *BetaTesterDeleteResult:
 		return printBetaTesterDeleteResultTable(v)
 	case *BetaTesterGroupsUpdateResult:
@@ -377,6 +521,22 @@ func PrintTable(data interface{}) error {
 		return printSandboxTesterDeleteResultTable(v)
 	case *SandboxTesterClearHistoryResult:
 		return printSandboxTesterClearHistoryResultTable(v)
+	case *BundleIDDeleteResult:
+		return printBundleIDDeleteResultTable(v)
+	case *BundleIDCapabilityDeleteResult:
+		return printBundleIDCapabilityDeleteResultTable(v)
+	case *CertificateRevokeResult:
+		return printCertificateRevokeResultTable(v)
+	case *ProfileDeleteResult:
+		return printProfileDeleteResultTable(v)
+	case *EndUserLicenseAgreementResponse:
+		return printEndUserLicenseAgreementTable(v)
+	case *EndUserLicenseAgreementDeleteResult:
+		return printEndUserLicenseAgreementDeleteResultTable(v)
+	case *ProfileDownloadResult:
+		return printProfileDownloadResultTable(v)
+	case *SigningFetchResult:
+		return printSigningFetchResultTable(v)
 	case *XcodeCloudRunResult:
 		return printXcodeCloudRunResultTable(v)
 	case *XcodeCloudStatusResult:
@@ -393,6 +553,10 @@ func PrintTable(data interface{}) error {
 		return printCustomerReviewResponseTable(v)
 	case *CustomerReviewResponseDeleteResult:
 		return printCustomerReviewResponseDeleteResultTable(v)
+	case *AccessibilityDeclarationDeleteResult:
+		return printAccessibilityDeclarationDeleteResultTable(v)
+	case *AppStoreReviewAttachmentDeleteResult:
+		return printAppStoreReviewAttachmentDeleteResultTable(v)
 	default:
 		return PrintJSON(data)
 	}

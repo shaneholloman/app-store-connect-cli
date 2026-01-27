@@ -709,6 +709,94 @@ func TestPrintMarkdown_LocalizationUploadResult(t *testing.T) {
 	}
 }
 
+func TestPrintTable_AppTags(t *testing.T) {
+	resp := &AppTagsResponse{
+		Data: []Resource[AppTagAttributes]{
+			{
+				ID: "tag-1",
+				Attributes: AppTagAttributes{
+					Name:              "Strategy",
+					VisibleInAppStore: true,
+				},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Visible In App Store") {
+		t.Fatalf("expected visibility header, got: %s", output)
+	}
+	if !strings.Contains(output, "Strategy") {
+		t.Fatalf("expected tag name in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_AppTags(t *testing.T) {
+	resp := &AppTagsResponse{
+		Data: []Resource[AppTagAttributes]{
+			{
+				ID: "tag-1",
+				Attributes: AppTagAttributes{
+					Name:              "Strategy",
+					VisibleInAppStore: false,
+				},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| ID | Name | Visible In App Store |") {
+		t.Fatalf("expected app tags header, got: %s", output)
+	}
+	if !strings.Contains(output, "Strategy") {
+		t.Fatalf("expected tag name in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_Linkages(t *testing.T) {
+	resp := &LinkagesResponse{
+		Data: []ResourceData{
+			{Type: ResourceTypeTerritories, ID: "USA"},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Type") || !strings.Contains(output, "ID") {
+		t.Fatalf("expected linkages headers, got: %s", output)
+	}
+	if !strings.Contains(output, "territories") || !strings.Contains(output, "USA") {
+		t.Fatalf("expected linkage values, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_Linkages(t *testing.T) {
+	resp := &LinkagesResponse{
+		Data: []ResourceData{
+			{Type: ResourceTypeTerritories, ID: "USA"},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Type | ID |") {
+		t.Fatalf("expected linkages header, got: %s", output)
+	}
+	if !strings.Contains(output, "territories") || !strings.Contains(output, "USA") {
+		t.Fatalf("expected linkage values, got: %s", output)
+	}
+}
+
 func TestPrintTable_BetaGroups(t *testing.T) {
 	resp := &BetaGroupsResponse{
 		Data: []Resource[BetaGroupAttributes]{
@@ -1476,6 +1564,42 @@ func TestPrintMarkdown_AppStoreVersionAttachBuildResult(t *testing.T) {
 	}
 }
 
+func TestPrintTable_AppStoreVersionReleaseRequestResult(t *testing.T) {
+	resp := &AppStoreVersionReleaseRequestResult{
+		ReleaseRequestID: "RELEASE_123",
+		VersionID:        "VERSION_123",
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Release Request ID") {
+		t.Fatalf("expected release request header, got: %s", output)
+	}
+	if !strings.Contains(output, "RELEASE_123") {
+		t.Fatalf("expected release request ID in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_AppStoreVersionReleaseRequestResult(t *testing.T) {
+	resp := &AppStoreVersionReleaseRequestResult{
+		ReleaseRequestID: "RELEASE_123",
+		VersionID:        "VERSION_123",
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Release Request ID | Version ID |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "VERSION_123") {
+		t.Fatalf("expected version ID in output, got: %s", output)
+	}
+}
+
 func TestPrintTable_BuildBetaGroupsUpdateResult(t *testing.T) {
 	resp := &BuildBetaGroupsUpdateResult{
 		BuildID:  "BUILD_123",
@@ -1855,5 +1979,184 @@ func TestPrintMarkdown_Devices(t *testing.T) {
 	}
 	if !strings.Contains(output, "UDID-1") {
 		t.Fatalf("expected UDID in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_AccessibilityDeclarations(t *testing.T) {
+	resp := &AccessibilityDeclarationsResponse{
+		Data: []Resource[AccessibilityDeclarationAttributes]{
+			{
+				ID: "decl-1",
+				Attributes: AccessibilityDeclarationAttributes{
+					DeviceFamily: DeviceFamilyIPhone,
+					State:        AccessibilityDeclarationStateDraft,
+				},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Device Family") {
+		t.Fatalf("expected device family header in output, got: %s", output)
+	}
+	if !strings.Contains(output, "IPHONE") {
+		t.Fatalf("expected device family in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_AccessibilityDeclaration(t *testing.T) {
+	supportsVoiceover := true
+	resp := &AccessibilityDeclarationResponse{
+		Data: Resource[AccessibilityDeclarationAttributes]{
+			ID:   "decl-1",
+			Type: ResourceTypeAccessibilityDeclarations,
+			Attributes: AccessibilityDeclarationAttributes{
+				DeviceFamily:      DeviceFamilyIPhone,
+				SupportsVoiceover: &supportsVoiceover,
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Field | Value |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "Supports Voiceover") {
+		t.Fatalf("expected voiceover field in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_AppStoreReviewDetail(t *testing.T) {
+	resp := &AppStoreReviewDetailResponse{
+		Data: Resource[AppStoreReviewDetailAttributes]{
+			ID: "detail-1",
+			Attributes: AppStoreReviewDetailAttributes{
+				ContactFirstName:    "Dev",
+				ContactLastName:     "Example",
+				ContactEmail:        "dev@example.com",
+				ContactPhone:        "123-456-7890",
+				DemoAccountName:     "demo",
+				DemoAccountRequired: true,
+				Notes:               "Review notes",
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "Contact") {
+		t.Fatalf("expected Contact header in output, got: %s", output)
+	}
+	if !strings.Contains(output, "dev@example.com") {
+		t.Fatalf("expected contact email in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_AppStoreReviewDetail(t *testing.T) {
+	resp := &AppStoreReviewDetailResponse{
+		Data: Resource[AppStoreReviewDetailAttributes]{
+			ID: "detail-1",
+			Attributes: AppStoreReviewDetailAttributes{
+				ContactFirstName:    "Dev",
+				ContactLastName:     "Example",
+				ContactEmail:        "dev@example.com",
+				ContactPhone:        "123-456-7890",
+				DemoAccountName:     "demo",
+				DemoAccountRequired: true,
+				Notes:               "Review notes",
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| ID | Contact | Email |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "Dev Example") {
+		t.Fatalf("expected contact name in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_AppStoreReviewAttachments(t *testing.T) {
+	state := "UPLOADED"
+	resp := &AppStoreReviewAttachmentsResponse{
+		Data: []Resource[AppStoreReviewAttachmentAttributes]{
+			{
+				ID: "attach-1",
+				Attributes: AppStoreReviewAttachmentAttributes{
+					FileName:           "review.pdf",
+					FileSize:           1024,
+					SourceFileChecksum: "abcd1234",
+					AssetDeliveryState: &AppMediaAssetState{State: &state},
+				},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(resp)
+	})
+
+	if !strings.Contains(output, "File Name") {
+		t.Fatalf("expected file name header in output, got: %s", output)
+	}
+	if !strings.Contains(output, "review.pdf") {
+		t.Fatalf("expected file name in output, got: %s", output)
+	}
+}
+
+func TestPrintMarkdown_AppStoreReviewAttachment(t *testing.T) {
+	state := "UPLOADED"
+	resp := &AppStoreReviewAttachmentResponse{
+		Data: Resource[AppStoreReviewAttachmentAttributes]{
+			ID:   "attach-1",
+			Type: ResourceTypeAppStoreReviewAttachments,
+			Attributes: AppStoreReviewAttachmentAttributes{
+				FileName:           "review.pdf",
+				FileSize:           2048,
+				SourceFileChecksum: "abcd1234",
+				AssetDeliveryState: &AppMediaAssetState{State: &state},
+			},
+		},
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintMarkdown(resp)
+	})
+
+	if !strings.Contains(output, "| Field | Value |") {
+		t.Fatalf("expected markdown header, got: %s", output)
+	}
+	if !strings.Contains(output, "File Name") {
+		t.Fatalf("expected file name field in output, got: %s", output)
+	}
+}
+
+func TestPrintTable_AppStoreReviewAttachmentDeleteResult(t *testing.T) {
+	result := &AppStoreReviewAttachmentDeleteResult{
+		ID:      "attach-1",
+		Deleted: true,
+	}
+
+	output := captureStdout(t, func() error {
+		return PrintTable(result)
+	})
+
+	if !strings.Contains(output, "Deleted") {
+		t.Fatalf("expected Deleted header in output, got: %s", output)
+	}
+	if !strings.Contains(output, "attach-1") {
+		t.Fatalf("expected id in output, got: %s", output)
 	}
 }

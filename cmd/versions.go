@@ -47,8 +47,8 @@ func VersionsCommand() *ffcli.Command {
 		Name:       "versions",
 		ShortUsage: "asc versions <subcommand> [flags]",
 		ShortHelp:  "Manage App Store versions.",
-		LongHelp: `Manage App Store versions.`,
-		UsageFunc: DefaultUsageFunc,
+		LongHelp:   `Manage App Store versions.`,
+		UsageFunc:  DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			VersionsListCommand(),
 			VersionsGetCommand(),
@@ -56,7 +56,9 @@ func VersionsCommand() *ffcli.Command {
 			VersionsUpdateCommand(),
 			VersionsDeleteCommand(),
 			VersionsAttachBuildCommand(),
+			VersionsReleaseCommand(),
 			PhasedReleaseCommand(),
+			VersionsPromotionsCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
