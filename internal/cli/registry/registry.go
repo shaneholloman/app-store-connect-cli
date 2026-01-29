@@ -54,6 +54,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/users"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/versions"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/winbackoffers"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/webhooks"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/xcodecloud"
 )
 
@@ -88,6 +89,7 @@ func Subcommands(version string) []*ffcli.Command {
 		apps.AppSetupCommand(),
 		apps.AppTagsCommand(),
 		marketplace.MarketplaceCommand(),
+		webhooks.WebhooksCommand(),
 		nominations.NominationsCommand(),
 		bundleids.BundleIDsCommand(),
 		merchantids.MerchantIDsCommand(),
