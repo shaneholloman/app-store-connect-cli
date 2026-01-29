@@ -17,10 +17,34 @@ func TestGetMarketplaceSearchDetailForApp_SendsRequest(t *testing.T) {
 		if req.URL.Path != "/v1/apps/app-1/marketplaceSearchDetail" {
 			t.Fatalf("expected path /v1/apps/app-1/marketplaceSearchDetail, got %s", req.URL.Path)
 		}
+		if req.URL.RawQuery != "" {
+			t.Fatalf("expected no query params, got %s", req.URL.RawQuery)
+		}
 		assertAuthorized(t, req)
 	}, response)
 
-	if _, err := client.GetMarketplaceSearchDetailForApp(context.Background(), "app-1"); err != nil {
+	if _, err := client.GetMarketplaceSearchDetailForApp(context.Background(), "app-1", nil); err != nil {
+		t.Fatalf("GetMarketplaceSearchDetailForApp() error: %v", err)
+	}
+}
+
+func TestGetMarketplaceSearchDetailForApp_WithFields(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"marketplaceSearchDetails","id":"detail-1","attributes":{"catalogUrl":"https://example.com/catalog"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/apps/app-1/marketplaceSearchDetail" {
+			t.Fatalf("expected path /v1/apps/app-1/marketplaceSearchDetail, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("fields[marketplaceSearchDetails]") != "catalogUrl" {
+			t.Fatalf("expected fields catalogUrl, got %q", values.Get("fields[marketplaceSearchDetails]"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.GetMarketplaceSearchDetailForApp(context.Background(), "app-1", []string{"catalogUrl"}); err != nil {
 		t.Fatalf("GetMarketplaceSearchDetailForApp() error: %v", err)
 	}
 }

@@ -830,6 +830,12 @@ func buildSubscriptionOfferCodeOneTimeUseCodesQuery(query *subscriptionOfferCode
 	return values.Encode()
 }
 
+func buildMarketplaceSearchDetailsFieldsQuery(fields []string) string {
+	values := url.Values{}
+	addCSV(values, "fields[marketplaceSearchDetails]", fields)
+	return values.Encode()
+}
+
 func buildMarketplaceWebhooksQuery(query *marketplaceWebhooksQuery) string {
 	values := url.Values{}
 	addCSV(values, "fields[marketplaceWebhooks]", query.fields)

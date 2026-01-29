@@ -46,6 +46,7 @@ func MarketplaceSearchDetailsGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("get", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
+	fields := fs.String("fields", "", "Fields to include: "+strings.Join(marketplaceSearchDetailFieldsList(), ", "))
 	output := fs.String("output", "json", "Output format: json (default), table, markdown")
 	pretty := fs.Bool("pretty", false, "Pretty-print JSON output")
 
@@ -66,6 +67,11 @@ Examples:
 				return flag.ErrHelp
 			}
 
+			fieldsValue, err := normalizeMarketplaceSearchDetailFields(*fields)
+			if err != nil {
+				return fmt.Errorf("marketplace search-details get: %w", err)
+			}
+
 			client, err := getASCClient()
 			if err != nil {
 				return fmt.Errorf("marketplace search-details get: %w", err)
@@ -74,7 +80,7 @@ Examples:
 			requestCtx, cancel := contextWithTimeout(ctx)
 			defer cancel()
 
-			detail, err := client.GetMarketplaceSearchDetailForApp(requestCtx, resolvedAppID)
+			detail, err := client.GetMarketplaceSearchDetailForApp(requestCtx, resolvedAppID, fieldsValue)
 			if err != nil {
 				return fmt.Errorf("marketplace search-details get: failed to fetch: %w", err)
 			}
@@ -244,4 +250,25 @@ Examples:
 			return printOutput(result, *output, *pretty)
 		},
 	}
+}
+
+func normalizeMarketplaceSearchDetailFields(value string) ([]string, error) {
+	fields := splitCSV(value)
+	if len(fields) == 0 {
+		return nil, nil
+	}
+	allowed := map[string]struct{}{}
+	for _, field := range marketplaceSearchDetailFieldsList() {
+		allowed[field] = struct{}{}
+	}
+	for _, field := range fields {
+		if _, ok := allowed[field]; !ok {
+			return nil, fmt.Errorf("--fields must be one of: %s", strings.Join(marketplaceSearchDetailFieldsList(), ", "))
+		}
+	}
+	return fields, nil
+}
+
+func marketplaceSearchDetailFieldsList() []string {
+	return []string{"catalogUrl"}
 }

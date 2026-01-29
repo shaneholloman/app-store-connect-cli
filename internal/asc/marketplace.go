@@ -116,13 +116,16 @@ type MarketplaceWebhookDeleteResult struct {
 }
 
 // GetMarketplaceSearchDetailForApp retrieves marketplace search details for an app.
-func (c *Client) GetMarketplaceSearchDetailForApp(ctx context.Context, appID string) (*MarketplaceSearchDetailResponse, error) {
+func (c *Client) GetMarketplaceSearchDetailForApp(ctx context.Context, appID string, fields []string) (*MarketplaceSearchDetailResponse, error) {
 	appID = strings.TrimSpace(appID)
 	if appID == "" {
 		return nil, fmt.Errorf("appID is required")
 	}
 
 	path := fmt.Sprintf("/v1/apps/%s/marketplaceSearchDetail", appID)
+	if queryString := buildMarketplaceSearchDetailsFieldsQuery(fields); queryString != "" {
+		path += "?" + queryString
+	}
 	data, err := c.do(ctx, "GET", path, nil)
 	if err != nil {
 		return nil, err
