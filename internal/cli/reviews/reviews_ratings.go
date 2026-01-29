@@ -2,7 +2,6 @@ package reviews
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -85,7 +84,7 @@ func executeSingleRatings(ctx context.Context, client *itunes.Client, appID, cou
 	case "markdown":
 		return printRatingsMarkdown(ratings)
 	default:
-		return printRatingsJSON(ratings, pretty)
+		return printOutput(ratings, "json", pretty)
 	}
 }
 
@@ -101,24 +100,8 @@ func executeAllRatings(ctx context.Context, client *itunes.Client, appID string,
 	case "markdown":
 		return printGlobalRatingsMarkdown(global)
 	default:
-		return printGlobalRatingsJSON(global, pretty)
+		return printOutput(global, "json", pretty)
 	}
-}
-
-func printRatingsJSON(ratings *itunes.AppRatings, pretty bool) error {
-	encoder := json.NewEncoder(os.Stdout)
-	if pretty {
-		encoder.SetIndent("", "  ")
-	}
-	return encoder.Encode(ratings)
-}
-
-func printGlobalRatingsJSON(global *itunes.GlobalRatings, pretty bool) error {
-	encoder := json.NewEncoder(os.Stdout)
-	if pretty {
-		encoder.SetIndent("", "  ")
-	}
-	return encoder.Encode(global)
 }
 
 func printRatingsTable(r *itunes.AppRatings) error {
@@ -177,20 +160,7 @@ func printRatingsMarkdown(r *itunes.AppRatings) error {
 
 	if len(r.Histogram) > 0 {
 		fmt.Println("### Histogram")
-		fmt.Println("| Stars | Count | Percentage |")
-		fmt.Println("|-------|-------|------------|")
-		var total int64
-		for _, count := range r.Histogram {
-			total += count
-		}
-		for star := 5; star >= 1; star-- {
-			count := r.Histogram[star]
-			pct := float64(0)
-			if total > 0 {
-				pct = float64(count) / float64(total) * 100
-			}
-			fmt.Printf("| %d★ | %s | %.1f%% |\n", star, formatNumber(count), pct)
-		}
+		printHistogramMarkdown(r.Histogram)
 	}
 	fmt.Println()
 	return nil
@@ -204,20 +174,7 @@ func printGlobalRatingsMarkdown(g *itunes.GlobalRatings) error {
 
 	if len(g.Histogram) > 0 {
 		fmt.Println("### Global Histogram")
-		fmt.Println("| Stars | Count | Percentage |")
-		fmt.Println("|-------|-------|------------|")
-		var total int64
-		for _, count := range g.Histogram {
-			total += count
-		}
-		for star := 5; star >= 1; star-- {
-			count := g.Histogram[star]
-			pct := float64(0)
-			if total > 0 {
-				pct = float64(count) / float64(total) * 100
-			}
-			fmt.Printf("| %d★ | %s | %.1f%% |\n", star, formatNumber(count), pct)
-		}
+		printHistogramMarkdown(g.Histogram)
 	}
 
 	fmt.Print("\n### By Country\n\n")
@@ -253,6 +210,23 @@ func printHistogramRows(histogram map[int]int64) {
 		}
 		bar := strings.Repeat("█", int(pct/5)) // 20 chars max
 		fmt.Printf("  %d★ %8s (%5.1f%%) %s\n", star, formatNumber(count), pct, bar)
+	}
+}
+
+func printHistogramMarkdown(histogram map[int]int64) {
+	fmt.Println("| Stars | Count | Percentage |")
+	fmt.Println("|-------|-------|------------|")
+	var total int64
+	for _, count := range histogram {
+		total += count
+	}
+	for star := 5; star >= 1; star-- {
+		count := histogram[star]
+		pct := float64(0)
+		if total > 0 {
+			pct = float64(count) / float64(total) * 100
+		}
+		fmt.Printf("| %d★ | %s | %.1f%% |\n", star, formatNumber(count), pct)
 	}
 }
 
