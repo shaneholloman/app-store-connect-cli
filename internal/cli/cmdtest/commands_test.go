@@ -139,6 +139,48 @@ func TestVersionFlagPrintsVersion(t *testing.T) {
 	}
 }
 
+func TestCompletionZshPrintsScriptToStdout(t *testing.T) {
+	root := RootCommand("1.2.3")
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"completion", "--shell", "zsh"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	if stdout == "" || !strings.Contains(stdout, "#compdef asc") {
+		t.Fatalf("expected zsh completion script, got %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+}
+
+func TestCompletionInvalidShellErrorsToStderr(t *testing.T) {
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"completion", "--shell", "nope"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected ErrHelp, got %v", err)
+		}
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "Error: unsupported shell") {
+		t.Fatalf("expected shell error, got %q", stderr)
+	}
+}
+
 func TestUnknownCommandPrintsHelpError(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
@@ -158,6 +200,31 @@ func TestUnknownCommandPrintsHelpError(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "Unknown command: nope") {
 		t.Fatalf("expected unknown command message, got %q", stderr)
+	}
+}
+
+func TestUnknownCommandSuggestsSimilarCommand(t *testing.T) {
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"finace"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected ErrHelp, got %v", err)
+		}
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "Unknown command: finace") {
+		t.Fatalf("expected unknown command message, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "Did you mean: finance") {
+		t.Fatalf("expected suggestion message, got %q", stderr)
 	}
 }
 
