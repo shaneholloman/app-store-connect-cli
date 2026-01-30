@@ -409,6 +409,18 @@ func PrintMarkdown(data interface{}) error {
 		return printAnalyticsReportDownloadResultMarkdown(v)
 	case *AnalyticsReportGetResult:
 		return printAnalyticsReportGetResultMarkdown(v)
+	case *AnalyticsReportsResponse:
+		return printAnalyticsReportsMarkdown(v)
+	case *AnalyticsReportResponse:
+		return printAnalyticsReportsMarkdown(&AnalyticsReportsResponse{Data: []Resource[AnalyticsReportAttributes]{v.Data}, Links: v.Links})
+	case *AnalyticsReportInstancesResponse:
+		return printAnalyticsReportInstancesMarkdown(v)
+	case *AnalyticsReportInstanceResponse:
+		return printAnalyticsReportInstancesMarkdown(&AnalyticsReportInstancesResponse{Data: []Resource[AnalyticsReportInstanceAttributes]{v.Data}, Links: v.Links})
+	case *AnalyticsReportSegmentsResponse:
+		return printAnalyticsReportSegmentsMarkdown(v)
+	case *AnalyticsReportSegmentResponse:
+		return printAnalyticsReportSegmentsMarkdown(&AnalyticsReportSegmentsResponse{Data: []Resource[AnalyticsReportSegmentAttributes]{v.Data}, Links: v.Links})
 	case *AppStoreVersionSubmissionResult:
 		return printAppStoreVersionSubmissionMarkdown(v)
 	case *AppStoreVersionSubmissionCreateResult:
@@ -1055,6 +1067,18 @@ func PrintTable(data interface{}) error {
 		return printAnalyticsReportDownloadResultTable(v)
 	case *AnalyticsReportGetResult:
 		return printAnalyticsReportGetResultTable(v)
+	case *AnalyticsReportsResponse:
+		return printAnalyticsReportsTable(v)
+	case *AnalyticsReportResponse:
+		return printAnalyticsReportsTable(&AnalyticsReportsResponse{Data: []Resource[AnalyticsReportAttributes]{v.Data}, Links: v.Links})
+	case *AnalyticsReportInstancesResponse:
+		return printAnalyticsReportInstancesTable(v)
+	case *AnalyticsReportInstanceResponse:
+		return printAnalyticsReportInstancesTable(&AnalyticsReportInstancesResponse{Data: []Resource[AnalyticsReportInstanceAttributes]{v.Data}, Links: v.Links})
+	case *AnalyticsReportSegmentsResponse:
+		return printAnalyticsReportSegmentsTable(v)
+	case *AnalyticsReportSegmentResponse:
+		return printAnalyticsReportSegmentsTable(&AnalyticsReportSegmentsResponse{Data: []Resource[AnalyticsReportSegmentAttributes]{v.Data}, Links: v.Links})
 	case *AppStoreVersionSubmissionResult:
 		return printAppStoreVersionSubmissionTable(v)
 	case *AppStoreVersionSubmissionCreateResult:
