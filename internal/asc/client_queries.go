@@ -101,7 +101,6 @@ type marketplaceWebhooksQuery struct {
 	listQuery
 	fields []string
 }
-
 type alternativeDistributionDomainsQuery struct {
 	listQuery
 	fields []string
@@ -125,6 +124,23 @@ type alternativeDistributionPackageVariantsQuery struct {
 type alternativeDistributionPackageDeltasQuery struct {
 	listQuery
 	fields []string
+}
+
+type webhooksQuery struct {
+	listQuery
+	fields    []string
+	appFields []string
+	include   []string
+}
+
+type webhookDeliveriesQuery struct {
+	listQuery
+	deliveryStates []string
+	createdAfter   []string
+	createdBefore  []string
+	fields         []string
+	eventFields    []string
+	include        []string
 }
 
 type backgroundAssetsQuery struct {
@@ -901,6 +917,27 @@ func buildAlternativeDistributionPackageVariantsQuery(query *alternativeDistribu
 func buildAlternativeDistributionPackageDeltasQuery(query *alternativeDistributionPackageDeltasQuery) string {
 	values := url.Values{}
 	addCSV(values, "fields[alternativeDistributionPackageDeltas]", query.fields)
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
+func buildWebhooksQuery(query *webhooksQuery) string {
+	values := url.Values{}
+	addCSV(values, "fields[webhooks]", query.fields)
+	addCSV(values, "fields[apps]", query.appFields)
+	addCSV(values, "include", query.include)
+	addLimit(values, query.limit)
+	return values.Encode()
+}
+
+func buildWebhookDeliveriesQuery(query *webhookDeliveriesQuery) string {
+	values := url.Values{}
+	addCSV(values, "filter[deliveryState]", query.deliveryStates)
+	addCSV(values, "filter[createdDateGreaterThanOrEqualTo]", query.createdAfter)
+	addCSV(values, "filter[createdDateLessThan]", query.createdBefore)
+	addCSV(values, "fields[webhookDeliveries]", query.fields)
+	addCSV(values, "fields[webhookEvents]", query.eventFields)
+	addCSV(values, "include", query.include)
 	addLimit(values, query.limit)
 	return values.Encode()
 }

@@ -71,6 +71,14 @@ func PrintMarkdown(data interface{}) error {
 		return printMarketplaceWebhooksMarkdown(v)
 	case *MarketplaceWebhookResponse:
 		return printMarketplaceWebhookMarkdown(v)
+	case *WebhooksResponse:
+		return printWebhooksMarkdown(v)
+	case *WebhookResponse:
+		return printWebhooksMarkdown(&WebhooksResponse{Data: []Resource[WebhookAttributes]{v.Data}})
+	case *WebhookDeliveriesResponse:
+		return printWebhookDeliveriesMarkdown(v)
+	case *WebhookDeliveryResponse:
+		return printWebhookDeliveriesMarkdown(&WebhookDeliveriesResponse{Data: []Resource[WebhookDeliveryAttributes]{v.Data}})
 	case *AlternativeDistributionDomainsResponse:
 		return printAlternativeDistributionDomainsMarkdown(v)
 	case *AlternativeDistributionDomainResponse:
@@ -463,6 +471,10 @@ func PrintMarkdown(data interface{}) error {
 		return printMarketplaceSearchDetailDeleteResultMarkdown(v)
 	case *MarketplaceWebhookDeleteResult:
 		return printMarketplaceWebhookDeleteResultMarkdown(v)
+	case *WebhookDeleteResult:
+		return printWebhookDeleteResultMarkdown(v)
+	case *WebhookPingResponse:
+		return printWebhookPingMarkdown(v)
 	case *MerchantIDDeleteResult:
 		return printMerchantIDDeleteResultMarkdown(v)
 	case *PassTypeIDDeleteResult:
@@ -595,6 +607,14 @@ func PrintTable(data interface{}) error {
 		return printMarketplaceWebhooksTable(v)
 	case *MarketplaceWebhookResponse:
 		return printMarketplaceWebhookTable(v)
+	case *WebhooksResponse:
+		return printWebhooksTable(v)
+	case *WebhookResponse:
+		return printWebhooksTable(&WebhooksResponse{Data: []Resource[WebhookAttributes]{v.Data}})
+	case *WebhookDeliveriesResponse:
+		return printWebhookDeliveriesTable(v)
+	case *WebhookDeliveryResponse:
+		return printWebhookDeliveriesTable(&WebhookDeliveriesResponse{Data: []Resource[WebhookDeliveryAttributes]{v.Data}})
 	case *AlternativeDistributionDomainsResponse:
 		return printAlternativeDistributionDomainsTable(v)
 	case *AlternativeDistributionDomainResponse:
@@ -987,6 +1007,10 @@ func PrintTable(data interface{}) error {
 		return printMarketplaceSearchDetailDeleteResultTable(v)
 	case *MarketplaceWebhookDeleteResult:
 		return printMarketplaceWebhookDeleteResultTable(v)
+	case *WebhookDeleteResult:
+		return printWebhookDeleteResultTable(v)
+	case *WebhookPingResponse:
+		return printWebhookPingTable(v)
 	case *MerchantIDDeleteResult:
 		return printMerchantIDDeleteResultTable(v)
 	case *PassTypeIDDeleteResult:
