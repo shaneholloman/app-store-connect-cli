@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ func TestGameCenterAppVersionsListValidationErrors(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
-	stdout, _ := captureOutput(t, func() {
+	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{"game-center", "app-versions", "list"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -27,13 +28,16 @@ func TestGameCenterAppVersionsListValidationErrors(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
+	if !strings.Contains(stderr, "Error: --app is required (or set ASC_APP_ID)") {
+		t.Fatalf("expected missing app error, got %q", stderr)
+	}
 }
 
 func TestGameCenterAppVersionsGetValidationErrors(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
-	stdout, _ := captureOutput(t, func() {
+	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{"game-center", "app-versions", "get"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -46,13 +50,16 @@ func TestGameCenterAppVersionsGetValidationErrors(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
+	if !strings.Contains(stderr, "Error: --id is required") {
+		t.Fatalf("expected missing id error, got %q", stderr)
+	}
 }
 
 func TestGameCenterAppVersionsCompatibilityListValidationErrors(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
-	stdout, _ := captureOutput(t, func() {
+	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{"game-center", "app-versions", "compatibility", "list"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -65,13 +72,16 @@ func TestGameCenterAppVersionsCompatibilityListValidationErrors(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
+	if !strings.Contains(stderr, "Error: --id is required") {
+		t.Fatalf("expected missing id error, got %q", stderr)
+	}
 }
 
 func TestGameCenterAppVersionsAppStoreVersionGetValidationErrors(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
-	stdout, _ := captureOutput(t, func() {
+	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{"game-center", "app-versions", "app-store-version", "get"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -83,6 +93,9 @@ func TestGameCenterAppVersionsAppStoreVersionGetValidationErrors(t *testing.T) {
 
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "Error: --id is required") {
+		t.Fatalf("expected missing id error, got %q", stderr)
 	}
 }
 

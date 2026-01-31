@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ func TestGameCenterGroupsListValidationErrors(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
-	stdout, _ := captureOutput(t, func() {
+	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{"game-center", "groups", "list"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -27,13 +28,16 @@ func TestGameCenterGroupsListValidationErrors(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
+	if !strings.Contains(stderr, "Error: --app is required (or set ASC_APP_ID)") {
+		t.Fatalf("expected missing app error, got %q", stderr)
+	}
 }
 
 func TestGameCenterGroupsGetValidationErrors(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
-	stdout, _ := captureOutput(t, func() {
+	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{"game-center", "groups", "get"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -46,20 +50,26 @@ func TestGameCenterGroupsGetValidationErrors(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
+	if !strings.Contains(stderr, "Error: --id is required") {
+		t.Fatalf("expected missing id error, got %q", stderr)
+	}
 }
 
 func TestGameCenterGroupsUpdateValidationErrors(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr string
 	}{
 		{
-			name: "missing id",
-			args: []string{"game-center", "groups", "update", "--reference-name", "Group 1"},
+			name:    "missing id",
+			args:    []string{"game-center", "groups", "update", "--reference-name", "Group 1"},
+			wantErr: "Error: --id is required",
 		},
 		{
-			name: "missing reference-name",
-			args: []string{"game-center", "groups", "update", "--id", "GROUP_ID"},
+			name:    "missing reference-name",
+			args:    []string{"game-center", "groups", "update", "--id", "GROUP_ID"},
+			wantErr: "Error: --reference-name is required",
 		},
 	}
 
@@ -68,7 +78,7 @@ func TestGameCenterGroupsUpdateValidationErrors(t *testing.T) {
 			root := RootCommand("1.2.3")
 			root.FlagSet.SetOutput(io.Discard)
 
-			stdout, _ := captureOutput(t, func() {
+			stdout, stderr := captureOutput(t, func() {
 				if err := root.Parse(test.args); err != nil {
 					t.Fatalf("parse error: %v", err)
 				}
@@ -80,6 +90,9 @@ func TestGameCenterGroupsUpdateValidationErrors(t *testing.T) {
 
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
 			}
 		})
 	}
@@ -87,16 +100,19 @@ func TestGameCenterGroupsUpdateValidationErrors(t *testing.T) {
 
 func TestGameCenterGroupsDeleteValidationErrors(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr string
 	}{
 		{
-			name: "missing id",
-			args: []string{"game-center", "groups", "delete", "--confirm"},
+			name:    "missing id",
+			args:    []string{"game-center", "groups", "delete", "--confirm"},
+			wantErr: "Error: --id is required",
 		},
 		{
-			name: "missing confirm",
-			args: []string{"game-center", "groups", "delete", "--id", "GROUP_ID"},
+			name:    "missing confirm",
+			args:    []string{"game-center", "groups", "delete", "--id", "GROUP_ID"},
+			wantErr: "Error: --confirm is required",
 		},
 	}
 
@@ -105,7 +121,7 @@ func TestGameCenterGroupsDeleteValidationErrors(t *testing.T) {
 			root := RootCommand("1.2.3")
 			root.FlagSet.SetOutput(io.Discard)
 
-			stdout, _ := captureOutput(t, func() {
+			stdout, stderr := captureOutput(t, func() {
 				if err := root.Parse(test.args); err != nil {
 					t.Fatalf("parse error: %v", err)
 				}
@@ -117,6 +133,9 @@ func TestGameCenterGroupsDeleteValidationErrors(t *testing.T) {
 
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
 			}
 		})
 	}
@@ -124,16 +143,19 @@ func TestGameCenterGroupsDeleteValidationErrors(t *testing.T) {
 
 func TestGameCenterGroupAchievementsSetValidationErrors(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr string
 	}{
 		{
-			name: "missing group-id",
-			args: []string{"game-center", "groups", "achievements", "set", "--ids", "ACH_1"},
+			name:    "missing group-id",
+			args:    []string{"game-center", "groups", "achievements", "set", "--ids", "ACH_1"},
+			wantErr: "Error: --group-id is required",
 		},
 		{
-			name: "missing ids",
-			args: []string{"game-center", "groups", "achievements", "set", "--group-id", "GROUP_ID"},
+			name:    "missing ids",
+			args:    []string{"game-center", "groups", "achievements", "set", "--group-id", "GROUP_ID"},
+			wantErr: "Error: --ids is required",
 		},
 	}
 
@@ -142,7 +164,7 @@ func TestGameCenterGroupAchievementsSetValidationErrors(t *testing.T) {
 			root := RootCommand("1.2.3")
 			root.FlagSet.SetOutput(io.Discard)
 
-			stdout, _ := captureOutput(t, func() {
+			stdout, stderr := captureOutput(t, func() {
 				if err := root.Parse(test.args); err != nil {
 					t.Fatalf("parse error: %v", err)
 				}
@@ -154,6 +176,9 @@ func TestGameCenterGroupAchievementsSetValidationErrors(t *testing.T) {
 
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
 			}
 		})
 	}
@@ -161,16 +186,19 @@ func TestGameCenterGroupAchievementsSetValidationErrors(t *testing.T) {
 
 func TestGameCenterGroupLeaderboardsSetValidationErrors(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr string
 	}{
 		{
-			name: "missing group-id",
-			args: []string{"game-center", "groups", "leaderboards", "set", "--ids", "LB_1"},
+			name:    "missing group-id",
+			args:    []string{"game-center", "groups", "leaderboards", "set", "--ids", "LB_1"},
+			wantErr: "Error: --group-id is required",
 		},
 		{
-			name: "missing ids",
-			args: []string{"game-center", "groups", "leaderboards", "set", "--group-id", "GROUP_ID"},
+			name:    "missing ids",
+			args:    []string{"game-center", "groups", "leaderboards", "set", "--group-id", "GROUP_ID"},
+			wantErr: "Error: --ids is required",
 		},
 	}
 
@@ -179,7 +207,7 @@ func TestGameCenterGroupLeaderboardsSetValidationErrors(t *testing.T) {
 			root := RootCommand("1.2.3")
 			root.FlagSet.SetOutput(io.Discard)
 
-			stdout, _ := captureOutput(t, func() {
+			stdout, stderr := captureOutput(t, func() {
 				if err := root.Parse(test.args); err != nil {
 					t.Fatalf("parse error: %v", err)
 				}
@@ -192,22 +220,28 @@ func TestGameCenterGroupLeaderboardsSetValidationErrors(t *testing.T) {
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
 			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
+			}
 		})
 	}
 }
 
 func TestGameCenterGroupChallengesSetValidationErrors(t *testing.T) {
 	tests := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr string
 	}{
 		{
-			name: "missing group-id",
-			args: []string{"game-center", "groups", "challenges", "set", "--ids", "CH_1"},
+			name:    "missing group-id",
+			args:    []string{"game-center", "groups", "challenges", "set", "--ids", "CH_1"},
+			wantErr: "Error: --group-id is required",
 		},
 		{
-			name: "missing ids",
-			args: []string{"game-center", "groups", "challenges", "set", "--group-id", "GROUP_ID"},
+			name:    "missing ids",
+			args:    []string{"game-center", "groups", "challenges", "set", "--group-id", "GROUP_ID"},
+			wantErr: "Error: --ids is required",
 		},
 	}
 
@@ -216,7 +250,7 @@ func TestGameCenterGroupChallengesSetValidationErrors(t *testing.T) {
 			root := RootCommand("1.2.3")
 			root.FlagSet.SetOutput(io.Discard)
 
-			stdout, _ := captureOutput(t, func() {
+			stdout, stderr := captureOutput(t, func() {
 				if err := root.Parse(test.args); err != nil {
 					t.Fatalf("parse error: %v", err)
 				}
@@ -228,6 +262,9 @@ func TestGameCenterGroupChallengesSetValidationErrors(t *testing.T) {
 
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
 			}
 		})
 	}
@@ -258,7 +295,7 @@ func TestGameCenterGroupDetailsListValidationErrors(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
-	stdout, _ := captureOutput(t, func() {
+	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{"game-center", "groups", "details", "list"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -270,6 +307,9 @@ func TestGameCenterGroupDetailsListValidationErrors(t *testing.T) {
 
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "Error: --group-id is required") {
+		t.Fatalf("expected missing group-id error, got %q", stderr)
 	}
 }
 
