@@ -46,7 +46,7 @@ Examples:
 
 			client, err := getASCClient()
 			if err != nil {
-				return err
+				return fmt.Errorf("sandbox get: %w", err)
 			}
 
 			requestCtx, cancel := contextWithTimeout(ctx)

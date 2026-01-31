@@ -91,6 +91,9 @@ func findSandboxTesterByEmail(ctx context.Context, client *asc.Client, email str
 		if strings.TrimSpace(resp.Links.Next) == "" {
 			break
 		}
+		if err := validateNextURL(resp.Links.Next); err != nil {
+			return nil, err
+		}
 		next = resp.Links.Next
 	}
 	return nil, fmt.Errorf("no sandbox tester found for %q", strings.TrimSpace(email))
