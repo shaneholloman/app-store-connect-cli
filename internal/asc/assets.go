@@ -68,6 +68,7 @@ type (
 
 // Valid screenshot display types for validation.
 var ValidScreenshotDisplayTypes = []string{
+	"APP_IPHONE_69",
 	"APP_IPHONE_67",
 	"APP_IPHONE_65",
 	"APP_IPHONE_61",
@@ -89,6 +90,7 @@ var ValidScreenshotDisplayTypes = []string{
 	"APP_WATCH_SERIES_3",
 	"APP_APPLE_TV",
 	"APP_APPLE_VISION_PRO",
+	"IMESSAGE_APP_IPHONE_69",
 	"IMESSAGE_APP_IPHONE_67",
 	"IMESSAGE_APP_IPHONE_61",
 	"IMESSAGE_APP_IPHONE_65",
