@@ -45,6 +45,7 @@ Examples:
   asc reviews --app "123456789" --paginate
   asc reviews ratings --app "123456789"
   asc reviews ratings --app "123456789" --all
+  asc reviews summarizations --app "123456789" --platform IOS --territory US
   asc reviews respond --review-id "REVIEW_ID" --response "Thanks!"
   asc reviews response get --id "RESPONSE_ID"
   asc reviews response delete --id "RESPONSE_ID" --confirm
@@ -54,6 +55,7 @@ Examples:
 		Subcommands: []*ffcli.Command{
 			ReviewsListCommand(),
 			ReviewsRatingsCommand(),
+			ReviewsSummarizationsCommand(),
 			ReviewsRespondCommand(),
 			ReviewsResponseCommand(),
 		},

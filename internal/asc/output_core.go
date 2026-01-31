@@ -55,6 +55,8 @@ func PrintMarkdown(data interface{}) error {
 		return printCrashesMarkdown(v)
 	case *ReviewsResponse:
 		return printReviewsMarkdown(v)
+	case *CustomerReviewSummarizationsResponse:
+		return printCustomerReviewSummarizationsMarkdown(v)
 	case *AppsResponse:
 		return printAppsMarkdown(v)
 	case *AppClipsResponse:
@@ -925,6 +927,8 @@ func PrintTable(data interface{}) error {
 		return printCrashesTable(v)
 	case *ReviewsResponse:
 		return printReviewsTable(v)
+	case *CustomerReviewSummarizationsResponse:
+		return printCustomerReviewSummarizationsTable(v)
 	case *AppsResponse:
 		return printAppsTable(v)
 	case *AppClipsResponse:

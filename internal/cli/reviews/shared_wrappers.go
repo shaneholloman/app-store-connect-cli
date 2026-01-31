@@ -52,3 +52,7 @@ func splitCSVUpper(value string) []string {
 func normalizeSubmitPlatform(value string) (string, error) {
 	return shared.NormalizeAppStoreVersionPlatform(value)
 }
+
+func normalizeReviewSummarizationPlatforms(values []string) ([]string, error) {
+	return shared.NormalizeAppStoreVersionPlatforms(values)
+}
