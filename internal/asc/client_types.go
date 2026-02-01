@@ -262,6 +262,7 @@ type UTI string
 
 const (
 	UTIIPA UTI = "com.apple.ipa"
+	UTIPKG UTI = "com.apple.installer-package-archive"
 )
 
 // Relationship represents a generic API relationship.

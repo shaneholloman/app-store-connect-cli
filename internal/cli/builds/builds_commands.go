@@ -21,10 +21,11 @@ func BuildsUploadCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("upload", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (required, or ASC_APP_ID env)")
-	ipaPath := fs.String("ipa", "", "Path to .ipa file (required)")
+	ipaPath := fs.String("ipa", "", "Path to .ipa file (for iOS, tvOS, visionOS apps)")
+	pkgPath := fs.String("pkg", "", "Path to .pkg file (for macOS apps)")
 	version := fs.String("version", "", "CFBundleShortVersionString (e.g., 1.0.0, auto-extracted from IPA if not provided)")
 	buildNumber := fs.String("build-number", "", "CFBundleVersion (e.g., 123, auto-extracted from IPA if not provided)")
-	platform := fs.String("platform", "IOS", "Platform: IOS, MAC_OS, TV_OS, VISION_OS")
+	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS (auto-detected for --pkg)")
 	dryRun := fs.Bool("dry-run", false, "Reserve upload operations without uploading the file")
 	concurrency := fs.Int("concurrency", 1, "Upload concurrency (default 1)")
 	verifyChecksum := fs.Bool("checksum", false, "Verify upload checksums if provided by API")
@@ -41,14 +42,18 @@ func BuildsUploadCommand() *ffcli.Command {
 		ShortHelp:  "Upload a build to App Store Connect.",
 		LongHelp: `Upload a build to App Store Connect.
 
-By default, this command uploads the IPA to the presigned URLs and commits
+By default, this command uploads the IPA/PKG to the presigned URLs and commits
 the file. Use --dry-run to only reserve the upload operations.
+
+Use --ipa for iOS, tvOS, and visionOS apps. Use --pkg for macOS apps.
+When using --pkg, the platform is automatically set to MAC_OS.
 
 Examples:
   asc builds upload --app "123456789" --ipa "path/to/app.ipa"
   asc builds upload --ipa "app.ipa" --version "1.0.0" --build-number "123"
   asc builds upload --app "123456789" --ipa "app.ipa" --dry-run
-  asc builds upload --app "123456789" --ipa "app.ipa" --test-notes "Test flow" --locale "en-US" --wait`,
+  asc builds upload --app "123456789" --ipa "app.ipa" --test-notes "Test flow" --locale "en-US" --wait
+  asc builds upload --app "123456789" --pkg "path/to/app.pkg" --version "1.0.0" --build-number "123"`,
 		FlagSet:   fs,
 		UsageFunc: DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -58,22 +63,63 @@ Examples:
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
 				return flag.ErrHelp
 			}
-			if *ipaPath == "" {
-				fmt.Fprintf(os.Stderr, "Error: --ipa is required\n\n")
+
+			// Validate that exactly one of --ipa or --pkg is provided
+			hasIPA := *ipaPath != ""
+			hasPKG := *pkgPath != ""
+			if !hasIPA && !hasPKG {
+				fmt.Fprintf(os.Stderr, "Error: --ipa or --pkg is required\n\n")
+				return flag.ErrHelp
+			}
+			if hasIPA && hasPKG {
+				fmt.Fprintf(os.Stderr, "Error: --ipa and --pkg are mutually exclusive\n\n")
 				return flag.ErrHelp
 			}
 
-			// Validate IPA file exists
-			fileInfo, err := os.Stat(*ipaPath)
+			// Determine file path and UTI based on provided flag
+			var filePath string
+			var fileUTI asc.UTI
+			if hasIPA {
+				filePath = *ipaPath
+				fileUTI = asc.UTIIPA
+			} else {
+				filePath = *pkgPath
+				fileUTI = asc.UTIPKG
+			}
+
+			// Validate file exists
+			fileInfo, err := os.Stat(filePath)
 			if err != nil {
-				return fmt.Errorf("builds upload: failed to stat IPA: %w", err)
+				if hasIPA {
+					return fmt.Errorf("builds upload: failed to stat IPA: %w", err)
+				}
+				return fmt.Errorf("builds upload: failed to stat PKG: %w", err)
 			}
 			if fileInfo.IsDir() {
-				return fmt.Errorf("builds upload: --ipa must be a file")
+				if hasIPA {
+					return fmt.Errorf("builds upload: --ipa must be a file")
+				}
+				return fmt.Errorf("builds upload: --pkg must be a file")
+			}
+
+			// Determine platform
+			var platformValue asc.Platform
+			if hasPKG {
+				// For PKG files, platform must be MAC_OS
+				if *platform != "" && strings.ToUpper(*platform) != "MAC_OS" {
+					return fmt.Errorf("builds upload: --pkg requires --platform MAC_OS (or omit --platform)")
+				}
+				platformValue = asc.PlatformMacOS
+			} else {
+				// For IPA files, default to IOS if not specified
+				platformStr := strings.ToUpper(*platform)
+				if platformStr == "" {
+					platformStr = "IOS"
+				}
+				platformValue = asc.Platform(platformStr)
 			}
 
 			// Validate platform
-			platformValue := asc.Platform(strings.ToUpper(*platform))
 			switch platformValue {
 			case asc.PlatformIOS, asc.PlatformMacOS, asc.PlatformTVOS, asc.PlatformVisionOS:
 			default:
@@ -118,8 +164,27 @@ Examples:
 			versionValue := strings.TrimSpace(*version)
 			buildNumberValue := strings.TrimSpace(*buildNumber)
 			if versionValue == "" || buildNumberValue == "" {
-				info, err := shared.ExtractBundleInfoFromIPA(*ipaPath)
-				if err != nil {
+				// Auto-extraction only works for IPA files
+				if hasIPA {
+					info, err := shared.ExtractBundleInfoFromIPA(filePath)
+					if err != nil {
+						missingFlags := make([]string, 0, 2)
+						if versionValue == "" {
+							missingFlags = append(missingFlags, "--version")
+						}
+						if buildNumberValue == "" {
+							missingFlags = append(missingFlags, "--build-number")
+						}
+						return fmt.Errorf("builds upload: %s required (failed to extract from IPA: %w)", strings.Join(missingFlags, " and "), err)
+					}
+					if versionValue == "" {
+						versionValue = info.Version
+					}
+					if buildNumberValue == "" {
+						buildNumberValue = info.BuildNumber
+					}
+				} else {
+					// PKG files require explicit version and build number
 					missingFlags := make([]string, 0, 2)
 					if versionValue == "" {
 						missingFlags = append(missingFlags, "--version")
@@ -127,13 +192,7 @@ Examples:
 					if buildNumberValue == "" {
 						missingFlags = append(missingFlags, "--build-number")
 					}
-					return fmt.Errorf("builds upload: %s required (failed to extract from IPA: %w)", strings.Join(missingFlags, " and "), err)
-				}
-				if versionValue == "" {
-					versionValue = info.Version
-				}
-				if buildNumberValue == "" {
-					buildNumberValue = info.BuildNumber
+					return fmt.Errorf("builds upload: %s required for PKG uploads", strings.Join(missingFlags, " and "))
 				}
 			}
 			if versionValue == "" || buildNumberValue == "" {
@@ -191,7 +250,7 @@ Examples:
 					Attributes: asc.BuildUploadFileAttributes{
 						FileName:  fileInfo.Name(),
 						FileSize:  fileInfo.Size(),
-						UTI:       asc.UTIIPA,
+						UTI:       fileUTI,
 						AssetType: asc.AssetTypeAsset,
 					},
 					Relationships: &asc.BuildUploadFileRelationships{
@@ -225,7 +284,7 @@ Examples:
 					asc.WithUploadConcurrency(*concurrency),
 				}
 				uploadCtx, uploadCancel := contextWithUploadTimeout(ctx)
-				err = asc.ExecuteUploadOperations(uploadCtx, *ipaPath, fileResp.Data.Attributes.UploadOperations, uploadOpts...)
+				err = asc.ExecuteUploadOperations(uploadCtx, filePath, fileResp.Data.Attributes.UploadOperations, uploadOpts...)
 				uploadCancel()
 				if err != nil {
 					return fmt.Errorf("builds upload: upload failed: %w", err)
@@ -238,7 +297,7 @@ Examples:
 					if src == nil || (src.File == nil && src.Composite == nil) {
 						fmt.Fprintln(os.Stderr, "Warning: --checksum requested but API provided no checksums to verify; skipping")
 					} else {
-						checksums, err := asc.VerifySourceFileChecksums(*ipaPath, src)
+						checksums, err := asc.VerifySourceFileChecksums(filePath, src)
 						if err != nil {
 							return fmt.Errorf("builds upload: checksum verification failed: %w", err)
 						}
@@ -325,6 +384,7 @@ Examples:
   asc builds expire --build "BUILD_ID"
   asc builds expire-all --app "123456789" --older-than 90d --dry-run
   asc builds upload --app "123456789" --ipa "app.ipa"
+  asc builds upload --app "123456789" --pkg "app.pkg" --version "1.0.0" --build-number "1"
   asc builds uploads list --app "123456789"
   asc builds test-notes list --build "BUILD_ID"
   asc builds individual-testers list --build "BUILD_ID"
