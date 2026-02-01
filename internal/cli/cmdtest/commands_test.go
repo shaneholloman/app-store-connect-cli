@@ -2912,9 +2912,14 @@ func TestBuildsUploadValidationErrors(t *testing.T) {
 			wantErr: "Error: --app is required",
 		},
 		{
-			name:    "missing ipa",
+			name:    "missing ipa or pkg",
 			args:    []string{"builds", "upload", "--app", "APP_123", "--version", "1.0.0", "--build-number", "123"},
-			wantErr: "Error: --ipa is required",
+			wantErr: "Error: --ipa or --pkg is required",
+		},
+		{
+			name:    "ipa and pkg mutually exclusive",
+			args:    []string{"builds", "upload", "--app", "APP_123", "--ipa", "app.ipa", "--pkg", "app.pkg", "--version", "1.0.0", "--build-number", "123"},
+			wantErr: "Error: --ipa and --pkg are mutually exclusive",
 		},
 	}
 
