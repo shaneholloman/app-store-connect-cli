@@ -27,6 +27,12 @@ func PaginateAll(ctx context.Context, firstPage PaginatedResponse, fetchNext Pag
 		return nil, nil
 	}
 
+	// Check for typed nil (non-nil interface containing nil pointer).
+	// Return an empty result of the same type rather than panicking.
+	if reflect.ValueOf(firstPage).IsNil() {
+		return newEmptyPaginatedResponse(firstPage)
+	}
+
 	// Create an empty result of the same concrete type using reflection.
 	result, err := newEmptyPaginatedResponse(firstPage)
 	if err != nil {
@@ -79,8 +85,10 @@ func newEmptyPaginatedResponse(src PaginatedResponse) (PaginatedResponse, error)
 		return nil, fmt.Errorf("unsupported response type for pagination: %T (expected pointer)", src)
 	}
 
-	// Create a new zero-valued struct of the same type
-	newPtr := reflect.New(srcValue.Elem().Type())
+	// Create a new zero-valued struct of the same type.
+	// Use srcValue.Type().Elem() instead of srcValue.Elem().Type() to handle
+	// typed nil pointers (e.g., var resp *Type = nil passed as interface).
+	newPtr := reflect.New(srcValue.Type().Elem())
 	result, ok := newPtr.Interface().(PaginatedResponse)
 	if !ok {
 		return nil, fmt.Errorf("unsupported response type for pagination: %T does not implement PaginatedResponse", src)
@@ -103,6 +111,15 @@ func aggregatePageData(result, page PaginatedResponse) error {
 
 	if resultValue.Type() != pageValue.Type() {
 		return fmt.Errorf("type mismatch: page is %T but result is %T", page, result)
+	}
+
+	// Handle typed nil pointers (non-nil interface containing nil pointer).
+	// A typed nil page has no data to aggregate, so skip it.
+	if pageValue.IsNil() {
+		return nil
+	}
+	if resultValue.IsNil() {
+		return fmt.Errorf("page aggregation received nil result pointer")
 	}
 
 	resultElem := resultValue.Elem()

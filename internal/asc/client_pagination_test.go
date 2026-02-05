@@ -212,6 +212,33 @@ func TestPaginateAll_NilFirstPage(t *testing.T) {
 	}
 }
 
+func TestPaginateAll_TypedNilFirstPage(t *testing.T) {
+	// A typed nil (non-nil interface containing a nil pointer) should not panic.
+	// This tests the edge case where someone accidentally passes a typed nil.
+	var typedNil *BetaGroupsResponse = nil
+	var firstPage PaginatedResponse = typedNil // interface is non-nil, but contains nil pointer
+
+	// The function should handle this gracefully without panicking
+	result, err := PaginateAll(context.Background(), firstPage, func(ctx context.Context, nextURL string) (PaginatedResponse, error) {
+		return nil, fmt.Errorf("should not be called")
+	})
+
+	// Should succeed and return an empty result (no data, no links to follow)
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result for typed nil input")
+	}
+	groups, ok := result.(*BetaGroupsResponse)
+	if !ok {
+		t.Fatalf("expected *BetaGroupsResponse, got %T", result)
+	}
+	if len(groups.Data) != 0 {
+		t.Fatalf("expected 0 items, got %d", len(groups.Data))
+	}
+}
+
 func TestPaginateAll_EmptyData(t *testing.T) {
 	firstPage := &BetaTestersResponse{
 		Data:  []Resource[BetaTesterAttributes]{},
