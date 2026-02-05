@@ -8,7 +8,11 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
-func resolvePublishBetaGroupIDs(ctx context.Context, client *asc.Client, appID string, groups []string) ([]string, error) {
+type publishBetaGroupsClient interface {
+	GetBetaGroups(ctx context.Context, appID string, opts ...asc.BetaGroupsOption) (*asc.BetaGroupsResponse, error)
+}
+
+func resolvePublishBetaGroupIDs(ctx context.Context, client publishBetaGroupsClient, appID string, groups []string) ([]string, error) {
 	allGroups, err := listAllPublishBetaGroups(ctx, client, appID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list beta groups: %w", err)
@@ -16,7 +20,7 @@ func resolvePublishBetaGroupIDs(ctx context.Context, client *asc.Client, appID s
 	return resolvePublishBetaGroupIDsFromList(groups, allGroups)
 }
 
-func listAllPublishBetaGroups(ctx context.Context, client *asc.Client, appID string) (*asc.BetaGroupsResponse, error) {
+func listAllPublishBetaGroups(ctx context.Context, client publishBetaGroupsClient, appID string) (*asc.BetaGroupsResponse, error) {
 	firstPage, err := client.GetBetaGroups(ctx, appID, asc.WithBetaGroupsLimit(200))
 	if err != nil {
 		return nil, err
