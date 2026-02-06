@@ -102,6 +102,11 @@ Examples:
 				return fmt.Errorf("notarization submit: file must not be empty")
 			}
 
+			ext := strings.ToLower(filepath.Ext(pathValue))
+			if ext != ".zip" && ext != ".dmg" && ext != ".pkg" {
+				return fmt.Errorf("notarization submit: unsupported file type %q (must be .zip, .dmg, or .pkg)", ext)
+			}
+
 			// Compute SHA-256
 			if shared.ProgressEnabled() {
 				fmt.Fprintf(os.Stderr, "Computing SHA-256 hash of %s...\n", pathValue)
