@@ -90,13 +90,17 @@ Examples:
 
 			if *paginate {
 				paginateOpts := append(opts, asc.WithSubscriptionPricePointsLimit(200))
-				firstPage, err := client.GetSubscriptionPricePoints(requestCtx, id, paginateOpts...)
+				firstPageCtx, firstPageCancel := contextWithTimeout(ctx)
+				firstPage, err := client.GetSubscriptionPricePoints(firstPageCtx, id, paginateOpts...)
+				firstPageCancel()
 				if err != nil {
 					return fmt.Errorf("subscriptions price-points list: failed to fetch: %w", err)
 				}
 
-				resp, err := asc.PaginateAll(requestCtx, firstPage, func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
-					return client.GetSubscriptionPricePoints(ctx, id, asc.WithSubscriptionPricePointsNextURL(nextURL))
+				resp, err := asc.PaginateAll(ctx, firstPage, func(_ context.Context, nextURL string) (asc.PaginatedResponse, error) {
+					pageCtx, pageCancel := contextWithTimeout(ctx)
+					defer pageCancel()
+					return client.GetSubscriptionPricePoints(pageCtx, id, asc.WithSubscriptionPricePointsNextURL(nextURL))
 				})
 				if err != nil {
 					return fmt.Errorf("subscriptions price-points list: %w", err)
