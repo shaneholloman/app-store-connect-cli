@@ -1,9 +1,10 @@
 # AGENTS.md
 
-**Companion skills pack:** https://github.com/rudrankriyam/app-store-connect-cli-skills
-**Summary:** Agent Skills for `asc` automation across builds, TestFlight, metadata, submissions, and signing.
-
 A fast, lightweight, AI-agent-friendly CLI for App Store Connect. Built in Go with [ffcli](https://github.com/peterbourgon/ff).
+
+## ASC Skills
+
+Agent Skills for automating `asc` workflows including builds, TestFlight, metadata sync, submissions, and signing. https://github.com/rudrankriyam/app-store-connect-cli-skills
 
 ## Core Principles
 
