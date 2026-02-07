@@ -159,6 +159,10 @@ func resolveIAPPriceSummaries(
 	territoryFilter string,
 	now time.Time,
 ) ([]iapPriceSummary, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
+
 	if len(iaps) == 0 {
 		return []iapPriceSummary{}, nil
 	}
@@ -209,6 +213,10 @@ func resolveIAPPriceSummaries(
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
 	}
 
 	return results, nil

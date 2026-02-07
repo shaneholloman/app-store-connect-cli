@@ -1,8 +1,12 @@
 package iap
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
 func TestParseIAPPriceScheduleIncluded_DecodesDatesFromResourceID(t *testing.T) {
@@ -45,5 +49,29 @@ func TestParseIAPPriceScheduleIncluded_DecodesDatesFromResourceID(t *testing.T) 
 	}
 	if change.EffectiveDate != "2026-02-16" {
 		t.Fatalf("expected effective date 2026-02-16, got %q", change.EffectiveDate)
+	}
+}
+
+func TestResolveIAPPriceSummaries_ContextCancelledReturnsError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	summaries, err := resolveIAPPriceSummaries(
+		ctx,
+		nil,
+		[]asc.Resource[asc.InAppPurchaseV2Attributes]{
+			{ID: "iap-1"},
+		},
+		"",
+		time.Now().UTC(),
+	)
+	if err == nil {
+		t.Fatalf("expected error for cancelled context")
+	}
+	if !strings.Contains(err.Error(), "context cancelled") {
+		t.Fatalf("expected context cancelled error, got %v", err)
+	}
+	if summaries != nil {
+		t.Fatalf("expected nil summaries on cancelled context, got %#v", summaries)
 	}
 }
