@@ -97,21 +97,23 @@ Examples:
 				return flag.ErrHelp
 			}
 
-			// Check if directory exists
 			metadataDir := filepath.Join(*fastlaneDir, "metadata")
-			if _, err := os.Stat(metadataDir); os.IsNotExist(err) {
-				return fmt.Errorf("migrate import: metadata directory not found: %s", metadataDir)
-			}
 
 			// Read metadata from fastlane structure
 			localizations, err := readFastlaneMetadata(metadataDir)
 			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("migrate import: metadata directory not found: %s", metadataDir)
+				}
 				return fmt.Errorf("migrate import: %w", err)
 			}
 
 			// Read App Info metadata (name, subtitle)
 			appInfoLocs, err := readFastlaneAppInfoMetadata(metadataDir)
 			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("migrate import: metadata directory not found: %s", metadataDir)
+				}
 				return fmt.Errorf("migrate import: %w", err)
 			}
 
@@ -621,21 +623,23 @@ Examples:
 				return flag.ErrHelp
 			}
 
-			// Check if directory exists
 			metadataDir := filepath.Join(*fastlaneDir, "metadata")
-			if _, err := os.Stat(metadataDir); os.IsNotExist(err) {
-				return fmt.Errorf("migrate validate: metadata directory not found: %s", metadataDir)
-			}
 
 			// Read metadata from fastlane structure
 			localizations, err := readFastlaneMetadata(metadataDir)
 			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("migrate validate: metadata directory not found: %s", metadataDir)
+				}
 				return fmt.Errorf("migrate validate: %w", err)
 			}
 
 			// Read App Info metadata (name, subtitle)
 			appInfoLocs, err := readFastlaneAppInfoMetadata(metadataDir)
 			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("migrate validate: metadata directory not found: %s", metadataDir)
+				}
 				return fmt.Errorf("migrate validate: %w", err)
 			}
 

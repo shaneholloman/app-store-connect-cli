@@ -657,10 +657,6 @@ func writeTestFlightConfigYAML(outputPath string, config *TestFlightConfig) erro
 		return fmt.Errorf("config is required")
 	}
 
-	if info, err := os.Stat(outputPath); err == nil && info.IsDir() {
-		return fmt.Errorf("output path is a directory")
-	}
-
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return err
 	}
@@ -696,6 +692,9 @@ func writeTestFlightConfigYAML(outputPath string, config *TestFlightConfig) erro
 	}
 	tempFile = nil
 	if err := os.Rename(tempName, outputPath); err != nil {
+		if info, statErr := os.Stat(outputPath); statErr == nil && info.IsDir() {
+			return fmt.Errorf("output path is a directory")
+		}
 		return err
 	}
 	committed = true

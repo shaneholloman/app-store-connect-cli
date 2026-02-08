@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,7 +128,13 @@ var legacyKeyringOpener = func() (keyring.Keyring, error) {
 
 // ValidateKeyFile validates that the private key file exists and is valid
 func ValidateKeyFile(path string) error {
-	info, err := os.Stat(path)
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open key file: %w", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to stat key file: %w", err)
 	}
@@ -138,7 +145,7 @@ func ValidateKeyFile(path string) error {
 		return fmt.Errorf("private key file is too permissive; run: chmod 600 %q", path)
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return fmt.Errorf("failed to read key file: %w", err)
 	}
