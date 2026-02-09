@@ -362,6 +362,12 @@ Goal: eliminate current `0.0%` coverage packages by adding package-local tests i
 - [x] `internal/cli/bundleids` (`bundle-ids profiles list` invalid/malformed `--next` validation + `--paginate --next` without `--id`)
 - [x] Commit Phase 41
 
+## Phase 42 - `--next` Parity for Xcode Cloud Workflows and Actions Lists
+
+- [x] `internal/cli/xcodecloud` (`xcode-cloud workflows list` invalid/malformed `--next` validation + `--paginate --next` without `--app`)
+- [x] `internal/cli/xcodecloud` (`xcode-cloud actions list` invalid/malformed `--next` validation + `--paginate --next` without `--run-id`)
+- [x] Commit Phase 42
+
 ## Validation Gate (after each phase and at end)
 
 - [x] `go test -short ./...`

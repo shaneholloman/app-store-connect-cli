@@ -702,3 +702,57 @@ func TestXcodeCloudScmRepositoriesRelationshipsPullRequestsPaginateFromNextWitho
 		"scm-pull-request-link-next-2",
 	)
 }
+
+func TestXcodeCloudWorkflowsListRejectsInvalidNextURL(t *testing.T) {
+	runXcodeCloudInvalidNextURLCases(
+		t,
+		[]string{"xcode-cloud", "workflows", "list"},
+		"xcode-cloud workflows: --next",
+	)
+}
+
+func TestXcodeCloudWorkflowsListPaginateFromNextWithoutAppID(t *testing.T) {
+	const firstURL = "https://api.appstoreconnect.apple.com/v1/ciProducts/product-1/workflows?cursor=AQ&limit=200"
+	const secondURL = "https://api.appstoreconnect.apple.com/v1/ciProducts/product-1/workflows?cursor=BQ&limit=200"
+
+	firstBody := `{"data":[{"type":"ciWorkflows","id":"ci-workflow-next-1"}],"links":{"next":"` + secondURL + `"}}`
+	secondBody := `{"data":[{"type":"ciWorkflows","id":"ci-workflow-next-2"}],"links":{"next":""}}`
+
+	runXcodeCloudPaginateFromNext(
+		t,
+		[]string{"xcode-cloud", "workflows", "list"},
+		firstURL,
+		secondURL,
+		firstBody,
+		secondBody,
+		"ci-workflow-next-1",
+		"ci-workflow-next-2",
+	)
+}
+
+func TestXcodeCloudActionsListRejectsInvalidNextURL(t *testing.T) {
+	runXcodeCloudInvalidNextURLCases(
+		t,
+		[]string{"xcode-cloud", "actions", "list"},
+		"xcode-cloud actions: --next",
+	)
+}
+
+func TestXcodeCloudActionsListPaginateFromNextWithoutRunID(t *testing.T) {
+	const firstURL = "https://api.appstoreconnect.apple.com/v1/ciBuildRuns/run-1/actions?cursor=AQ&limit=200"
+	const secondURL = "https://api.appstoreconnect.apple.com/v1/ciBuildRuns/run-1/actions?cursor=BQ&limit=200"
+
+	firstBody := `{"data":[{"type":"ciBuildActions","id":"ci-action-next-1"}],"links":{"next":"` + secondURL + `"}}`
+	secondBody := `{"data":[{"type":"ciBuildActions","id":"ci-action-next-2"}],"links":{"next":""}}`
+
+	runXcodeCloudPaginateFromNext(
+		t,
+		[]string{"xcode-cloud", "actions", "list"},
+		firstURL,
+		secondURL,
+		firstBody,
+		secondBody,
+		"ci-action-next-1",
+		"ci-action-next-2",
+	)
+}
