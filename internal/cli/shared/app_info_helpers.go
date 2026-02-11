@@ -17,13 +17,13 @@ func SelectBestAppInfoID(appInfos *asc.AppInfosResponse) string {
 
 	var firstNonLive string
 	for _, info := range appInfos.Data {
-		state := strings.ToUpper(AppInfoAttrString(info.Attributes, "state"))
-		appStoreState := strings.ToUpper(AppInfoAttrString(info.Attributes, "appStoreState"))
+		state := strings.ToUpper(appInfoAttrString(info.Attributes, "state"))
+		appStoreState := strings.ToUpper(appInfoAttrString(info.Attributes, "appStoreState"))
 
 		if state == target || appStoreState == target {
 			return info.ID
 		}
-		if firstNonLive == "" && IsNonLiveAppInfoState(state, appStoreState) {
+		if firstNonLive == "" && isNonLiveAppInfoState(state, appStoreState) {
 			firstNonLive = info.ID
 		}
 	}
@@ -33,8 +33,8 @@ func SelectBestAppInfoID(appInfos *asc.AppInfosResponse) string {
 	return appInfos.Data[0].ID
 }
 
-// IsNonLiveAppInfoState reports whether either state indicates a non-live app info.
-func IsNonLiveAppInfoState(state, appStoreState string) bool {
+// isNonLiveAppInfoState reports whether either state indicates a non-live app info.
+func isNonLiveAppInfoState(state, appStoreState string) bool {
 	isLive := func(value string) bool {
 		switch value {
 		case "READY_FOR_DISTRIBUTION", "READY_FOR_SALE":
@@ -53,8 +53,8 @@ func IsNonLiveAppInfoState(state, appStoreState string) bool {
 	return false
 }
 
-// AppInfoAttrString fetches a string attribute from the App Info payload.
-func AppInfoAttrString(attrs asc.AppInfoAttributes, key string) string {
+// appInfoAttrString fetches a string attribute from the App Info payload.
+func appInfoAttrString(attrs asc.AppInfoAttributes, key string) string {
 	if attrs == nil {
 		return ""
 	}
