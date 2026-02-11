@@ -170,7 +170,10 @@ Examples:
 				return fmt.Errorf("auth doctor: --fix requires --confirm")
 			}
 
-			report := authsvc.Doctor(authsvc.DoctorOptions{Fix: *fix && *confirm})
+			report := authsvc.DoctorWithMigrationResolver(
+				authsvc.DoctorOptions{Fix: *fix && *confirm},
+				doctorMigrationSuggestionResolver(),
+			)
 			if normalizedOutput == "json" {
 				if err := shared.PrintOutput(report, "json", *pretty); err != nil {
 					return err
@@ -224,6 +227,82 @@ func doctorStatusLabel(status authsvc.DoctorStatus) string {
 		return "INFO"
 	default:
 		return strings.ToUpper(string(status))
+	}
+}
+
+func doctorMigrationSuggestionResolver() authsvc.MigrationSuggestionResolver {
+	return func(input authsvc.MigrationSuggestionResolverInput) authsvc.MigrationSuggestionResolverOutput {
+		result := authsvc.MigrationSuggestionResolverOutput{}
+		appID := strings.TrimSpace(input.AppID)
+		if appID != "" {
+			result.AppID = appID
+		}
+
+		needsAppLookup := input.NeedAppID && appID == "" && strings.TrimSpace(input.AppIdentifier) != ""
+		needsVersionLookup := input.NeedVersionID
+		needsBuildLookup := input.NeedBuildID
+		if !needsAppLookup && !needsVersionLookup && !needsBuildLookup {
+			return result
+		}
+		if appID == "" && !needsAppLookup {
+			return result
+		}
+
+		client, err := shared.GetASCClient()
+		if err != nil {
+			return result
+		}
+
+		requestCtx, cancel := shared.ContextWithTimeout(context.Background())
+		defer cancel()
+
+		if needsAppLookup {
+			appIdentifier := strings.TrimSpace(input.AppIdentifier)
+			appsResp, err := client.GetApps(requestCtx,
+				asc.WithAppsBundleIDs([]string{appIdentifier}),
+				asc.WithAppsLimit(1),
+			)
+			if err == nil && len(appsResp.Data) > 0 {
+				appID = strings.TrimSpace(appsResp.Data[0].ID)
+			}
+		}
+		if appID == "" {
+			return result
+		}
+		result.AppID = appID
+
+		versionString := strings.TrimSpace(input.MarketingVersion)
+		if needsVersionLookup && versionString != "" {
+			versionsResp, err := client.GetAppStoreVersions(requestCtx, appID,
+				asc.WithAppStoreVersionsVersionStrings([]string{versionString}),
+				asc.WithAppStoreVersionsLimit(1),
+			)
+			if err == nil && len(versionsResp.Data) > 0 {
+				result.VersionID = strings.TrimSpace(versionsResp.Data[0].ID)
+			}
+		}
+
+		if needsBuildLookup {
+			buildOpts := []asc.BuildsOption{
+				asc.WithBuildsSort("-uploadedDate"),
+				asc.WithBuildsLimit(1),
+			}
+			if versionString != "" {
+				preReleaseResp, err := client.GetPreReleaseVersions(requestCtx, appID,
+					asc.WithPreReleaseVersionsVersion(versionString),
+					asc.WithPreReleaseVersionsLimit(1),
+				)
+				if err == nil && len(preReleaseResp.Data) > 0 {
+					buildOpts = append(buildOpts, asc.WithBuildsPreReleaseVersion(preReleaseResp.Data[0].ID))
+				}
+			}
+			buildsResp, err := client.GetBuilds(requestCtx, appID, buildOpts...)
+			if err == nil && len(buildsResp.Data) > 0 {
+				result.BuildID = strings.TrimSpace(buildsResp.Data[0].ID)
+			}
+		}
+
+		return result
 	}
 }
 
