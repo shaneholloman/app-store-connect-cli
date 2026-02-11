@@ -1186,6 +1186,10 @@ asc encryption documents get --id "DOC_ID"
 # List screenshots for a version localization
 asc assets screenshots list --version-localization "LOC_ID"
 
+# List supported screenshot sizes
+asc assets screenshots sizes
+asc assets screenshots sizes --display-type "APP_IPHONE_65"
+
 # Upload screenshots
 asc assets screenshots upload --version-localization "LOC_ID" --path "./screenshots/" --device-type IPHONE_65
 

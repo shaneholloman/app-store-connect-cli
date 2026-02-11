@@ -441,6 +441,7 @@ func init() {
 	})
 	registerRows(buildExpireAllResultRows)
 	registerRows(appScreenshotListResultRows)
+	registerRows(screenshotSizesRows)
 	registerRows(appPreviewListResultRows)
 	registerDirect(func(v *AppScreenshotUploadResult, render func([]string, [][]string)) error {
 		h, r := appScreenshotUploadResultMainRows(v)
