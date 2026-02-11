@@ -2,7 +2,9 @@ package migrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -240,7 +242,7 @@ func uploadReviewInformation(ctx context.Context, client *asc.Client, versionID 
 
 	existing, err := client.GetAppStoreReviewDetailForVersion(ctx, versionID)
 	if err != nil {
-		if !asc.IsNotFound(err) {
+		if !isNotFoundReviewDetail(err) {
 			return nil, fmt.Errorf("migrate import: failed to fetch review information: %w", err)
 		}
 		created, err := client.CreateAppStoreReviewDetail(ctx, versionID, buildReviewDetailCreateAttributes(info))
@@ -360,6 +362,21 @@ func uploadScreenshots(ctx context.Context, client *asc.Client, versionID string
 		return results[i].Locale < results[j].Locale
 	})
 	return results, nil
+}
+
+func isNotFoundReviewDetail(err error) bool {
+	if asc.IsNotFound(err) {
+		return true
+	}
+	if apiErr, ok := errors.AsType[*asc.APIError](err); ok {
+		if apiErr.StatusCode == http.StatusNotFound {
+			return true
+		}
+		if strings.EqualFold(apiErr.Code, "NOT_FOUND") {
+			return true
+		}
+	}
+	return false
 }
 
 func isNumeric(value string) bool {
