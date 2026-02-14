@@ -41,6 +41,47 @@ func TestCheckAndUpdate_SkipsWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestCachedUpdateAvailable_NoCache(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "update.json")
+
+	available, err := CachedUpdateAvailable(Options{
+		CurrentVersion: "1.0.0",
+		CachePath:      cachePath,
+	})
+	if err != nil {
+		t.Fatalf("CachedUpdateAvailable() error: %v", err)
+	}
+	if available {
+		t.Fatal("expected no cached update when cache file is missing")
+	}
+}
+
+func TestCachedUpdateAvailable_FindsNewerVersion(t *testing.T) {
+	cachePath := filepath.Join(t.TempDir(), "update.json")
+	cache := cacheFile{
+		CheckedAt:     time.Now(),
+		LatestVersion: "1.1.0",
+	}
+	data, err := json.Marshal(cache)
+	if err != nil {
+		t.Fatalf("json.Marshal error: %v", err)
+	}
+	if err := os.WriteFile(cachePath, data, 0o644); err != nil {
+		t.Fatalf("os.WriteFile error: %v", err)
+	}
+
+	available, err := CachedUpdateAvailable(Options{
+		CurrentVersion: "1.0.0",
+		CachePath:      cachePath,
+	})
+	if err != nil {
+		t.Fatalf("CachedUpdateAvailable() error: %v", err)
+	}
+	if !available {
+		t.Fatal("expected cached update to be available")
+	}
+}
+
 func TestCheckAndUpdate_UsesCacheWithoutNetwork(t *testing.T) {
 	cachePath := filepath.Join(t.TempDir(), "update.json")
 	cache := cacheFile{
