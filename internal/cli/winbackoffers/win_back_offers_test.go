@@ -14,7 +14,7 @@ func TestWinBackOffersCommandConstructors(t *testing.T) {
 		t.Fatal("expected subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := WinBackOffersCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 	if got := WinBackOffersPricesCommand(); got == nil {

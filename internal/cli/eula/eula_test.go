@@ -18,7 +18,7 @@ func TestEULACommandShape(t *testing.T) {
 	if len(cmd.Subcommands) != 5 {
 		t.Fatalf("expected 5 subcommands, got %d", len(cmd.Subcommands))
 	}
-	if got := Command(); got == nil {
+	if got := EULACommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 }

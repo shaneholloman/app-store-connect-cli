@@ -14,7 +14,7 @@ func TestXcodeCloudCommandConstructors(t *testing.T) {
 		t.Fatal("expected subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := XcodeCloudCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 

@@ -1,6 +1,10 @@
 package apps
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+)
 
 func TestNormalizeInclude(t *testing.T) {
 	tests := []struct {
@@ -32,7 +36,7 @@ func TestNormalizeInclude(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := normalizeInclude(test.input, test.allowed, "--include")
+			got, err := shared.NormalizeSelection(test.input, test.allowed, "--include")
 			if test.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

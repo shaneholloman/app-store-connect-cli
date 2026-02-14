@@ -85,7 +85,7 @@ func TestRoutingCoverageDeleteCommandValidation(t *testing.T) {
 }
 
 func TestCommandWrapper(t *testing.T) {
-	if got := Command(); got == nil {
+	if got := RoutingCoverageCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 }

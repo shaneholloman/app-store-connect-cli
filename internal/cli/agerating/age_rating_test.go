@@ -20,7 +20,7 @@ func TestAgeRatingCommandShape(t *testing.T) {
 	if len(cmd.Subcommands) != 2 {
 		t.Fatalf("expected 2 subcommands, got %d", len(cmd.Subcommands))
 	}
-	if got := Command(); got == nil {
+	if got := AgeRatingCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 }

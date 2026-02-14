@@ -21,12 +21,12 @@ import (
 )
 
 func TestCommandWrapperReturnsAuthCommand(t *testing.T) {
-	cmd := Command()
+	cmd := AuthCommand()
 	if cmd == nil {
-		t.Fatal("Command() returned nil")
+		t.Fatal("AuthCommand() returned nil")
 	}
 	if cmd.Name != "auth" {
-		t.Fatalf("Command().Name = %q, want %q", cmd.Name, "auth")
+		t.Fatalf("AuthCommand().Name = %q, want %q", cmd.Name, "auth")
 	}
 }
 

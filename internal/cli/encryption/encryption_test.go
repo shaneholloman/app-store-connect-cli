@@ -14,7 +14,7 @@ func TestEncryptionCommandConstructors(t *testing.T) {
 		t.Fatal("expected subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := EncryptionCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 

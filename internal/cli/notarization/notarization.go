@@ -15,6 +15,11 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
+// NotarizationCommand returns the notarization command group.
+func NotarizationCommand() *ffcli.Command {
+	return notarizationCommand()
+}
+
 // notarizationCommand returns the top-level notarization command.
 func notarizationCommand() *ffcli.Command {
 	return &ffcli.Command{

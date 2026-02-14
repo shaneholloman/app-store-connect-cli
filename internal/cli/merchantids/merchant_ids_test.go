@@ -5,6 +5,8 @@ import (
 	"errors"
 	"flag"
 	"testing"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
 func TestMerchantIDsCommandShape(t *testing.T) {
@@ -18,7 +20,7 @@ func TestMerchantIDsCommandShape(t *testing.T) {
 	if len(cmd.Subcommands) != 6 {
 		t.Fatalf("expected 6 subcommands, got %d", len(cmd.Subcommands))
 	}
-	if got := Command(); got == nil {
+	if got := MerchantIDsCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 }
@@ -87,10 +89,10 @@ func TestMerchantIDsValidationErrors(t *testing.T) {
 }
 
 func TestMerchantIDSelectionHelpers(t *testing.T) {
-	if got, err := normalizeSelection("name,identifier", "--fields", merchantIDFieldsList()); err != nil || len(got) != 2 {
+	if got, err := shared.NormalizeSelection("name,identifier", merchantIDFieldsList(), "--fields"); err != nil || len(got) != 2 {
 		t.Fatalf("expected valid normalized selection, got %v err=%v", got, err)
 	}
-	if _, err := normalizeSelection("badField", "--fields", merchantIDFieldsList()); err == nil {
+	if _, err := shared.NormalizeSelection("badField", merchantIDFieldsList(), "--fields"); err == nil {
 		t.Fatal("expected invalid field error")
 	}
 }

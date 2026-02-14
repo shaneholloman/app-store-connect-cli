@@ -14,7 +14,7 @@ func TestBuildLocalizationsCommandConstructors(t *testing.T) {
 		t.Fatal("expected subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := BuildLocalizationsCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 }

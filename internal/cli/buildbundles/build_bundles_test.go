@@ -14,7 +14,7 @@ func TestBuildBundlesCommandConstructors(t *testing.T) {
 		t.Fatal("expected subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := BuildBundlesCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 	if got := BuildBundleFileSizesCommand(); got == nil {

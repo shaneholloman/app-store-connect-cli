@@ -55,8 +55,3 @@ App Store workflow:
 		},
 	}
 }
-
-// Command returns the screenshots command group.
-func Command() *ffcli.Command {
-	return ScreenshotsCommand()
-}

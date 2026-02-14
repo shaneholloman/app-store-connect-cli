@@ -13,7 +13,7 @@ func TestScreenshotsCommandConstructors(t *testing.T) {
 	if len(cmd.Subcommands) == 0 {
 		t.Fatal("expected screenshots subcommands")
 	}
-	if got := Command(); got == nil {
+	if got := ScreenshotsCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 }

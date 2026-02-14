@@ -107,7 +107,7 @@ func TestSubmitCancelCommandValidation(t *testing.T) {
 }
 
 func TestCommandWrapper(t *testing.T) {
-	if got := Command(); got == nil {
+	if got := SubmitCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return submit command")
 	}
 }

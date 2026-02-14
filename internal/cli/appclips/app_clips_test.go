@@ -14,7 +14,7 @@ func TestAppClipsCommandConstructors(t *testing.T) {
 		t.Fatal("expected app-clips subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := AppClipsCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 

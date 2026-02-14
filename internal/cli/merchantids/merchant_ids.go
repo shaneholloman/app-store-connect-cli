@@ -407,42 +407,23 @@ Examples:
 var merchantIDSortValues = []string{"name", "-name", "identifier", "-identifier"}
 
 func normalizeMerchantIDFields(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, merchantIDFieldsList())
+	return shared.NormalizeSelection(value, merchantIDFieldsList(), flagName)
 }
 
 func normalizeMerchantIDInclude(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, merchantIDIncludeList())
+	return shared.NormalizeSelection(value, merchantIDIncludeList(), flagName)
 }
 
 func normalizeCertificateFields(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, certificateFieldsList())
+	return shared.NormalizeSelection(value, certificateFieldsList(), flagName)
 }
 
 func normalizeCertificateInclude(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, certificateIncludeList())
+	return shared.NormalizeSelection(value, certificateIncludeList(), flagName)
 }
 
 func normalizePassTypeIDFields(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, passTypeIDFieldsList())
-}
-
-func normalizeSelection(value, flagName string, allowed []string) ([]string, error) {
-	values := shared.SplitCSV(value)
-	if len(values) == 0 {
-		return nil, nil
-	}
-
-	allowedSet := map[string]struct{}{}
-	for _, item := range allowed {
-		allowedSet[item] = struct{}{}
-	}
-	for _, item := range values {
-		if _, ok := allowedSet[item]; !ok {
-			return nil, fmt.Errorf("%s must be one of: %s", flagName, strings.Join(allowed, ", "))
-		}
-	}
-
-	return values, nil
+	return shared.NormalizeSelection(value, passTypeIDFieldsList(), flagName)
 }
 
 func merchantIDFieldsList() []string {

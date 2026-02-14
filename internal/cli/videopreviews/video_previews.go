@@ -36,8 +36,3 @@ Examples:
 		},
 	}
 }
-
-// Command returns the video-previews command group.
-func Command() *ffcli.Command {
-	return VideoPreviewsCommand()
-}

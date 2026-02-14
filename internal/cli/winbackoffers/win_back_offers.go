@@ -1011,46 +1011,27 @@ func normalizeEnumValue(value string) string {
 }
 
 func normalizeWinBackOfferFields(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, winBackOfferFieldsList())
+	return shared.NormalizeSelection(value, winBackOfferFieldsList(), flagName)
 }
 
 func normalizeWinBackOfferPriceFields(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, winBackOfferPriceFieldsList())
+	return shared.NormalizeSelection(value, winBackOfferPriceFieldsList(), flagName)
 }
 
 func normalizeWinBackOfferInclude(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, winBackOfferIncludeList())
+	return shared.NormalizeSelection(value, winBackOfferIncludeList(), flagName)
 }
 
 func normalizeWinBackOfferTerritoryFields(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, winBackOfferTerritoryFieldsList())
+	return shared.NormalizeSelection(value, winBackOfferTerritoryFieldsList(), flagName)
 }
 
 func normalizeWinBackOfferSubscriptionPricePointFields(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, winBackOfferSubscriptionPricePointFieldsList())
+	return shared.NormalizeSelection(value, winBackOfferSubscriptionPricePointFieldsList(), flagName)
 }
 
 func normalizeWinBackOfferPriceInclude(value, flagName string) ([]string, error) {
-	return normalizeSelection(value, flagName, winBackOfferPriceIncludeList())
-}
-
-func normalizeSelection(value, flagName string, allowed []string) ([]string, error) {
-	values := shared.SplitCSV(value)
-	if len(values) == 0 {
-		return nil, nil
-	}
-
-	allowedSet := map[string]struct{}{}
-	for _, item := range allowed {
-		allowedSet[item] = struct{}{}
-	}
-	for _, item := range values {
-		if _, ok := allowedSet[item]; !ok {
-			return nil, fmt.Errorf("%s must be one of: %s", flagName, strings.Join(allowed, ", "))
-		}
-	}
-
-	return values, nil
+	return shared.NormalizeSelection(value, winBackOfferPriceIncludeList(), flagName)
 }
 
 func winBackOfferFieldsList() []string {

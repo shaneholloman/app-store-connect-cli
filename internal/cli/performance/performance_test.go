@@ -14,7 +14,7 @@ func TestPerformanceCommandConstructors(t *testing.T) {
 		t.Fatal("expected subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := PerformanceCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 

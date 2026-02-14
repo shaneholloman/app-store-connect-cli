@@ -18,7 +18,7 @@ func TestPassTypeIDsCommandShape(t *testing.T) {
 	if len(cmd.Subcommands) != 6 {
 		t.Fatalf("expected 6 subcommands, got %d", len(cmd.Subcommands))
 	}
-	if got := Command(); got == nil {
+	if got := PassTypeIDsCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 }

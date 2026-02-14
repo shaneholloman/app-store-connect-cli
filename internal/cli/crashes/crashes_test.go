@@ -44,7 +44,7 @@ func TestCrashesCommand_InvalidSort(t *testing.T) {
 }
 
 func TestCommandWrapper(t *testing.T) {
-	if got := Command(); got == nil {
+	if got := CrashesCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return a command")
 	}
 }

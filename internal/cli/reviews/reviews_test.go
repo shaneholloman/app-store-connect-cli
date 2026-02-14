@@ -14,7 +14,7 @@ func TestReviewsCommandConstructors(t *testing.T) {
 		t.Fatal("expected reviews subcommands")
 	}
 
-	if got := Command(); got == nil {
+	if got := ReviewsCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 
