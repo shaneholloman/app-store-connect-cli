@@ -56,6 +56,15 @@ func TestRenderByRegistryFallbackToJSON(t *testing.T) {
 	}
 }
 
+func TestRenderByRegistryNilFallsBackToJSON(t *testing.T) {
+	output := captureStdout(t, func() error {
+		return renderByRegistry(nil, RenderTable)
+	})
+	if strings.TrimSpace(output) != "null" {
+		t.Fatalf("expected JSON null fallback output, got: %q", output)
+	}
+}
+
 func TestRenderByRegistryUsesRowsRegistryRenderer(t *testing.T) {
 	type registered struct {
 		Value string
@@ -1036,6 +1045,16 @@ func TestOutputRegistryRegisterRowsPanicsOnNilFunction(t *testing.T) {
 	assertRegistryTypeAbsent(t, key)
 }
 
+func TestOutputRegistryRegisterRowsNilFunctionPanicIncludesType(t *testing.T) {
+	type nilRows struct{}
+	key := reflect.TypeOf(&nilRows{})
+	cleanupRegistryTypes(t, key)
+
+	expectPanicContains(t, key.String(), func() {
+		registerRows[nilRows](nil)
+	})
+}
+
 func TestOutputRegistryRegisterRowsNilFunctionPanicsBeforeConflictChecks(t *testing.T) {
 	type nilRows struct{}
 	preregisterRowsForConflict[nilRows](t, "value")
@@ -1219,6 +1238,16 @@ func TestEnsureRegistryTypesAvailablePanicsOnDuplicateTypes(t *testing.T) {
 	})
 
 	assertRegistryTypeAbsent(t, key)
+}
+
+func TestEnsureRegistryTypesAvailableDuplicatePanicIncludesType(t *testing.T) {
+	type duplicate struct{}
+	key := reflect.TypeOf(&duplicate{})
+	cleanupRegistryTypes(t, key)
+
+	expectPanicContains(t, key.String(), func() {
+		ensureRegistryTypesAvailable(key, key)
+	})
 }
 
 func TestEnsureRegistryTypesAvailablePanicsWhenTypeAlreadyRegistered(t *testing.T) {

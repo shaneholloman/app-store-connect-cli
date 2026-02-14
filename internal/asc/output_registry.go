@@ -22,12 +22,32 @@ func typeForPtr[T any]() reflect.Type {
 	return reflect.TypeFor[*T]()
 }
 
+func typeFor[T any]() reflect.Type {
+	return reflect.TypeFor[T]()
+}
+
 func panicNilHelperFunction(kind string, t reflect.Type) {
 	panic(fmt.Sprintf("output registry: nil %s for %s", kind, t))
 }
 
 func panicDuplicateRegistration(t reflect.Type) {
 	panic(fmt.Sprintf("output registry: duplicate registration for %s", t))
+}
+
+func panicSingleListAdapterStructRequirement(kind string, t reflect.Type) {
+	panic(fmt.Sprintf("output registry: single/list adapter %s type must be a struct: %s", kind, t))
+}
+
+func panicSingleListAdapter(reason string) {
+	panic("output registry: single/list adapter " + reason)
+}
+
+func panicSingleListAdapterDataTypeMismatch(source, target reflect.Type) {
+	panic(fmt.Sprintf(
+		"output registry: adapter Data type mismatch source=%s target=%s",
+		source,
+		target,
+	))
 }
 
 func ensureRegistryTypeAvailable(t reflect.Type) {
@@ -159,33 +179,29 @@ func registerSingleToListRowsAdapter[T any, U any](rows func(*U) ([]string, [][]
 
 func singleToListRowsAdapter[T any, U any](rows func(*U) ([]string, [][]string)) func(*T) ([]string, [][]string) {
 	if rows == nil {
-		panicNilHelperFunction("rows function", reflect.TypeFor[*U]())
+		panicNilHelperFunction("rows function", typeForPtr[U]())
 	}
 
-	sourceType := reflect.TypeFor[T]()
-	targetType := reflect.TypeFor[U]()
+	sourceType := typeFor[T]()
+	targetType := typeFor[U]()
 	if sourceType.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("output registry: single/list adapter source type must be a struct: %s", sourceType))
+		panicSingleListAdapterStructRequirement("source", sourceType)
 	}
 	if targetType.Kind() != reflect.Struct {
-		panic(fmt.Sprintf("output registry: single/list adapter target type must be a struct: %s", targetType))
+		panicSingleListAdapterStructRequirement("target", targetType)
 	}
 
 	sourceDataField, sourceHasData := sourceType.FieldByName("Data")
 	targetDataField, targetHasData := targetType.FieldByName("Data")
 	if !sourceHasData || !targetHasData {
-		panic("output registry: single/list adapter requires Data field on source and target")
+		panicSingleListAdapter("requires Data field on source and target")
 	}
 	if targetDataField.Type.Kind() != reflect.Slice {
-		panic("output registry: single/list adapter target Data field must be a slice")
+		panicSingleListAdapter("target Data field must be a slice")
 	}
 	targetElemType := targetDataField.Type.Elem()
 	if !sourceDataField.Type.AssignableTo(targetElemType) {
-		panic(fmt.Sprintf(
-			"output registry: adapter Data type mismatch source=%s target=%s",
-			sourceDataField.Type,
-			targetElemType,
-		))
+		panicSingleListAdapterDataTypeMismatch(sourceDataField.Type, targetElemType)
 	}
 
 	sourceLinksField, sourceHasLinks := sourceType.FieldByName("Links")
