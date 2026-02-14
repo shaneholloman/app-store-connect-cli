@@ -16,6 +16,7 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/update"
 )
 
 func TestRun_VersionFlag(t *testing.T) {
@@ -129,6 +130,99 @@ func TestRun_NoArgsShowsHelpReturnsSuccess(t *testing.T) {
 	}
 	if stderr != "" {
 		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+}
+
+func TestRun_UpdateCheckRunsAsyncWhenCacheHasNoUpdate(t *testing.T) {
+	t.Setenv("ASC_NO_UPDATE", "0")
+	resetReportFlags(t)
+	resetUpdateHooks(t)
+
+	cachedUpdateAvailableFn = func(update.Options) (bool, error) {
+		return false, nil
+	}
+
+	started := make(chan update.Options, 1)
+	release := make(chan struct{})
+	checkAndUpdateFn = func(_ context.Context, opts update.Options) (update.Result, error) {
+		started <- opts
+		<-release
+		return update.Result{}, nil
+	}
+
+	start := time.Now()
+	code := Run([]string{"completion", "--shell", "bash"}, "1.0.0")
+	elapsed := time.Since(start)
+	if code != ExitSuccess {
+		t.Fatalf("Run() exit code = %d, want %d", code, ExitSuccess)
+	}
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("Run() should not block on async update check, elapsed=%s", elapsed)
+	}
+
+	select {
+	case opts := <-started:
+		if opts.AutoUpdate {
+			t.Fatal("expected async update check to disable auto-update")
+		}
+		if opts.CheckInterval != updateCheckInterval {
+			t.Fatalf("CheckInterval = %s, want %s", opts.CheckInterval, updateCheckInterval)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected async update check goroutine to start")
+	}
+
+	close(release)
+}
+
+func TestRun_CachedUpdateChecksSynchronously(t *testing.T) {
+	t.Setenv("ASC_NO_UPDATE", "0")
+	resetReportFlags(t)
+	resetUpdateHooks(t)
+
+	cachedUpdateAvailableFn = func(update.Options) (bool, error) {
+		return true, nil
+	}
+	checkAndUpdateFn = func(_ context.Context, opts update.Options) (update.Result, error) {
+		if !opts.AutoUpdate {
+			t.Fatal("expected sync update path to enable auto-update")
+		}
+		time.Sleep(150 * time.Millisecond)
+		return update.Result{}, nil
+	}
+
+	start := time.Now()
+	code := Run([]string{"completion", "--shell", "bash"}, "1.0.0")
+	elapsed := time.Since(start)
+	if code != ExitSuccess {
+		t.Fatalf("Run() exit code = %d, want %d", code, ExitSuccess)
+	}
+	if elapsed < 140*time.Millisecond {
+		t.Fatalf("Run() should block on synchronous update check, elapsed=%s", elapsed)
+	}
+}
+
+func TestRun_CachedUpdateCanRestartProcess(t *testing.T) {
+	t.Setenv("ASC_NO_UPDATE", "0")
+	resetReportFlags(t)
+	resetUpdateHooks(t)
+
+	cachedUpdateAvailableFn = func(update.Options) (bool, error) {
+		return true, nil
+	}
+	checkAndUpdateFn = func(_ context.Context, _ update.Options) (update.Result, error) {
+		return update.Result{
+			Updated:        true,
+			ExecutablePath: "/tmp/asc",
+		}, nil
+	}
+	restartFn = func(_ string, _ []string, _ []string) (int, error) {
+		return 7, nil
+	}
+
+	code := Run([]string{"completion", "--shell", "bash"}, "1.0.0")
+	if code != 7 {
+		t.Fatalf("Run() exit code = %d, want 7", code)
 	}
 }
 
@@ -262,6 +356,20 @@ func resetReportFlags(t *testing.T) {
 	t.Helper()
 	shared.SetReportFormat("")
 	shared.SetReportFile("")
+}
+
+func resetUpdateHooks(t *testing.T) {
+	t.Helper()
+
+	originalCachedUpdateAvailableFn := cachedUpdateAvailableFn
+	originalCheckAndUpdateFn := checkAndUpdateFn
+	originalRestartFn := restartFn
+
+	t.Cleanup(func() {
+		cachedUpdateAvailableFn = originalCachedUpdateAvailableFn
+		checkAndUpdateFn = originalCheckAndUpdateFn
+		restartFn = originalRestartFn
+	})
 }
 
 func captureCommandOutput(t *testing.T, fn func()) (string, string) {

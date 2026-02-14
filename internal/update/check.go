@@ -12,6 +12,40 @@ type latestReleaseResponse struct {
 	TagName string `json:"tag_name"`
 }
 
+// CachedUpdateAvailable reports whether cache already indicates a newer release
+// than the current version. It does not perform any network I/O.
+func CachedUpdateAvailable(opts Options) (bool, error) {
+	normalized, err := opts.withDefaults()
+	if err != nil {
+		return false, err
+	}
+	opts = normalized
+
+	if opts.NoUpdate || envBool(noUpdateEnvVar) || envBool(skipUpdateEnvVar) {
+		return false, nil
+	}
+
+	_, currentSemver, ok := normalizeVersion(opts.CurrentVersion)
+	if !ok {
+		return false, nil
+	}
+
+	cache, err := readCache(opts.CachePath)
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(cache.LatestVersion) == "" {
+		return false, nil
+	}
+
+	_, latestSemver, ok := normalizeVersion(cache.LatestVersion)
+	if !ok {
+		return false, nil
+	}
+
+	return compareVersions(currentSemver, latestSemver) < 0, nil
+}
+
 func resolveLatestVersion(ctx context.Context, opts Options) (string, bool, error) {
 	cache, cacheErr := readCache(opts.CachePath)
 	if cacheErr == nil && cache.LatestVersion != "" && opts.CheckInterval > 0 {

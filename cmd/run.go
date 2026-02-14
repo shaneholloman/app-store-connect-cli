@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -14,6 +15,17 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared/errfmt"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/update"
+)
+
+const (
+	updateCheckInterval = 12 * time.Hour
+	asyncUpdateTimeout  = 3 * time.Second
+)
+
+var (
+	cachedUpdateAvailableFn = update.CachedUpdateAvailable
+	checkAndUpdateFn        = update.CheckAndUpdate
+	restartFn               = update.Restart
 )
 
 // Run executes the CLI using the provided args (not including argv[0]) and version string.
@@ -54,24 +66,34 @@ func Run(args []string, versionInfo string) int {
 		return ExitSuccess
 	}
 
-	updateResult, err := update.CheckAndUpdate(context.Background(), update.Options{
+	updateOpts := update.Options{
 		CurrentVersion: versionInfo,
-		AutoUpdate:     true,
 		NoUpdate:       shared.NoUpdate(),
 		Output:         os.Stderr,
 		ShowProgress:   shared.ProgressEnabled(),
-		CheckInterval:  24 * time.Hour,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Update check failed: %v\n", err)
+		CheckInterval:  updateCheckInterval,
 	}
-	if updateResult.Updated {
-		exitCode, restartErr := update.Restart(updateResult.ExecutablePath, os.Args, os.Environ())
-		if restartErr != nil {
-			fmt.Fprintf(os.Stderr, "Restart failed after update: %v\n", restartErr)
-		} else {
-			return exitCode
+
+	cachedUpdateAvailable, cacheErr := cachedUpdateAvailableFn(updateOpts)
+	if cacheErr != nil {
+		fmt.Fprintf(os.Stderr, "Update check failed: %v\n", cacheErr)
+	}
+	if cachedUpdateAvailable {
+		updateOpts.AutoUpdate = true
+		updateResult, err := checkAndUpdateFn(context.Background(), updateOpts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Update check failed: %v\n", err)
 		}
+		if updateResult.Updated {
+			exitCode, restartErr := restartFn(updateResult.ExecutablePath, os.Args, os.Environ())
+			if restartErr != nil {
+				fmt.Fprintf(os.Stderr, "Restart failed after update: %v\n", restartErr)
+			} else {
+				return exitCode
+			}
+		}
+	} else {
+		startAsyncUpdateCheck(updateOpts)
 	}
 
 	start := time.Now()
@@ -105,6 +127,19 @@ func Run(args []string, versionInfo string) int {
 	}
 
 	return ExitSuccess
+}
+
+func startAsyncUpdateCheck(opts update.Options) {
+	asyncOpts := opts
+	asyncOpts.AutoUpdate = false
+	asyncOpts.ShowProgress = false
+	asyncOpts.Output = io.Discard
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), asyncUpdateTimeout)
+		defer cancel()
+		_, _ = checkAndUpdateFn(ctx, asyncOpts)
+	}()
 }
 
 // getCommandName extracts the full subcommand path from the parsed args.
