@@ -67,66 +67,64 @@ func runValidateSubscriptions(ctx context.Context, opts validateSubscriptionsOpt
 		return fmt.Errorf("validate subscriptions: %w", err)
 	}
 
-	requestCtx, cancel := shared.ContextWithTimeout(ctx)
-	defer cancel()
+	groupsCtx, groupsCancel := shared.ContextWithTimeout(ctx)
+	groupsResp, err := client.GetSubscriptionGroups(groupsCtx, opts.AppID, asc.WithSubscriptionGroupsLimit(200))
+	groupsCancel()
+	if err != nil {
+		return fmt.Errorf("validate subscriptions: failed to fetch subscription groups: %w", err)
+	}
 
-	const pageLimit = 200
+	paginatedGroups, err := asc.PaginateAll(ctx, groupsResp, func(_ context.Context, nextURL string) (asc.PaginatedResponse, error) {
+		pageCtx, pageCancel := shared.ContextWithTimeout(ctx)
+		defer pageCancel()
+		return client.GetSubscriptionGroups(pageCtx, opts.AppID, asc.WithSubscriptionGroupsNextURL(nextURL))
+	})
+	if err != nil {
+		return fmt.Errorf("validate subscriptions: paginate subscription groups: %w", err)
+	}
 
-	nextGroupsURL := ""
-	groupIDs := make([]string, 0)
-	for {
-		var groupsResp *asc.SubscriptionGroupsResponse
-		if strings.TrimSpace(nextGroupsURL) != "" {
-			groupsResp, err = client.GetSubscriptionGroups(requestCtx, opts.AppID, asc.WithSubscriptionGroupsNextURL(nextGroupsURL))
-		} else {
-			groupsResp, err = client.GetSubscriptionGroups(requestCtx, opts.AppID, asc.WithSubscriptionGroupsLimit(pageLimit))
-		}
-		if err != nil {
-			return fmt.Errorf("validate subscriptions: failed to fetch subscription groups: %w", err)
-		}
-
-		for _, group := range groupsResp.Data {
-			if strings.TrimSpace(group.ID) == "" {
-				continue
-			}
-			groupIDs = append(groupIDs, group.ID)
-		}
-
-		nextGroupsURL = strings.TrimSpace(groupsResp.Links.Next)
-		if nextGroupsURL == "" {
-			break
-		}
+	groups, ok := paginatedGroups.(*asc.SubscriptionGroupsResponse)
+	if !ok {
+		return fmt.Errorf("validate subscriptions: unexpected subscription groups response type %T", paginatedGroups)
 	}
 
 	subs := make([]validation.Subscription, 0)
-	for _, groupID := range groupIDs {
-		nextSubsURL := ""
-		for {
-			var subsResp *asc.SubscriptionsResponse
-			if strings.TrimSpace(nextSubsURL) != "" {
-				subsResp, err = client.GetSubscriptions(requestCtx, groupID, asc.WithSubscriptionsNextURL(nextSubsURL))
-			} else {
-				subsResp, err = client.GetSubscriptions(requestCtx, groupID, asc.WithSubscriptionsLimit(pageLimit))
-			}
-			if err != nil {
-				return fmt.Errorf("validate subscriptions: failed to fetch subscriptions for group %s: %w", groupID, err)
-			}
+	for _, group := range groups.Data {
+		groupID := strings.TrimSpace(group.ID)
+		if groupID == "" {
+			continue
+		}
 
-			for _, sub := range subsResp.Data {
-				attrs := sub.Attributes
-				subs = append(subs, validation.Subscription{
-					ID:        sub.ID,
-					Name:      attrs.Name,
-					ProductID: attrs.ProductID,
-					State:     attrs.State,
-					GroupID:   groupID,
-				})
-			}
+		subsCtx, subsCancel := shared.ContextWithTimeout(ctx)
+		subsResp, err := client.GetSubscriptions(subsCtx, groupID, asc.WithSubscriptionsLimit(200))
+		subsCancel()
+		if err != nil {
+			return fmt.Errorf("validate subscriptions: failed to fetch subscriptions for group %s: %w", groupID, err)
+		}
 
-			nextSubsURL = strings.TrimSpace(subsResp.Links.Next)
-			if nextSubsURL == "" {
-				break
-			}
+		paginatedSubs, err := asc.PaginateAll(ctx, subsResp, func(_ context.Context, nextURL string) (asc.PaginatedResponse, error) {
+			pageCtx, pageCancel := shared.ContextWithTimeout(ctx)
+			defer pageCancel()
+			return client.GetSubscriptions(pageCtx, groupID, asc.WithSubscriptionsNextURL(nextURL))
+		})
+		if err != nil {
+			return fmt.Errorf("validate subscriptions: paginate subscriptions: %w", err)
+		}
+
+		subsResult, ok := paginatedSubs.(*asc.SubscriptionsResponse)
+		if !ok {
+			return fmt.Errorf("validate subscriptions: unexpected subscriptions response type %T", paginatedSubs)
+		}
+
+		for _, sub := range subsResult.Data {
+			attrs := sub.Attributes
+			subs = append(subs, validation.Subscription{
+				ID:        sub.ID,
+				Name:      attrs.Name,
+				ProductID: attrs.ProductID,
+				State:     attrs.State,
+				GroupID:   groupID,
+			})
 		}
 	}
 

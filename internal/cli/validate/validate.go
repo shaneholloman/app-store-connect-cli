@@ -218,7 +218,10 @@ func runValidate(ctx context.Context, opts validateOptions) error {
 	availableTerritories := 0
 	availabilityResp, err := client.GetAppAvailabilityV2(requestCtx, opts.AppID)
 	if err != nil {
-		if !asc.IsNotFound(err) {
+		// ASC can report missing app availability with non-404 errors
+		// (e.g. "resource does not exist"). Treat those as "missing" rather than
+		// aborting validation.
+		if !shared.IsAppAvailabilityMissing(err) {
 			return fmt.Errorf("validate: failed to fetch app availability: %w", err)
 		}
 	} else {

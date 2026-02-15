@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
 
@@ -67,38 +66,38 @@ func runValidateIAP(ctx context.Context, opts validateIAPOptions) error {
 		return fmt.Errorf("validate iap: %w", err)
 	}
 
-	requestCtx, cancel := shared.ContextWithTimeout(ctx)
-	defer cancel()
+	firstCtx, firstCancel := shared.ContextWithTimeout(ctx)
+	defer firstCancel()
 
-	const pageLimit = 200
-	nextURL := ""
-	iaps := make([]validation.IAP, 0)
-	for {
-		var resp *asc.InAppPurchasesV2Response
-		if strings.TrimSpace(nextURL) != "" {
-			resp, err = client.GetInAppPurchasesV2(requestCtx, opts.AppID, asc.WithIAPNextURL(nextURL))
-		} else {
-			resp, err = client.GetInAppPurchasesV2(requestCtx, opts.AppID, asc.WithIAPLimit(pageLimit))
-		}
-		if err != nil {
-			return fmt.Errorf("validate iap: failed to fetch in-app purchases: %w", err)
-		}
+	firstPage, err := client.GetInAppPurchasesV2(firstCtx, opts.AppID, asc.WithIAPLimit(200))
+	if err != nil {
+		return fmt.Errorf("validate iap: failed to fetch in-app purchases: %w", err)
+	}
 
-		for _, item := range resp.Data {
-			attrs := item.Attributes
-			iaps = append(iaps, validation.IAP{
-				ID:        item.ID,
-				Name:      attrs.Name,
-				ProductID: attrs.ProductID,
-				Type:      attrs.InAppPurchaseType,
-				State:     attrs.State,
-			})
-		}
+	paginated, err := asc.PaginateAll(ctx, firstPage, func(_ context.Context, nextURL string) (asc.PaginatedResponse, error) {
+		pageCtx, pageCancel := shared.ContextWithTimeout(ctx)
+		defer pageCancel()
+		return client.GetInAppPurchasesV2(pageCtx, opts.AppID, asc.WithIAPNextURL(nextURL))
+	})
+	if err != nil {
+		return fmt.Errorf("validate iap: paginate in-app purchases: %w", err)
+	}
 
-		nextURL = strings.TrimSpace(resp.Links.Next)
-		if nextURL == "" {
-			break
-		}
+	resp, ok := paginated.(*asc.InAppPurchasesV2Response)
+	if !ok {
+		return fmt.Errorf("validate iap: unexpected in-app purchases response type %T", paginated)
+	}
+
+	iaps := make([]validation.IAP, 0, len(resp.Data))
+	for _, item := range resp.Data {
+		attrs := item.Attributes
+		iaps = append(iaps, validation.IAP{
+			ID:        item.ID,
+			Name:      attrs.Name,
+			ProductID: attrs.ProductID,
+			Type:      attrs.InAppPurchaseType,
+			State:     attrs.State,
+		})
 	}
 
 	report := validation.ValidateIAP(validation.IAPInput{

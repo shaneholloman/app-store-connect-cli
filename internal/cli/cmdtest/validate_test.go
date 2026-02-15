@@ -18,20 +18,21 @@ import (
 )
 
 type validateFixture struct {
-	app              string
-	version          string
-	appInfos         string
-	appInfoLocs      string
-	versionLocs      string
-	ageRating        string
-	reviewDetails    string
-	primaryCategory  string
-	build            string
-	priceSchedule    string
-	availabilityV2   string
-	territories      string
-	screenshotSets   map[string]string
-	screenshotsBySet map[string]string
+	app                  string
+	version              string
+	appInfos             string
+	appInfoLocs          string
+	versionLocs          string
+	ageRating            string
+	reviewDetails        string
+	primaryCategory      string
+	build                string
+	priceSchedule        string
+	availabilityV2       string
+	availabilityV2Status int
+	territories          string
+	screenshotSets       map[string]string
+	screenshotsBySet     map[string]string
 }
 
 func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
@@ -81,6 +82,9 @@ func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
 			}
 			return jsonResponse(http.StatusNotFound, `{"errors":[{"code":"NOT_FOUND","title":"Not Found","detail":"resource not found"}]}`)
 		case path == "/v1/apps/app-1/appAvailabilityV2":
+			if fixture.availabilityV2Status != 0 {
+				return jsonResponse(fixture.availabilityV2Status, fixture.availabilityV2)
+			}
 			if fixture.availabilityV2 != "" {
 				return jsonResponse(http.StatusOK, fixture.availabilityV2)
 			}
@@ -705,6 +709,50 @@ func TestValidateFailsWhenPriceScheduleMissing(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected pricing.schedule.missing check, got %+v", report.Checks)
+	}
+}
+
+func TestValidateTreatsAppAvailabilityMissingNon404AsMissing(t *testing.T) {
+	fixture := validValidateFixture()
+	fixture.availabilityV2Status = http.StatusConflict
+	fixture.availabilityV2 = `{"errors":[{"code":"RESOURCE_DOES_NOT_EXIST","title":"Resource does not exist","detail":"The resource AppAvailabilities does not exist."}]}`
+
+	client := newValidateTestClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+
+	var runErr error
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if runErr == nil {
+		t.Fatalf("expected error")
+	}
+	if _, ok := errors.AsType[ReportedError](runErr); !ok {
+		t.Fatalf("expected ReportedError, got %v", runErr)
+	}
+
+	var report validation.Report
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	found := false
+	for _, check := range report.Checks {
+		if check.ID == "availability.missing" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected availability.missing check, got %+v", report.Checks)
 	}
 }
 
