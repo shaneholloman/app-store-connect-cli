@@ -341,7 +341,7 @@ Examples:
 					return fmt.Errorf("screenshots download: failed to fetch screenshot: %w", err)
 				}
 
-				downloadURL, err := resolveImageAssetDownloadURL(resp.Data.Attributes.ImageAsset)
+				downloadURL, err := resolveImageAssetDownloadURL(resp.Data.Attributes.ImageAsset, resp.Data.Attributes.FileName)
 				if err != nil {
 					items = append(items, screenshotDownloadItem{
 						ID:         idValue,
@@ -438,7 +438,7 @@ Examples:
 							}
 						}
 
-						downloadURL, err := resolveImageAssetDownloadURL(imageAsset)
+						downloadURL, err := resolveImageAssetDownloadURL(imageAsset, shot.Attributes.FileName)
 						if err != nil {
 							items = append(items, screenshotDownloadItem{
 								ID:          strings.TrimSpace(shot.ID),

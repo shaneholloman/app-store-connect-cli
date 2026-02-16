@@ -29,7 +29,7 @@ func TestScreenshotsDownload_ByID_WritesFile(t *testing.T) {
 				t.Fatalf("unexpected path: %s", req.URL.Path)
 			}
 
-			body := `{"data":{"type":"appScreenshots","id":"shot-1","attributes":{"fileName":"shot.png","fileSize":7,"imageAsset":{"templateUrl":"https://example.com/assets/{w}x{h}bb.png","width":1242,"height":2688}}}}`
+			body := `{"data":{"type":"appScreenshots","id":"shot-1","attributes":{"fileName":"shot.png","fileSize":7,"imageAsset":{"templateUrl":"https://example.com/assets/{w}x{h}bb.{f}","width":1242,"height":2688}}}}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(body)),
@@ -135,7 +135,7 @@ func TestScreenshotsDownload_ByLocalization_WritesFiles(t *testing.T) {
 					Header:     http.Header{"Content-Type": []string{"application/json"}},
 				}, nil
 			case "/v1/appScreenshotSets/set-1/appScreenshots":
-				body := `{"data":[{"type":"appScreenshots","id":"shot-1","attributes":{"fileName":"screen.png","fileSize":7,"imageAsset":{"templateUrl":"https://example.com/screen_{w}x{h}.png","width":100,"height":200}}}]}`
+				body := `{"data":[{"type":"appScreenshots","id":"shot-1","attributes":{"fileName":"screen.png","fileSize":7,"imageAsset":{"templateUrl":"https://example.com/screen_{w}x{h}.{f}","width":100,"height":200}}}]}`
 				return &http.Response{
 					StatusCode: http.StatusOK,
 					Body:       io.NopCloser(strings.NewReader(body)),
