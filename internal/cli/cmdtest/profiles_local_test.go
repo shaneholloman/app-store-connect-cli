@@ -24,6 +24,120 @@ import (
 	"howett.net/plist"
 )
 
+func TestProfilesLocalInstall_ForceActionIsInstalledWhenNoExisting(t *testing.T) {
+	installDir := t.TempDir()
+	uuid := "00000000-0000-0000-0000-0000000000AB"
+
+	sourcePath := filepath.Join(t.TempDir(), "profile.mobileprovision")
+	sourceBytes := buildMobileprovision(t, uuid, "Test Profile", "TEAM12345", "com.example.app", time.Now().Add(24*time.Hour))
+	if err := os.WriteFile(sourcePath, sourceBytes, 0o600); err != nil {
+		t.Fatalf("WriteFile(sourcePath) error: %v", err)
+	}
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"profiles", "local", "install",
+			"--path", sourcePath,
+			"--install-dir", installDir,
+			"--force",
+			"--output", "json",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var result struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("decode JSON: %v (stdout=%q)", err, stdout)
+	}
+	if result.Action != "installed" {
+		t.Fatalf("action=%q, want %q", result.Action, "installed")
+	}
+}
+
+func TestProfilesLocalInstall_ForceActionIsReplacedWhenExisting(t *testing.T) {
+	installDir := t.TempDir()
+	uuid := "00000000-0000-0000-0000-0000000000AC"
+
+	sourcePath := filepath.Join(t.TempDir(), "profile.mobileprovision")
+	sourceBytes := buildMobileprovision(t, uuid, "Test Profile", "TEAM12345", "com.example.app", time.Now().Add(24*time.Hour))
+	if err := os.WriteFile(sourcePath, sourceBytes, 0o600); err != nil {
+		t.Fatalf("WriteFile(sourcePath) error: %v", err)
+	}
+
+	// Pre-create the destination file so --force truly overwrites it.
+	destPath := filepath.Join(installDir, uuid+".mobileprovision")
+	if err := os.WriteFile(destPath, []byte("preexisting"), 0o600); err != nil {
+		t.Fatalf("WriteFile(destPath) error: %v", err)
+	}
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"profiles", "local", "install",
+			"--path", sourcePath,
+			"--install-dir", installDir,
+			"--force",
+			"--output", "json",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var result struct {
+		Action string `json:"action"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("decode JSON: %v (stdout=%q)", err, stdout)
+	}
+	if result.Action != "replaced" {
+		t.Fatalf("action=%q, want %q", result.Action, "replaced")
+	}
+}
+
+func TestProfilesLocalClean_ConfirmRequiresMode(t *testing.T) {
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	var runErr error
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"profiles", "local", "clean", "--confirm", "--install-dir", t.TempDir(), "--output", "json"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !errors.Is(runErr, flag.ErrHelp) {
+		t.Fatalf("expected flag.ErrHelp, got %v", runErr)
+	}
+	if !strings.Contains(stderr, "at least one clean mode is required") {
+		t.Fatalf("expected mode-required error, got %q", stderr)
+	}
+}
+
 type localProfileItem struct {
 	UUID      string `json:"uuid"`
 	Name      string `json:"name,omitempty"`
