@@ -537,6 +537,187 @@ func TestWorkflowRun_ParamControlsConditional(t *testing.T) {
 	}
 }
 
+func TestWorkflowRun_StepFailure_PartialJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := writeWorkflowJSON(t, dir, `{
+		"workflows": {
+			"test": {
+				"steps": [
+					"echo step-one-ok",
+					{"run": "exit 1", "name": "failing-step"},
+					"echo should-not-run"
+				]
+			}
+		}
+	}`)
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "run", "--file", path, "test"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if err == nil {
+			t.Fatal("expected error on step failure")
+		}
+		// Should be a ReportedError (exit code 1, not 2)
+		if _, ok := errors.AsType[ReportedError](err); !ok {
+			t.Fatalf("expected ReportedError, got %T: %v", err, err)
+		}
+	})
+
+	// Partial JSON result should be printed even on failure
+	jsonStr := extractLastJSON(t, stdout)
+	var result map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		t.Fatalf("expected JSON on failure, got %q: %v", jsonStr, err)
+	}
+	if result["status"] != "error" {
+		t.Fatalf("expected status=error, got %v", result["status"])
+	}
+
+	// Check partial steps: step 1 ok, step 2 error, step 3 not reached
+	steps := result["steps"].([]any)
+	if len(steps) != 2 {
+		t.Fatalf("expected 2 partial steps, got %d", len(steps))
+	}
+	step1 := steps[0].(map[string]any)
+	if step1["status"] != "ok" {
+		t.Fatalf("expected step 1 ok, got %v", step1["status"])
+	}
+	step2 := steps[1].(map[string]any)
+	if step2["status"] != "error" {
+		t.Fatalf("expected step 2 error, got %v", step2["status"])
+	}
+	if step2["name"] != "failing-step" {
+		t.Fatalf("expected step 2 name=failing-step, got %v", step2["name"])
+	}
+	// Error detail should be present
+	if step2["error"] == nil || step2["error"] == "" {
+		t.Fatal("expected error detail in failing step")
+	}
+}
+
+func TestWorkflowRun_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	ascDir := filepath.Join(dir, ".asc")
+	if err := os.MkdirAll(ascDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	badPath := filepath.Join(ascDir, "workflow.json")
+	if err := os.WriteFile(badPath, []byte(`{not valid json`), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	_, _ = captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "run", "--file", badPath, "test"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if err == nil {
+			t.Fatal("expected error for invalid JSON")
+		}
+		if !strings.Contains(err.Error(), "parse workflow JSON") {
+			t.Fatalf("expected parse error, got %v", err)
+		}
+	})
+}
+
+func TestWorkflowValidate_MultipleErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := writeWorkflowJSON(t, dir, `{
+		"workflows": {
+			"bad1": {"steps": []},
+			"bad2": {"steps": [{"name": "orphan"}]}
+		}
+	}`)
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "validate", "--file", path}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if err == nil {
+			t.Fatal("expected error for invalid workflows")
+		}
+		if _, ok := errors.AsType[ReportedError](err); !ok {
+			t.Fatalf("expected ReportedError, got %T: %v", err, err)
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("expected JSON, got %q: %v", stdout, err)
+	}
+	if result["valid"] != false {
+		t.Fatalf("expected valid=false, got %v", result["valid"])
+	}
+	errs := result["errors"].([]any)
+	if len(errs) < 2 {
+		t.Fatalf("expected at least 2 validation errors, got %d: %v", len(errs), errs)
+	}
+	// Each error should have code, workflow, and message
+	for i, e := range errs {
+		errMap := e.(map[string]any)
+		if errMap["code"] == nil || errMap["code"] == "" {
+			t.Fatalf("error %d missing code: %v", i, errMap)
+		}
+		if errMap["message"] == nil || errMap["message"] == "" {
+			t.Fatalf("error %d missing message: %v", i, errMap)
+		}
+	}
+}
+
+func TestWorkflowValidate_CycleDetection(t *testing.T) {
+	dir := t.TempDir()
+	path := writeWorkflowJSON(t, dir, `{
+		"workflows": {
+			"a": {"steps": [{"workflow": "b"}]},
+			"b": {"steps": [{"workflow": "a"}]}
+		}
+	}`)
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "validate", "--file", path}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if err == nil {
+			t.Fatal("expected error for cyclic workflows")
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("expected JSON, got %q: %v", stdout, err)
+	}
+	if result["valid"] != false {
+		t.Fatalf("expected valid=false, got %v", result["valid"])
+	}
+	errs := result["errors"].([]any)
+	foundCycle := false
+	for _, e := range errs {
+		errMap := e.(map[string]any)
+		if errMap["code"] == "cyclic_reference" {
+			foundCycle = true
+		}
+	}
+	if !foundCycle {
+		t.Fatalf("expected cyclic_reference error, got %v", errs)
+	}
+}
+
 func TestWorkflowValidate_Pretty(t *testing.T) {
 	dir := t.TempDir()
 	path := writeWorkflowJSON(t, dir, `{
