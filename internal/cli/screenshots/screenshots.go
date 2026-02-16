@@ -38,6 +38,7 @@ App Store workflow:
   asc screenshots list --version-localization "LOC_ID"
   asc screenshots sizes --display-type "APP_IPHONE_69"
   asc screenshots upload --version-localization "LOC_ID" --path "./screenshots" --device-type "IPHONE_69"
+  asc screenshots download --version-localization "LOC_ID" --output-dir "./screenshots/downloaded"
   asc screenshots delete --id "SCREENSHOT_ID" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -52,6 +53,7 @@ App Store workflow:
 			assets.AssetsScreenshotsListCommand(),
 			assets.AssetsScreenshotsSizesCommand(),
 			assets.AssetsScreenshotsUploadCommand(),
+			assets.AssetsScreenshotsDownloadCommand(),
 			assets.AssetsScreenshotsDeleteCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {

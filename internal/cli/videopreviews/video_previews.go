@@ -23,12 +23,14 @@ func VideoPreviewsCommand() *ffcli.Command {
 Examples:
   asc video-previews list --version-localization "LOC_ID"
   asc video-previews upload --version-localization "LOC_ID" --path "./previews" --device-type "IPHONE_69"
+  asc video-previews download --version-localization "LOC_ID" --output-dir "./previews/downloaded"
   asc video-previews delete --id "PREVIEW_ID" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			assets.AssetsPreviewsListCommand(),
 			assets.AssetsPreviewsUploadCommand(),
+			assets.AssetsPreviewsDownloadCommand(),
 			assets.AssetsPreviewsDeleteCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
