@@ -88,5 +88,11 @@
     "link": "https://apps.apple.com/us/app/mixtape-personal-music-gift/id6756442910",
     "creator": "jimripple",
     "platform": ["iOS"]
+  },
+  {
+    "app": "Parsely",
+    "link": "https://testflight.apple.com/join/HjUZtzVm",
+    "creator": "sambitcreate",
+    "platform": ["iOS"]
   }
 ]
