@@ -13,9 +13,9 @@
   },
   {
     "app": "DoubleMemory",
-    "link": "https://doublememory.com",
-    "creator": "Shaomeng Zhang",
-    "platform": ["iOS"]
+    "link": "https://apps.apple.com/app/id6737529034",
+    "creator": "randomor",
+    "platform": ["iOS", "macOS"]
   },
   {
     "app": "kora: Music Reviews & Ratings",
@@ -94,8 +94,7 @@
     "link": "https://testflight.apple.com/join/HjUZtzVm",
     "creator": "sambitcreate",
     "platform": ["iOS"]
-  }
-  ,
+  },
   {
     "app": "Steps: Workout & Pedometer",
     "link": "https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378",
