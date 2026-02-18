@@ -196,6 +196,41 @@ func (c *Client) GetAppInfoSecondarySubcategoryTwoRelationship(ctx context.Conte
 	return &response, nil
 }
 
+// GetAppInfoLocalizationsRelationships retrieves localization linkages for an app info.
+func (c *Client) GetAppInfoLocalizationsRelationships(ctx context.Context, appInfoID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
+	query := &linkagesQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	appInfoID = strings.TrimSpace(appInfoID)
+	if query.nextURL == "" && appInfoID == "" {
+		return nil, fmt.Errorf("appInfoID is required")
+	}
+
+	path := fmt.Sprintf("/v1/appInfos/%s/relationships/appInfoLocalizations", appInfoID)
+	if query.nextURL != "" {
+		if err := validateNextURL(query.nextURL); err != nil {
+			return nil, fmt.Errorf("appInfoLocalizationsRelationships: %w", err)
+		}
+		path = query.nextURL
+	} else if queryString := buildLinkagesQuery(query); queryString != "" {
+		path += "?" + queryString
+	}
+
+	data, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response LinkagesResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
 // GetAppInfoTerritoryAgeRatingsRelationships retrieves territory age rating linkages.
 func (c *Client) GetAppInfoTerritoryAgeRatingsRelationships(ctx context.Context, appInfoID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
 	query := &linkagesQuery{}

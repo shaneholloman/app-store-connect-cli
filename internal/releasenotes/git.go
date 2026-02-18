@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -44,6 +45,9 @@ func ListCommits(ctx context.Context, repoDir, since, until string, includeMerge
 	if strings.TrimSpace(repoDir) != "" {
 		cmd.Dir = repoDir
 	}
+	// Git hooks (especially in worktrees) can export GIT_* repo override variables.
+	// Remove them so the command consistently targets cmd.Dir / cwd.
+	cmd.Env = cleanGitRepoEnv(os.Environ())
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -81,4 +85,22 @@ func ListCommits(ctx context.Context, repoDir, since, until string, includeMerge
 		})
 	}
 	return commits, nil
+}
+
+func cleanGitRepoEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		switch {
+		case strings.HasPrefix(kv, "GIT_DIR="):
+			continue
+		case strings.HasPrefix(kv, "GIT_WORK_TREE="):
+			continue
+		case strings.HasPrefix(kv, "GIT_INDEX_FILE="):
+			continue
+		case strings.HasPrefix(kv, "GIT_COMMON_DIR="):
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }

@@ -25,6 +25,18 @@ type AppStoreVersionAppClipDefaultExperienceLinkageResponse struct {
 	Links Links        `json:"links"`
 }
 
+// AppStoreVersionPhasedReleaseLinkageResponse is the response for phased release relationships.
+type AppStoreVersionPhasedReleaseLinkageResponse struct {
+	Data  ResourceData `json:"data"`
+	Links Links        `json:"links"`
+}
+
+// AppStoreVersionBuildLinkageResponse is the response for build relationships.
+type AppStoreVersionBuildLinkageResponse struct {
+	Data  ResourceData `json:"data"`
+	Links Links        `json:"links"`
+}
+
 // AppStoreVersionSubmissionLinkageResponse is the response for submission relationships.
 type AppStoreVersionSubmissionLinkageResponse struct {
 	Data  ResourceData `json:"data"`
@@ -99,6 +111,83 @@ func (c *Client) GetAppStoreVersionAppClipDefaultExperienceRelationship(ctx cont
 	}
 
 	var response AppStoreVersionAppClipDefaultExperienceLinkageResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// GetAppStoreVersionLocalizationsRelationships retrieves localization linkages for a version.
+func (c *Client) GetAppStoreVersionLocalizationsRelationships(ctx context.Context, versionID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
+	query := &linkagesQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	versionID = strings.TrimSpace(versionID)
+	if query.nextURL == "" && versionID == "" {
+		return nil, fmt.Errorf("versionID is required")
+	}
+
+	path := fmt.Sprintf("/v1/appStoreVersions/%s/relationships/appStoreVersionLocalizations", versionID)
+	if query.nextURL != "" {
+		if err := validateNextURL(query.nextURL); err != nil {
+			return nil, fmt.Errorf("appStoreVersionLocalizationsRelationships: %w", err)
+		}
+		path = query.nextURL
+	} else if queryString := buildLinkagesQuery(query); queryString != "" {
+		path += "?" + queryString
+	}
+
+	data, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response LinkagesResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// GetAppStoreVersionPhasedReleaseRelationship retrieves the phased release linkage for a version.
+func (c *Client) GetAppStoreVersionPhasedReleaseRelationship(ctx context.Context, versionID string) (*AppStoreVersionPhasedReleaseLinkageResponse, error) {
+	versionID = strings.TrimSpace(versionID)
+	if versionID == "" {
+		return nil, fmt.Errorf("versionID is required")
+	}
+
+	path := fmt.Sprintf("/v1/appStoreVersions/%s/relationships/appStoreVersionPhasedRelease", versionID)
+	data, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response AppStoreVersionPhasedReleaseLinkageResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// GetAppStoreVersionBuildRelationship retrieves the build linkage for a version.
+func (c *Client) GetAppStoreVersionBuildRelationship(ctx context.Context, versionID string) (*AppStoreVersionBuildLinkageResponse, error) {
+	versionID = strings.TrimSpace(versionID)
+	if versionID == "" {
+		return nil, fmt.Errorf("versionID is required")
+	}
+
+	path := fmt.Sprintf("/v1/appStoreVersions/%s/relationships/build", versionID)
+	data, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response AppStoreVersionBuildLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}

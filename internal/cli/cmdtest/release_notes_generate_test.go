@@ -232,20 +232,27 @@ func runGit(t *testing.T, dir string, args ...string) {
 	// Git sets GIT_DIR/GIT_WORK_TREE for hook processes. If `go test` runs under a
 	// hook, these env vars can leak into this helper and cause our git commands
 	// to operate on the outer repo instead of the temp repo.
-	env := os.Environ()
-	filtered := make([]string, 0, len(env))
-	for _, kv := range env {
-		if strings.HasPrefix(kv, "GIT_DIR=") ||
-			strings.HasPrefix(kv, "GIT_WORK_TREE=") ||
-			strings.HasPrefix(kv, "GIT_INDEX_FILE=") ||
-			strings.HasPrefix(kv, "GIT_COMMON_DIR=") {
-			continue
-		}
-		filtered = append(filtered, kv)
-	}
-	c.Env = filtered
+	c.Env = cleanGitRepoEnv(os.Environ())
 	out, err := c.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
 	}
+}
+
+func cleanGitRepoEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		switch {
+		case strings.HasPrefix(kv, "GIT_DIR="):
+			continue
+		case strings.HasPrefix(kv, "GIT_WORK_TREE="):
+			continue
+		case strings.HasPrefix(kv, "GIT_INDEX_FILE="):
+			continue
+		case strings.HasPrefix(kv, "GIT_COMMON_DIR="):
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }

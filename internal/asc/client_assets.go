@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // AppScreenshotSetRelationships describes relationships for screenshot sets.
@@ -200,6 +201,63 @@ func (c *Client) GetAppScreenshots(ctx context.Context, setID string) (*AppScree
 	return &response, nil
 }
 
+// GetAppScreenshotSetAppScreenshotsRelationships retrieves screenshot linkages for a screenshot set.
+func (c *Client) GetAppScreenshotSetAppScreenshotsRelationships(ctx context.Context, setID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
+	query := &linkagesQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	setID = strings.TrimSpace(setID)
+	if query.nextURL == "" && setID == "" {
+		return nil, fmt.Errorf("setID is required")
+	}
+
+	path := fmt.Sprintf("/v1/appScreenshotSets/%s/relationships/appScreenshots", setID)
+	if query.nextURL != "" {
+		if err := validateNextURL(query.nextURL); err != nil {
+			return nil, fmt.Errorf("appScreenshotsRelationships: %w", err)
+		}
+		path = query.nextURL
+	} else if queryString := buildLinkagesQuery(query); queryString != "" {
+		path += "?" + queryString
+	}
+
+	data, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response LinkagesResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// UpdateAppScreenshotSetAppScreenshotsRelationship replaces the screenshots on a screenshot set.
+func (c *Client) UpdateAppScreenshotSetAppScreenshotsRelationship(ctx context.Context, setID string, screenshotIDs []string) error {
+	setID = strings.TrimSpace(setID)
+	if setID == "" {
+		return fmt.Errorf("setID is required")
+	}
+
+	data := buildRelationshipData(ResourceTypeAppScreenshots, screenshotIDs)
+	if data == nil {
+		data = []RelationshipData{}
+	}
+	payload := RelationshipRequest{Data: data}
+	body, err := BuildRequestBody(payload)
+	if err != nil {
+		return err
+	}
+
+	path := fmt.Sprintf("/v1/appScreenshotSets/%s/relationships/appScreenshots", setID)
+	_, err = c.do(ctx, "PATCH", path, body)
+	return err
+}
+
 // GetAppScreenshot retrieves a screenshot by ID.
 func (c *Client) GetAppScreenshot(ctx context.Context, screenshotID string) (*AppScreenshotResponse, error) {
 	path := fmt.Sprintf("/v1/appScreenshots/%s", screenshotID)
@@ -380,6 +438,63 @@ func (c *Client) GetAppPreviews(ctx context.Context, setID string) (*AppPreviews
 	}
 
 	return &response, nil
+}
+
+// GetAppPreviewSetAppPreviewsRelationships retrieves preview linkages for a preview set.
+func (c *Client) GetAppPreviewSetAppPreviewsRelationships(ctx context.Context, setID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
+	query := &linkagesQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	setID = strings.TrimSpace(setID)
+	if query.nextURL == "" && setID == "" {
+		return nil, fmt.Errorf("setID is required")
+	}
+
+	path := fmt.Sprintf("/v1/appPreviewSets/%s/relationships/appPreviews", setID)
+	if query.nextURL != "" {
+		if err := validateNextURL(query.nextURL); err != nil {
+			return nil, fmt.Errorf("appPreviewsRelationships: %w", err)
+		}
+		path = query.nextURL
+	} else if queryString := buildLinkagesQuery(query); queryString != "" {
+		path += "?" + queryString
+	}
+
+	data, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response LinkagesResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// UpdateAppPreviewSetAppPreviewsRelationship replaces the previews on a preview set.
+func (c *Client) UpdateAppPreviewSetAppPreviewsRelationship(ctx context.Context, setID string, previewIDs []string) error {
+	setID = strings.TrimSpace(setID)
+	if setID == "" {
+		return fmt.Errorf("setID is required")
+	}
+
+	data := buildRelationshipData(ResourceTypeAppPreviews, previewIDs)
+	if data == nil {
+		data = []RelationshipData{}
+	}
+	payload := RelationshipRequest{Data: data}
+	body, err := BuildRequestBody(payload)
+	if err != nil {
+		return err
+	}
+
+	path := fmt.Sprintf("/v1/appPreviewSets/%s/relationships/appPreviews", setID)
+	_, err = c.do(ctx, "PATCH", path, body)
+	return err
 }
 
 // GetAppPreview retrieves a preview by ID.
