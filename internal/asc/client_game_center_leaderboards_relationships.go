@@ -40,7 +40,7 @@ func (c *Client) GetGameCenterLeaderboardSetGroupLeaderboardSetRelationship(ctx 
 
 	var response GameCenterLeaderboardSetGroupLeaderboardSetLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse groupLeaderboardSet relationship response: %w", err)
 	}
 	return &response, nil
 }
@@ -57,6 +57,15 @@ func (c *Client) GetGameCenterLeaderboardSetReleasesRelationships(ctx context.Co
 
 // AddGameCenterLeaderboardSetMembers adds leaderboards to a leaderboard set.
 func (c *Client) AddGameCenterLeaderboardSetMembers(ctx context.Context, setID string, leaderboardIDs []string) error {
+	setID = strings.TrimSpace(setID)
+	leaderboardIDs = normalizeList(leaderboardIDs)
+	if setID == "" {
+		return fmt.Errorf("setID is required")
+	}
+	if len(leaderboardIDs) == 0 {
+		return fmt.Errorf("leaderboardIDs are required")
+	}
+
 	payload := RelationshipRequest{
 		Data: buildRelationshipData(ResourceTypeGameCenterLeaderboards, leaderboardIDs),
 	}
@@ -65,13 +74,22 @@ func (c *Client) AddGameCenterLeaderboardSetMembers(ctx context.Context, setID s
 		return err
 	}
 
-	path := fmt.Sprintf("/v1/gameCenterLeaderboardSets/%s/relationships/gameCenterLeaderboards", strings.TrimSpace(setID))
+	path := fmt.Sprintf("/v1/gameCenterLeaderboardSets/%s/relationships/gameCenterLeaderboards", setID)
 	_, err = c.do(ctx, http.MethodPost, path, body)
 	return err
 }
 
 // RemoveGameCenterLeaderboardSetMembers removes leaderboards from a leaderboard set.
 func (c *Client) RemoveGameCenterLeaderboardSetMembers(ctx context.Context, setID string, leaderboardIDs []string) error {
+	setID = strings.TrimSpace(setID)
+	leaderboardIDs = normalizeList(leaderboardIDs)
+	if setID == "" {
+		return fmt.Errorf("setID is required")
+	}
+	if len(leaderboardIDs) == 0 {
+		return fmt.Errorf("leaderboardIDs are required")
+	}
+
 	payload := RelationshipRequest{
 		Data: buildRelationshipData(ResourceTypeGameCenterLeaderboards, leaderboardIDs),
 	}
@@ -80,7 +98,7 @@ func (c *Client) RemoveGameCenterLeaderboardSetMembers(ctx context.Context, setI
 		return err
 	}
 
-	path := fmt.Sprintf("/v1/gameCenterLeaderboardSets/%s/relationships/gameCenterLeaderboards", strings.TrimSpace(setID))
+	path := fmt.Sprintf("/v1/gameCenterLeaderboardSets/%s/relationships/gameCenterLeaderboards", setID)
 	_, err = c.do(ctx, http.MethodDelete, path, body)
 	return err
 }
@@ -129,7 +147,7 @@ func (c *Client) GetGameCenterLeaderboardGroupLeaderboardRelationship(ctx contex
 
 	var response GameCenterLeaderboardGroupLeaderboardLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse groupLeaderboard relationship response: %w", err)
 	}
 	return &response, nil
 }
@@ -232,69 +250,25 @@ func (c *Client) UpdateGameCenterLeaderboardGroupLeaderboardRelationship(ctx con
 }
 
 func (c *Client) getGameCenterLeaderboardSetLinkages(ctx context.Context, setID, relationship string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	setID = strings.TrimSpace(setID)
-	if query.nextURL == "" && setID == "" {
-		return nil, fmt.Errorf("setID is required")
-	}
-
-	path := fmt.Sprintf("/v1/gameCenterLeaderboardSets/%s/relationships/%s", setID, relationship)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("gameCenterLeaderboardSetRelationships: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		setID,
+		relationship,
+		"setID",
+		"/v1/gameCenterLeaderboardSets/%s/relationships/%s",
+		"gameCenterLeaderboardSetRelationships",
+		opts...,
+	)
 }
 
 func (c *Client) getGameCenterLeaderboardLinkages(ctx context.Context, leaderboardID, relationship string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	leaderboardID = strings.TrimSpace(leaderboardID)
-	if query.nextURL == "" && leaderboardID == "" {
-		return nil, fmt.Errorf("leaderboardID is required")
-	}
-
-	path := fmt.Sprintf("/v1/gameCenterLeaderboards/%s/relationships/%s", leaderboardID, relationship)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("gameCenterLeaderboardRelationships: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		leaderboardID,
+		relationship,
+		"leaderboardID",
+		"/v1/gameCenterLeaderboards/%s/relationships/%s",
+		"gameCenterLeaderboardRelationships",
+		opts...,
+	)
 }

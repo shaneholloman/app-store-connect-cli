@@ -45,6 +45,9 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 - If Game Center is not enabled for the app, the detail lookup returns 404.
 - Releases are required to make achievements/leaderboards/leaderboard-sets live (create a release after creating the resource).
 - Image uploads follow a three-step flow: reserve upload slot → upload file → commit upload (using upload operations).
+- The `challengesMinimumPlatformVersions` relationship on `gameCenterDetails` uses `appStoreVersions` linkages (live API rejects `gameCenterAppVersions` for this relationship).
+- The relationship endpoint is replace-only (PATCH); GET relationship requests are rejected with "does not allow 'GET_RELATIONSHIP'... Allowed operation is: REPLACE".
+- Setting `challengesMinimumPlatformVersions` requires a live App Store version; non-live versions fail with `ENTITY_ERROR.RELATIONSHIP.INVALID.MIN_CHALLENGES_VERSION_MUST_BE_LIVE` ("must be live to be set as a minimum challenges version.").
 
 ## Authentication & Rate Limiting
 

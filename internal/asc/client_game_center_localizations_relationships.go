@@ -41,7 +41,7 @@ func (c *Client) GetGameCenterLeaderboardLocalizationImageRelationship(ctx conte
 
 	var response GameCenterLeaderboardLocalizationImageLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse gameCenterLeaderboardImage relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -62,7 +62,7 @@ func (c *Client) GetGameCenterLeaderboardSetMemberLocalizationLeaderboardRelatio
 
 	var response GameCenterLeaderboardSetMemberLocalizationLeaderboardLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse gameCenterLeaderboard relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -83,7 +83,7 @@ func (c *Client) GetGameCenterLeaderboardSetMemberLocalizationLeaderboardSetRela
 
 	var response GameCenterLeaderboardSetMemberLocalizationLeaderboardSetLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse gameCenterLeaderboardSet relationship response: %w", err)
 	}
 
 	return &response, nil
