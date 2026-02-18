@@ -312,6 +312,19 @@ type RelationshipRequest struct {
 	Data []RelationshipData `json:"data"`
 }
 
+// MarshalJSON ensures relationship list payloads always encode `data` as an array.
+//
+// In JSON:API, to-many relationship payloads use `data: []` to represent an empty
+// set. Go's `encoding/json` encodes nil slices as `null`, which is not a valid
+// representation for a relationship list.
+func (r RelationshipRequest) MarshalJSON() ([]byte, error) {
+	if r.Data == nil {
+		r.Data = []RelationshipData{}
+	}
+	type alias RelationshipRequest
+	return json.Marshal(alias(r))
+}
+
 // RelationshipData represents data in a relationship payload.
 type RelationshipData struct {
 	Type ResourceType `json:"type"`

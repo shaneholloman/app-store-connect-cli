@@ -1,6 +1,9 @@
 package types
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestResponseAccessors(t *testing.T) {
 	r := &Response[struct{ Name string }]{
@@ -66,5 +69,25 @@ func TestTypeConstants(t *testing.T) {
 	}
 	if UTIIPA != "com.apple.ipa" || UTIPKG != "com.apple.installer-package-archive" {
 		t.Fatalf("unexpected UTI constants: %q %q", UTIIPA, UTIPKG)
+	}
+}
+
+func TestRelationshipRequest_MarshalJSON_EncodesEmptyArray(t *testing.T) {
+	// RelationshipRequest represents a to-many relationship payload. In JSON:API, an empty
+	// relationship list is encoded as {"data":[]} (not {"data":null}).
+	body, err := json.Marshal(RelationshipRequest{})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var got RelationshipRequest
+	if err := json.Unmarshal(body, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Data == nil {
+		t.Fatalf("expected data to decode as an empty array, got nil (body=%q)", string(body))
+	}
+	if len(got.Data) != 0 {
+		t.Fatalf("expected empty data array, got %d items", len(got.Data))
 	}
 }
