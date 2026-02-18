@@ -107,6 +107,17 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("game-center details list: failed to get Game Center detail: %w", err)
 			}
+			detailID = strings.TrimSpace(detailID)
+			if detailID == "" {
+				// App Store Connect returns 200 with an empty id when no detail exists yet.
+				// Treat this as an empty list rather than attempting /v1/gameCenterDetails/.
+				fmt.Fprintln(os.Stderr, `Warning: no Game Center detail exists for this app. Run "asc game-center details create --app <APP_ID>" to create one.`)
+				resp := &asc.GameCenterDetailsResponse{
+					Data:  []asc.Resource[asc.GameCenterDetailAttributes]{},
+					Links: asc.Links{},
+				}
+				return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+			}
 
 			detail, err := client.GetGameCenterDetail(requestCtx, detailID)
 			if err != nil {
