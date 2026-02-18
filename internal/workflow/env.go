@@ -112,6 +112,10 @@ func ParseParams(args []string) (map[string]string, error) {
 
 		key := arg[:idx]
 		value := arg[idx+1:]
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return nil, fmt.Errorf("invalid parameter %q (key must not be empty or whitespace)", arg)
+		}
 		params[key] = value
 	}
 	return params, nil

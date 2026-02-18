@@ -216,3 +216,20 @@ func TestParseParams_EqualsBeforeColon(t *testing.T) {
 		t.Fatalf("expected A='B:C', got %q", params["A"])
 	}
 }
+
+func TestParseParams_WhitespaceKey(t *testing.T) {
+	_, err := ParseParams([]string{" :value"})
+	if err == nil {
+		t.Fatal("expected error for whitespace-only key")
+	}
+}
+
+func TestParseParams_DuplicateKey(t *testing.T) {
+	params, err := ParseParams([]string{"A:1", "A:2"})
+	if err != nil {
+		t.Fatalf("ParseParams: %v", err)
+	}
+	if params["A"] != "2" {
+		t.Fatalf("expected last-wins A='2', got %q", params["A"])
+	}
+}
