@@ -324,6 +324,15 @@ func TestIssue616_GameCenterDetailAndGroupRelationshipEndpoints_PATCH(t *testing
 			},
 		},
 		{
+			name:     "UpdateGameCenterDetailGameCenterLeaderboardsRelationship empty clears relationship",
+			wantPath: "/v1/gameCenterDetails/detail-1/relationships/gameCenterLeaderboards",
+			wantType: ResourceTypeGameCenterLeaderboards,
+			wantIDs:  []string{},
+			call: func(client *Client) error {
+				return client.UpdateGameCenterDetailGameCenterLeaderboardsRelationship(ctx, "detail-1", nil)
+			},
+		},
+		{
 			name:     "UpdateGameCenterDetailGameCenterLeaderboardsV2Relationship",
 			wantPath: "/v1/gameCenterDetails/detail-1/relationships/gameCenterLeaderboardsV2",
 			wantType: ResourceTypeGameCenterLeaderboards,
@@ -370,6 +379,11 @@ func TestIssue616_GameCenterDetailAndGroupRelationshipEndpoints_PATCH(t *testing
 				var got RelationshipRequest
 				if err := json.Unmarshal(body, &got); err != nil {
 					t.Fatalf("unmarshal body: %v", err)
+				}
+				// For to-many relationship replace requests, "data" must be an array.
+				// Ensure we don't send {"data":null} when clearing a relationship.
+				if len(tt.wantIDs) == 0 && got.Data == nil {
+					t.Fatalf("expected empty relationship data array, got null")
 				}
 				if len(got.Data) != len(tt.wantIDs) {
 					t.Fatalf("expected %d relationship items, got %d", len(tt.wantIDs), len(got.Data))
