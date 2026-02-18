@@ -650,6 +650,46 @@ func TestWorkflowRun_ParamControlsConditional(t *testing.T) {
 	}
 }
 
+func TestWorkflowRun_SkippedWorkflowStepIncludesName(t *testing.T) {
+	dir := t.TempDir()
+	path := writeWorkflowJSON(t, dir, `{
+		"workflows": {
+			"main": {
+				"steps": [
+					{"workflow": "helper", "if": "RUN_HELPER"},
+					"echo done"
+				]
+			},
+			"helper": {"steps": ["echo from-helper"]}
+		}
+	}`)
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "run", "--file", path, "main"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("expected JSON, got %q: %v", stdout, err)
+	}
+	steps := result["steps"].([]any)
+	skipped := steps[0].(map[string]any)
+	if skipped["status"] != "skipped" {
+		t.Fatalf("expected skipped, got %v", skipped["status"])
+	}
+	if skipped["workflow"] != "helper" {
+		t.Fatalf("expected skipped step to include workflow='helper', got %v", skipped["workflow"])
+	}
+}
+
 func TestWorkflowRun_StepFailure_PartialJSON(t *testing.T) {
 	dir := t.TempDir()
 	path := writeWorkflowJSON(t, dir, `{

@@ -1,5 +1,6 @@
 // Package workflow is a standalone workflow runner for .asc/workflow.json files.
-// It has ZERO imports from the rest of the codebase — only Go stdlib.
+// It has zero imports from the rest of the codebase. Only depends on Go stdlib
+// plus tidwall/jsonc for JSONC comment support in load.go.
 package workflow
 
 import (

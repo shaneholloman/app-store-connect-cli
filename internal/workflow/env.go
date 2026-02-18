@@ -32,17 +32,6 @@ func isTruthy(value string) bool {
 	}
 }
 
-// expandEnv replaces $VAR and ${VAR} in a command string.
-// Looks up values from the env map first, then falls back to os.Getenv.
-func expandEnv(command string, env map[string]string) string {
-	return os.Expand(command, func(key string) string {
-		if v, ok := env[key]; ok {
-			return v
-		}
-		return os.Getenv(key)
-	})
-}
-
 // buildEnvSlice creates a []string for exec.Cmd.Env by overlaying the
 // tracks env map onto os.Environ().
 func buildEnvSlice(env map[string]string) []string {
@@ -80,7 +69,7 @@ func runHook(ctx context.Context, command string, env map[string]string, dryRun 
 		return nil
 	}
 	if dryRun {
-		fmt.Fprintf(stderr, "[dry-run] hook: %s\n", expandEnv(command, env))
+		fmt.Fprintf(stderr, "[dry-run] hook: %s\n", command)
 		return nil
 	}
 	return runShellCommand(ctx, command, env, stdout, stderr)

@@ -34,7 +34,7 @@ Examples:
   asc workflow run beta
   asc workflow run beta SUBMIT_BETA:true
   asc workflow run release VERSION:2.1.0
-  asc workflow run beta --dry-run`,
+  asc workflow run --dry-run beta`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -56,7 +56,7 @@ func workflowRunCommand() *ffcli.Command {
 
 	return &ffcli.Command{
 		Name:       "run",
-		ShortUsage: "asc workflow run <name> [KEY:VALUE ...] [flags]",
+		ShortUsage: "asc workflow run [flags] <name> [KEY:VALUE ...]",
 		ShortHelp:  "Run a named workflow.",
 		FlagSet:    fs,
 		UsageFunc:  shared.DefaultUsageFunc,

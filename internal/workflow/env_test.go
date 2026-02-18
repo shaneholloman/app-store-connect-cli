@@ -68,40 +68,6 @@ func TestIsTruthy(t *testing.T) {
 	}
 }
 
-func TestExpandEnv(t *testing.T) {
-	env := map[string]string{"NAME": "world", "GREETING": "hello"}
-	result := expandEnv("$GREETING $NAME", env)
-	if result != "hello world" {
-		t.Fatalf("expected 'hello world', got %q", result)
-	}
-}
-
-func TestExpandEnv_BraceSyntax(t *testing.T) {
-	env := map[string]string{"APP": "myapp"}
-	result := expandEnv("${APP}-release", env)
-	if result != "myapp-release" {
-		t.Fatalf("expected 'myapp-release', got %q", result)
-	}
-}
-
-func TestExpandEnv_FallbackToOsEnv(t *testing.T) {
-	t.Setenv("TEST_WORKFLOW_VAR", "from_os")
-	env := map[string]string{}
-	result := expandEnv("$TEST_WORKFLOW_VAR", env)
-	if result != "from_os" {
-		t.Fatalf("expected 'from_os', got %q", result)
-	}
-}
-
-func TestExpandEnv_MapOverridesOsEnv(t *testing.T) {
-	t.Setenv("TEST_WORKFLOW_VAR", "from_os")
-	env := map[string]string{"TEST_WORKFLOW_VAR": "from_map"}
-	result := expandEnv("$TEST_WORKFLOW_VAR", env)
-	if result != "from_map" {
-		t.Fatalf("expected 'from_map', got %q", result)
-	}
-}
-
 func TestBuildEnvSlice_AddsNew(t *testing.T) {
 	env := map[string]string{"WORKFLOW_TEST_NEW": "value"}
 	slice := buildEnvSlice(env)

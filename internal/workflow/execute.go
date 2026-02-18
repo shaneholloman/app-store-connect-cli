@@ -103,9 +103,10 @@ func executeSteps(ctx context.Context, def *Definition, workflowName string, ste
 		stepStart := time.Now()
 
 		sr := StepResult{
-			Index:   idx,
-			Name:    step.Name,
-			Command: step.Run,
+			Index:    idx,
+			Name:     step.Name,
+			Command:  step.Run,
+			Workflow: strings.TrimSpace(step.Workflow),
 		}
 		if workflowName != opts.WorkflowName {
 			sr.ParentWorkflow = workflowName
@@ -125,8 +126,7 @@ func executeSteps(ctx context.Context, def *Definition, workflowName string, ste
 			}
 		}
 
-		if ref := strings.TrimSpace(step.Workflow); ref != "" {
-			sr.Workflow = ref
+		if ref := sr.Workflow; ref != "" {
 
 			if depth+1 > MaxCallDepth {
 				sr.Status = "error"
@@ -145,8 +145,9 @@ func executeSteps(ctx context.Context, def *Definition, workflowName string, ste
 				return fmt.Errorf("workflow: %s step %d: unknown workflow %q", workflowName, idx, ref)
 			}
 
-			// Sub-workflow env provides defaults; call-site "with" should override.
-			subEnv := mergeEnv(env, subWf.Env, step.With)
+			// Sub-workflow env provides defaults; caller env (including CLI params)
+			// overrides; call-site "with" wins over all.
+			subEnv := mergeEnv(subWf.Env, env, step.With)
 
 			if opts.DryRun {
 				fmt.Fprintf(opts.Stderr, "[dry-run] step %d: workflow %s\n", idx, ref)
@@ -160,8 +161,7 @@ func executeSteps(ctx context.Context, def *Definition, workflowName string, ste
 
 		// run: step
 		if opts.DryRun {
-			expanded := expandEnv(step.Run, env)
-			fmt.Fprintf(opts.Stderr, "[dry-run] step %d: %s\n", idx, expanded)
+			fmt.Fprintf(opts.Stderr, "[dry-run] step %d: %s\n", idx, step.Run)
 			sr.Status = "dry-run"
 			sr.DurationMS = time.Since(stepStart).Milliseconds()
 			result.Steps = append(result.Steps, sr)

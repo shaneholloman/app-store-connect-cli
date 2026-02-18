@@ -78,7 +78,7 @@ func TestRun_DryRun(t *testing.T) {
 	}
 }
 
-func TestRun_DryRunExpandsEnvVars(t *testing.T) {
+func TestRun_DryRunShowsRawCommand(t *testing.T) {
 	def := &Definition{
 		Env: map[string]string{"NAME": "world"},
 		Workflows: map[string]Workflow{
@@ -93,8 +93,12 @@ func TestRun_DryRunExpandsEnvVars(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 	stderr := opts.Stderr.(*bytes.Buffer).String()
-	if !strings.Contains(stderr, "echo world") {
-		t.Fatalf("expected dry-run to expand $NAME, got %q", stderr)
+	// Dry-run must NOT expand env values (avoids leaking secrets).
+	if strings.Contains(stderr, "echo world") {
+		t.Fatalf("dry-run must not expand env vars, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "echo $NAME") {
+		t.Fatalf("expected raw command in dry-run, got %q", stderr)
 	}
 }
 
@@ -132,6 +136,60 @@ func TestRun_ConditionalFalsy(t *testing.T) {
 	}
 	if result.Steps[0].Status != "skipped" {
 		t.Fatalf("expected status skipped, got %q", result.Steps[0].Status)
+	}
+}
+
+func TestRun_SkippedWorkflowStepIncludesWorkflowName(t *testing.T) {
+	def := &Definition{
+		Workflows: map[string]Workflow{
+			"main": {Steps: []Step{
+				{Workflow: "helper", If: "SKIP_ME"},
+				{Run: "echo done"},
+			}},
+			"helper": {Steps: []Step{{Run: "echo from-helper"}}},
+		},
+	}
+	opts := runOpts("main")
+
+	result, err := Run(context.Background(), def, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("expected ok, got %q", result.Status)
+	}
+	if len(result.Steps) != 2 {
+		t.Fatalf("expected 2 steps (skipped + done), got %d", len(result.Steps))
+	}
+	skipped := result.Steps[0]
+	if skipped.Status != "skipped" {
+		t.Fatalf("expected first step skipped, got %q", skipped.Status)
+	}
+	if skipped.Workflow != "helper" {
+		t.Fatalf("expected skipped step to include workflow='helper', got %q", skipped.Workflow)
+	}
+}
+
+func TestRun_SkippedRunStepIncludesCommand(t *testing.T) {
+	def := &Definition{
+		Workflows: map[string]Workflow{
+			"test": {Steps: []Step{
+				{Run: "echo guarded", If: "NOPE"},
+			}},
+		},
+	}
+	opts := runOpts("test")
+
+	result, err := Run(context.Background(), def, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	skipped := result.Steps[0]
+	if skipped.Status != "skipped" {
+		t.Fatalf("expected skipped, got %q", skipped.Status)
+	}
+	if skipped.Command != "echo guarded" {
+		t.Fatalf("expected skipped step to include command='echo guarded', got %q", skipped.Command)
 	}
 }
 
@@ -339,6 +397,38 @@ func TestRun_SubWorkflowWithEnv_WithOverridesSubWorkflowEnv(t *testing.T) {
 	}
 	if strings.Contains(stdout, "from-helper-env") {
 		t.Fatalf("expected sub-workflow env to be overridden, got %q", stdout)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("expected ok, got %q", result.Status)
+	}
+}
+
+func TestRun_SubWorkflow_CallerEnvOverridesSubWorkflowEnv(t *testing.T) {
+	// CLI params (via caller env) should beat sub-workflow env defaults.
+	def := &Definition{
+		Workflows: map[string]Workflow{
+			"main": {Steps: []Step{
+				{Workflow: "helper"},
+			}},
+			"helper": {
+				Env:   map[string]string{"MSG": "from-helper-env"},
+				Steps: []Step{{Run: "echo $MSG"}},
+			},
+		},
+	}
+	opts := runOpts("main")
+	opts.Params = map[string]string{"MSG": "from-cli-param"}
+
+	result, err := Run(context.Background(), def, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	stdout := opts.Stdout.(*bytes.Buffer).String()
+	if !strings.Contains(stdout, "from-cli-param") {
+		t.Fatalf("expected CLI params to override sub-workflow env, got %q", stdout)
+	}
+	if strings.Contains(stdout, "from-helper-env") {
+		t.Fatalf("sub-workflow env should not override CLI params, got %q", stdout)
 	}
 	if result.Status != "ok" {
 		t.Fatalf("expected ok, got %q", result.Status)
@@ -841,20 +931,19 @@ func TestRun_ErrorHookFailure_OriginalErrorReturned(t *testing.T) {
 }
 
 func TestRun_SubWorkflow_EnvIsolation(t *testing.T) {
-	// Sub-workflow env should not leak back to parent.
-	// Parent sets X=parent, sub overrides X=child.
+	// "with" overrides should not leak back to parent.
+	// Parent sets X=parent, call-site overrides X=child via with.
 	// A step after the sub-workflow call should see X=parent.
 	def := &Definition{
 		Workflows: map[string]Workflow{
 			"main": {
 				Env: map[string]string{"X": "parent"},
 				Steps: []Step{
-					{Workflow: "child"},
+					{Workflow: "child", With: map[string]string{"X": "child"}},
 					{Run: "echo X_IS_$X"},
 				},
 			},
 			"child": {
-				Env:   map[string]string{"X": "child"},
 				Steps: []Step{{Run: "echo CHILD_X_IS_$X"}},
 			},
 		},
@@ -869,13 +958,49 @@ func TestRun_SubWorkflow_EnvIsolation(t *testing.T) {
 		t.Fatalf("expected ok, got %q", result.Status)
 	}
 	stdout := opts.Stdout.(*bytes.Buffer).String()
-	// Child should see X=child (child env overrides parent)
+	// Child should see X=child (from with: override)
 	if !strings.Contains(stdout, "CHILD_X_IS_child") {
-		t.Fatalf("expected child to see X=child, got %q", stdout)
+		t.Fatalf("expected child to see X=child via with, got %q", stdout)
 	}
 	// Parent step after sub-workflow should still see X=parent
 	if !strings.Contains(stdout, "X_IS_parent") {
 		t.Fatalf("expected parent to see X=parent after sub-workflow, got %q", stdout)
+	}
+}
+
+func TestRun_SubWorkflow_EnvDefaultsVsCallerOverride(t *testing.T) {
+	// Sub-workflow env provides defaults; caller env should win.
+	def := &Definition{
+		Workflows: map[string]Workflow{
+			"main": {
+				Env: map[string]string{"X": "caller"},
+				Steps: []Step{
+					{Workflow: "child"},
+				},
+			},
+			"child": {
+				Env:   map[string]string{"X": "default", "Y": "child-only"},
+				Steps: []Step{{Run: "echo X_IS_$X Y_IS_$Y"}},
+			},
+		},
+	}
+	opts := runOpts("main")
+
+	result, err := Run(context.Background(), def, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	stdout := opts.Stdout.(*bytes.Buffer).String()
+	// X: caller env should win over child default
+	if !strings.Contains(stdout, "X_IS_caller") {
+		t.Fatalf("expected caller env to override sub-workflow default, got %q", stdout)
+	}
+	// Y: child default should apply since caller doesn't set it
+	if !strings.Contains(stdout, "Y_IS_child-only") {
+		t.Fatalf("expected sub-workflow default for Y, got %q", stdout)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("expected ok, got %q", result.Status)
 	}
 }
 
