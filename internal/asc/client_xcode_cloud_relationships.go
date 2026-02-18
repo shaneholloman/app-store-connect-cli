@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -38,14 +39,14 @@ func (c *Client) GetCiBuildActionBuildRunRelationship(ctx context.Context, build
 	}
 
 	path := fmt.Sprintf("/v1/ciBuildActions/%s/relationships/buildRun", buildActionID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response CiBuildActionBuildRunLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse buildRun relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -97,37 +98,15 @@ func (c *Client) getCiBuildRunLinkages(ctx context.Context, buildRunID, relation
 
 // GetCiMacOsVersionXcodeVersionsRelationships retrieves Xcode version linkages for a CI macOS version.
 func (c *Client) GetCiMacOsVersionXcodeVersionsRelationships(ctx context.Context, macOsVersionID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	macOsVersionID = strings.TrimSpace(macOsVersionID)
-	if query.nextURL == "" && macOsVersionID == "" {
-		return nil, fmt.Errorf("macOsVersionID is required")
-	}
-
-	path := fmt.Sprintf("/v1/ciMacOsVersions/%s/relationships/xcodeVersions", macOsVersionID)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("ciMacOsVersionXcodeVersionsRelationships: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		macOsVersionID,
+		"xcodeVersions",
+		"macOsVersionID",
+		"/v1/ciMacOsVersions/%s/relationships/%s",
+		"ciMacOsVersionXcodeVersionsRelationships",
+		opts...,
+	)
 }
 
 // GetCiProductAdditionalRepositoriesRelationships retrieves additional repository linkages for a CI product.
@@ -143,14 +122,14 @@ func (c *Client) GetCiProductAppRelationship(ctx context.Context, productID stri
 	}
 
 	path := fmt.Sprintf("/v1/ciProducts/%s/relationships/app", productID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response CiProductAppLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse app relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -196,14 +175,14 @@ func (c *Client) GetCiWorkflowRepositoryRelationship(ctx context.Context, workfl
 	}
 
 	path := fmt.Sprintf("/v1/ciWorkflows/%s/relationships/repository", workflowID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response CiWorkflowRepositoryLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse repository relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -223,70 +202,26 @@ func (c *Client) getCiWorkflowLinkages(ctx context.Context, workflowID, relation
 
 // GetCiXcodeVersionMacOsVersionsRelationships retrieves macOS version linkages for a CI Xcode version.
 func (c *Client) GetCiXcodeVersionMacOsVersionsRelationships(ctx context.Context, xcodeVersionID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	xcodeVersionID = strings.TrimSpace(xcodeVersionID)
-	if query.nextURL == "" && xcodeVersionID == "" {
-		return nil, fmt.Errorf("xcodeVersionID is required")
-	}
-
-	path := fmt.Sprintf("/v1/ciXcodeVersions/%s/relationships/macOsVersions", xcodeVersionID)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("ciXcodeVersionMacOsVersionsRelationships: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		xcodeVersionID,
+		"macOsVersions",
+		"xcodeVersionID",
+		"/v1/ciXcodeVersions/%s/relationships/%s",
+		"ciXcodeVersionMacOsVersionsRelationships",
+		opts...,
+	)
 }
 
 // GetScmProviderRepositoriesRelationships retrieves repository linkages for an SCM provider.
 func (c *Client) GetScmProviderRepositoriesRelationships(ctx context.Context, providerID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	providerID = strings.TrimSpace(providerID)
-	if query.nextURL == "" && providerID == "" {
-		return nil, fmt.Errorf("providerID is required")
-	}
-
-	path := fmt.Sprintf("/v1/scmProviders/%s/relationships/repositories", providerID)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("scmProviderRepositoriesRelationships: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		providerID,
+		"repositories",
+		"providerID",
+		"/v1/scmProviders/%s/relationships/%s",
+		"scmProviderRepositoriesRelationships",
+		opts...,
+	)
 }

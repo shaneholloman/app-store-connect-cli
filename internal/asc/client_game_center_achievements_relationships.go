@@ -41,7 +41,7 @@ func (c *Client) GetGameCenterAchievementLocalizationAchievementRelationship(ctx
 
 	var response GameCenterAchievementLocalizationAchievementLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse gameCenterAchievement relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -62,7 +62,7 @@ func (c *Client) GetGameCenterAchievementLocalizationImageRelationship(ctx conte
 
 	var response GameCenterAchievementLocalizationImageLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse gameCenterAchievementImage relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -83,7 +83,7 @@ func (c *Client) GetGameCenterAchievementGroupAchievementRelationship(ctx contex
 
 	var response GameCenterAchievementGroupAchievementLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse groupAchievement relationship response: %w", err)
 	}
 
 	return &response, nil

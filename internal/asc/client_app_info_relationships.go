@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -57,14 +58,14 @@ func (c *Client) GetAppInfoAgeRatingDeclarationRelationship(ctx context.Context,
 	}
 
 	path := fmt.Sprintf("/v1/appInfos/%s/relationships/ageRatingDeclaration", appInfoID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppInfoAgeRatingDeclarationLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse ageRatingDeclaration relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -78,14 +79,14 @@ func (c *Client) GetAppInfoPrimaryCategoryRelationship(ctx context.Context, appI
 	}
 
 	path := fmt.Sprintf("/v1/appInfos/%s/relationships/primaryCategory", appInfoID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppInfoPrimaryCategoryLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse primaryCategory relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -99,14 +100,14 @@ func (c *Client) GetAppInfoPrimarySubcategoryOneRelationship(ctx context.Context
 	}
 
 	path := fmt.Sprintf("/v1/appInfos/%s/relationships/primarySubcategoryOne", appInfoID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppInfoPrimarySubcategoryOneLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse primarySubcategoryOne relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -120,14 +121,14 @@ func (c *Client) GetAppInfoPrimarySubcategoryTwoRelationship(ctx context.Context
 	}
 
 	path := fmt.Sprintf("/v1/appInfos/%s/relationships/primarySubcategoryTwo", appInfoID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppInfoPrimarySubcategoryTwoLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse primarySubcategoryTwo relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -141,14 +142,14 @@ func (c *Client) GetAppInfoSecondaryCategoryRelationship(ctx context.Context, ap
 	}
 
 	path := fmt.Sprintf("/v1/appInfos/%s/relationships/secondaryCategory", appInfoID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppInfoSecondaryCategoryLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse secondaryCategory relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -162,14 +163,14 @@ func (c *Client) GetAppInfoSecondarySubcategoryOneRelationship(ctx context.Conte
 	}
 
 	path := fmt.Sprintf("/v1/appInfos/%s/relationships/secondarySubcategoryOne", appInfoID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppInfoSecondarySubcategoryOneLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse secondarySubcategoryOne relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -183,14 +184,14 @@ func (c *Client) GetAppInfoSecondarySubcategoryTwoRelationship(ctx context.Conte
 	}
 
 	path := fmt.Sprintf("/v1/appInfos/%s/relationships/secondarySubcategoryTwo", appInfoID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppInfoSecondarySubcategoryTwoLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse secondarySubcategoryTwo relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -198,70 +199,26 @@ func (c *Client) GetAppInfoSecondarySubcategoryTwoRelationship(ctx context.Conte
 
 // GetAppInfoLocalizationsRelationships retrieves localization linkages for an app info.
 func (c *Client) GetAppInfoLocalizationsRelationships(ctx context.Context, appInfoID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	appInfoID = strings.TrimSpace(appInfoID)
-	if query.nextURL == "" && appInfoID == "" {
-		return nil, fmt.Errorf("appInfoID is required")
-	}
-
-	path := fmt.Sprintf("/v1/appInfos/%s/relationships/appInfoLocalizations", appInfoID)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("appInfoLocalizationsRelationships: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		appInfoID,
+		"appInfoLocalizations",
+		"appInfoID",
+		"/v1/appInfos/%s/relationships/%s",
+		"appInfoLocalizationsRelationships",
+		opts...,
+	)
 }
 
 // GetAppInfoTerritoryAgeRatingsRelationships retrieves territory age rating linkages.
 func (c *Client) GetAppInfoTerritoryAgeRatingsRelationships(ctx context.Context, appInfoID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	appInfoID = strings.TrimSpace(appInfoID)
-	if query.nextURL == "" && appInfoID == "" {
-		return nil, fmt.Errorf("appInfoID is required")
-	}
-
-	path := fmt.Sprintf("/v1/appInfos/%s/relationships/territoryAgeRatings", appInfoID)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("territoryAgeRatingsRelationships: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		appInfoID,
+		"territoryAgeRatings",
+		"appInfoID",
+		"/v1/appInfos/%s/relationships/%s",
+		"territoryAgeRatingsRelationships",
+		opts...,
+	)
 }

@@ -136,7 +136,7 @@ func (c *Client) GetGameCenterActivityLocalizationImageRelationship(ctx context.
 
 	var response GameCenterActivityLocalizationImageLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse image relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -157,7 +157,7 @@ func (c *Client) GetGameCenterActivityVersionDefaultImageRelationship(ctx contex
 
 	var response GameCenterActivityVersionDefaultImageLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse defaultImage relationship response: %w", err)
 	}
 
 	return &response, nil

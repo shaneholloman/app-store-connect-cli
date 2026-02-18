@@ -29,7 +29,7 @@ func (c *Client) GetGameCenterAppVersionAppStoreVersionRelationship(ctx context.
 
 	var response GameCenterAppVersionAppStoreVersionLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse appStoreVersion relationship response: %w", err)
 	}
 	return &response, nil
 }

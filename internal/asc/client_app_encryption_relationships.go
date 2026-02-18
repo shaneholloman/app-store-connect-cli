@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -27,7 +28,7 @@ func (c *Client) GetAppEncryptionDeclarationApp(ctx context.Context, declaration
 	}
 
 	path := fmt.Sprintf("/v1/appEncryptionDeclarations/%s/app", declarationID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -48,14 +49,14 @@ func (c *Client) GetAppEncryptionDeclarationAppRelationship(ctx context.Context,
 	}
 
 	path := fmt.Sprintf("/v1/appEncryptionDeclarations/%s/relationships/app", declarationID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppEncryptionDeclarationAppLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse app relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -69,7 +70,7 @@ func (c *Client) GetAppEncryptionDeclarationDocumentForDeclaration(ctx context.C
 	}
 
 	path := fmt.Sprintf("/v1/appEncryptionDeclarations/%s/appEncryptionDeclarationDocument", declarationID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -90,14 +91,14 @@ func (c *Client) GetAppEncryptionDeclarationDocumentRelationship(ctx context.Con
 	}
 
 	path := fmt.Sprintf("/v1/appEncryptionDeclarations/%s/relationships/appEncryptionDeclarationDocument", declarationID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response AppEncryptionDeclarationDocumentLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse appEncryptionDeclarationDocument relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -125,7 +126,7 @@ func (c *Client) GetAppEncryptionDeclarationsForApp(ctx context.Context, appID s
 		path += "?" + queryString
 	}
 
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}

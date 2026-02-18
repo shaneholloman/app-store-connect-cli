@@ -69,7 +69,7 @@ func (c *Client) GetGameCenterDetailGameCenterGroupRelationship(ctx context.Cont
 
 	var response GameCenterDetailGameCenterGroupLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse gameCenterGroup relationship response: %w", err)
 	}
 
 	return &response, nil

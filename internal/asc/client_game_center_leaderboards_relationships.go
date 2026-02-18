@@ -40,7 +40,7 @@ func (c *Client) GetGameCenterLeaderboardSetGroupLeaderboardSetRelationship(ctx 
 
 	var response GameCenterLeaderboardSetGroupLeaderboardSetLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse groupLeaderboardSet relationship response: %w", err)
 	}
 	return &response, nil
 }
@@ -147,7 +147,7 @@ func (c *Client) GetGameCenterLeaderboardGroupLeaderboardRelationship(ctx contex
 
 	var response GameCenterLeaderboardGroupLeaderboardLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse groupLeaderboard relationship response: %w", err)
 	}
 	return &response, nil
 }

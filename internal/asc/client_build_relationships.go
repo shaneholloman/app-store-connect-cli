@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -56,14 +57,14 @@ func (c *Client) GetBuildAppRelationship(ctx context.Context, buildID string) (*
 	}
 
 	path := fmt.Sprintf("/v1/builds/%s/relationships/app", buildID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BuildAppLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse app relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -77,14 +78,14 @@ func (c *Client) GetBuildAppEncryptionDeclarationRelationship(ctx context.Contex
 	}
 
 	path := fmt.Sprintf("/v1/builds/%s/relationships/appEncryptionDeclaration", buildID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BuildAppEncryptionDeclarationLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse appEncryptionDeclaration relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -98,14 +99,14 @@ func (c *Client) GetBuildBetaAppReviewSubmissionRelationship(ctx context.Context
 	}
 
 	path := fmt.Sprintf("/v1/builds/%s/relationships/betaAppReviewSubmission", buildID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BuildBetaAppReviewSubmissionLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse betaAppReviewSubmission relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -134,7 +135,7 @@ func (c *Client) UpdateBuildAppEncryptionDeclarationRelationship(ctx context.Con
 	}
 
 	path := fmt.Sprintf("/v1/builds/%s/relationships/appEncryptionDeclaration", buildID)
-	_, err = c.do(ctx, "PATCH", path, body)
+	_, err = c.do(ctx, http.MethodPatch, path, body)
 	return err
 }
 
@@ -146,14 +147,14 @@ func (c *Client) GetBuildAppStoreVersionRelationship(ctx context.Context, buildI
 	}
 
 	path := fmt.Sprintf("/v1/builds/%s/relationships/appStoreVersion", buildID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BuildAppStoreVersionLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse appStoreVersion relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -172,14 +173,14 @@ func (c *Client) GetBuildBuildBetaDetailRelationship(ctx context.Context, buildI
 	}
 
 	path := fmt.Sprintf("/v1/builds/%s/relationships/buildBetaDetail", buildID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BuildBuildBetaDetailLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse buildBetaDetail relationship response: %w", err)
 	}
 
 	return &response, nil
@@ -203,14 +204,14 @@ func (c *Client) GetBuildPreReleaseVersionRelationship(ctx context.Context, buil
 	}
 
 	path := fmt.Sprintf("/v1/builds/%s/relationships/preReleaseVersion", buildID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BuildPreReleaseVersionLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse preReleaseVersion relationship response: %w", err)
 	}
 
 	return &response, nil

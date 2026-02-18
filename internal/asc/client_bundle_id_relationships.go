@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -11,7 +12,7 @@ import (
 func (c *Client) GetBundleIDApp(ctx context.Context, bundleID string) (*AppResponse, error) {
 	bundleID = strings.TrimSpace(bundleID)
 	path := fmt.Sprintf("/v1/bundleIds/%s/app", bundleID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +42,7 @@ func (c *Client) GetBundleIDProfiles(ctx context.Context, bundleID string, opts 
 		path += "?" + queryString
 	}
 
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -79,14 +80,14 @@ func (c *Client) GetBundleIDCapabilitiesRelationships(ctx context.Context, bundl
 		path = query.nextURL
 	}
 
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response LinkagesResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse bundleIdCapabilities relationship response: %w", err)
 	}
 
 	return &response, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 )
 
@@ -43,14 +44,14 @@ func (c *Client) GetBetaGroupAppRelationship(ctx context.Context, groupID string
 	}
 
 	path := fmt.Sprintf("/v1/betaGroups/%s/relationships/app", groupID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BetaGroupAppLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse app relationship response: %w", err)
 	}
 	return &response, nil
 }
@@ -63,14 +64,14 @@ func (c *Client) GetBetaGroupBetaRecruitmentCriteriaRelationship(ctx context.Con
 	}
 
 	path := fmt.Sprintf("/v1/betaGroups/%s/relationships/betaRecruitmentCriteria", groupID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BetaGroupBetaRecruitmentCriteriaLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse betaRecruitmentCriteria relationship response: %w", err)
 	}
 	return &response, nil
 }
@@ -83,14 +84,14 @@ func (c *Client) GetBetaGroupBetaRecruitmentCriterionCompatibleBuildCheckRelatio
 	}
 
 	path := fmt.Sprintf("/v1/betaGroups/%s/relationships/betaRecruitmentCriterionCompatibleBuildCheck", groupID)
-	data, err := c.do(ctx, "GET", path, nil)
+	data, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var response BetaGroupBetaRecruitmentCriterionCompatibleBuildCheckLinkageResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse betaRecruitmentCriterionCompatibleBuildCheck relationship response: %w", err)
 	}
 	return &response, nil
 }
@@ -122,7 +123,7 @@ func (c *Client) AddBuildsToBetaGroup(ctx context.Context, groupID string, build
 	}
 
 	path := fmt.Sprintf("/v1/betaGroups/%s/relationships/builds", groupID)
-	_, err = c.do(ctx, "POST", path, body)
+	_, err = c.do(ctx, http.MethodPost, path, body)
 	return err
 }
 
@@ -153,7 +154,7 @@ func (c *Client) RemoveBuildsFromBetaGroup(ctx context.Context, groupID string, 
 	}
 
 	path := fmt.Sprintf("/v1/betaGroups/%s/relationships/builds", groupID)
-	_, err = c.do(ctx, "DELETE", path, body)
+	_, err = c.do(ctx, http.MethodDelete, path, body)
 	return err
 }
 

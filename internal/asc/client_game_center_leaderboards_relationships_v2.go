@@ -2,7 +2,6 @@ package asc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -112,69 +111,25 @@ func (c *Client) UpdateGameCenterLeaderboardChallengeRelationshipV2(ctx context.
 }
 
 func (c *Client) getGameCenterLeaderboardSetLinkagesV2(ctx context.Context, setID, relationship string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	setID = strings.TrimSpace(setID)
-	if query.nextURL == "" && setID == "" {
-		return nil, fmt.Errorf("setID is required")
-	}
-
-	path := fmt.Sprintf("/v2/gameCenterLeaderboardSets/%s/relationships/%s", setID, relationship)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("gameCenterLeaderboardSetRelationshipsV2: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		setID,
+		relationship,
+		"setID",
+		"/v2/gameCenterLeaderboardSets/%s/relationships/%s",
+		"gameCenterLeaderboardSetRelationshipsV2",
+		opts...,
+	)
 }
 
 func (c *Client) getGameCenterLeaderboardLinkagesV2(ctx context.Context, leaderboardID, relationship string, opts ...LinkagesOption) (*LinkagesResponse, error) {
-	query := &linkagesQuery{}
-	for _, opt := range opts {
-		opt(query)
-	}
-
-	leaderboardID = strings.TrimSpace(leaderboardID)
-	if query.nextURL == "" && leaderboardID == "" {
-		return nil, fmt.Errorf("leaderboardID is required")
-	}
-
-	path := fmt.Sprintf("/v2/gameCenterLeaderboards/%s/relationships/%s", leaderboardID, relationship)
-	if query.nextURL != "" {
-		if err := validateNextURL(query.nextURL); err != nil {
-			return nil, fmt.Errorf("gameCenterLeaderboardRelationshipsV2: %w", err)
-		}
-		path = query.nextURL
-	} else if queryString := buildLinkagesQuery(query); queryString != "" {
-		path += "?" + queryString
-	}
-
-	data, err := c.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var response LinkagesResponse
-	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	return &response, nil
+	return c.getResourceLinkages(
+		ctx,
+		leaderboardID,
+		relationship,
+		"leaderboardID",
+		"/v2/gameCenterLeaderboards/%s/relationships/%s",
+		"gameCenterLeaderboardRelationshipsV2",
+		opts...,
+	)
 }
