@@ -10,8 +10,13 @@ agents that cannot access the internet.
 
 ## Source
 
-The snapshot comes from the community-maintained OpenAPI repo:
-`https://github.com/EvanBacon/App-Store-Connect-OpenAPI-Spec`
+Preferred sources for the OpenAPI spec:
+
+- Official Apple download (zip): `https://developer.apple.com/sample-code/app-store-connect/app-store-connect-openapi-specification.zip`
+- Community mirror that tracks Apple's published spec: `https://github.com/EvanBacon/App-Store-Connect-OpenAPI-Spec`
+
+Note: The published OpenAPI spec can lag reality and may omit some operations that
+still work in the API (parity checks can surface these gaps).
 
 ## Update process
 
@@ -19,4 +24,4 @@ The snapshot comes from the community-maintained OpenAPI repo:
 2. Run `scripts/update-openapi-index.py` to regenerate `paths.txt`.
 3. Update the "Last synced" date below.
 
-Last synced: 2026-01-27
+Last synced: 2026-02-18
