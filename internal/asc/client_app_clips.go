@@ -516,6 +516,12 @@ type AppClipDefaultExperienceReleaseWithAppStoreVersionLinkageResponse struct {
 	Links Links        `json:"links"`
 }
 
+// AppClipDefaultExperienceReleaseWithAppStoreVersionRelationshipUpdateRequest is a request to update the
+// releaseWithAppStoreVersion relationship on a default experience.
+type AppClipDefaultExperienceReleaseWithAppStoreVersionRelationshipUpdateRequest struct {
+	Data ResourceData `json:"data"`
+}
+
 // AppClipDefaultExperienceLocalizationHeaderImageLinkageResponse is the response for header image relationships.
 type AppClipDefaultExperienceLocalizationHeaderImageLinkageResponse struct {
 	Data  ResourceData `json:"data"`
@@ -842,6 +848,33 @@ func (c *Client) GetAppClipDefaultExperienceReleaseWithAppStoreVersionRelationsh
 	return &response, nil
 }
 
+// UpdateAppClipDefaultExperienceReleaseWithAppStoreVersionRelationship updates the releaseWithAppStoreVersion relationship.
+func (c *Client) UpdateAppClipDefaultExperienceReleaseWithAppStoreVersionRelationship(ctx context.Context, experienceID, versionID string) error {
+	experienceID = strings.TrimSpace(experienceID)
+	versionID = strings.TrimSpace(versionID)
+	if experienceID == "" {
+		return fmt.Errorf("experienceID is required")
+	}
+	if versionID == "" {
+		return fmt.Errorf("versionID is required")
+	}
+
+	request := AppClipDefaultExperienceReleaseWithAppStoreVersionRelationshipUpdateRequest{
+		Data: ResourceData{
+			Type: ResourceTypeAppStoreVersions,
+			ID:   versionID,
+		},
+	}
+	body, err := BuildRequestBody(request)
+	if err != nil {
+		return err
+	}
+
+	path := fmt.Sprintf("/v1/appClipDefaultExperiences/%s/relationships/releaseWithAppStoreVersion", experienceID)
+	_, err = c.do(ctx, http.MethodPatch, path, body)
+	return err
+}
+
 // CreateAppClipDefaultExperience creates a default experience for an App Clip.
 func (c *Client) CreateAppClipDefaultExperience(ctx context.Context, appClipID string, attrs *AppClipDefaultExperienceCreateAttributes, releaseVersionID string, templateID string) (*AppClipDefaultExperienceResponse, error) {
 	appClipID = strings.TrimSpace(appClipID)
@@ -989,6 +1022,41 @@ func (c *Client) GetAppClipDefaultExperienceLocalizations(ctx context.Context, e
 	}
 
 	var response AppClipDefaultExperienceLocalizationsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
+// GetAppClipDefaultExperienceLocalizationsRelationships retrieves localization linkages for a default experience.
+func (c *Client) GetAppClipDefaultExperienceLocalizationsRelationships(ctx context.Context, experienceID string, opts ...LinkagesOption) (*LinkagesResponse, error) {
+	query := &linkagesQuery{}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	experienceID = strings.TrimSpace(experienceID)
+	if query.nextURL == "" && experienceID == "" {
+		return nil, fmt.Errorf("experienceID is required")
+	}
+
+	path := fmt.Sprintf("/v1/appClipDefaultExperiences/%s/relationships/appClipDefaultExperienceLocalizations", experienceID)
+	if query.nextURL != "" {
+		if err := validateNextURL(query.nextURL); err != nil {
+			return nil, fmt.Errorf("appClipDefaultExperienceLocalizationsRelationships: %w", err)
+		}
+		path = query.nextURL
+	} else if queryString := buildLinkagesQuery(query); queryString != "" {
+		path += "?" + queryString
+	}
+
+	data, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var response LinkagesResponse
 	if err := json.Unmarshal(data, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}

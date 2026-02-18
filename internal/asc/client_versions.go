@@ -138,6 +138,11 @@ type AppStoreVersionBuildRelationshipUpdateRequest struct {
 	Data ResourceData `json:"data"`
 }
 
+// AppStoreVersionAppClipDefaultExperienceRelationshipUpdateRequest is a request to attach an App Clip default experience to a version.
+type AppStoreVersionAppClipDefaultExperienceRelationshipUpdateRequest struct {
+	Data ResourceData `json:"data"`
+}
+
 // GetAppStoreVersions retrieves app store versions for an app.
 func (c *Client) GetAppStoreVersions(ctx context.Context, appID string, opts ...AppStoreVersionsOption) (*AppStoreVersionsResponse, error) {
 	query := &appStoreVersionsQuery{}
@@ -329,6 +334,35 @@ func (c *Client) AttachBuildToVersion(ctx context.Context, versionID, buildID st
 	}
 
 	path := fmt.Sprintf("/v1/appStoreVersions/%s/relationships/build", versionID)
+	if _, err := c.do(ctx, "PATCH", path, body); err != nil {
+		return err
+	}
+	return nil
+}
+
+// AttachAppClipDefaultExperienceToVersion attaches an App Clip default experience to an app store version.
+func (c *Client) AttachAppClipDefaultExperienceToVersion(ctx context.Context, versionID, experienceID string) error {
+	versionID = strings.TrimSpace(versionID)
+	experienceID = strings.TrimSpace(experienceID)
+	if versionID == "" {
+		return fmt.Errorf("versionID is required")
+	}
+	if experienceID == "" {
+		return fmt.Errorf("experienceID is required")
+	}
+
+	request := AppStoreVersionAppClipDefaultExperienceRelationshipUpdateRequest{
+		Data: ResourceData{
+			Type: ResourceTypeAppClipDefaultExperiences,
+			ID:   experienceID,
+		},
+	}
+	body, err := BuildRequestBody(request)
+	if err != nil {
+		return err
+	}
+
+	path := fmt.Sprintf("/v1/appStoreVersions/%s/relationships/appClipDefaultExperience", versionID)
 	if _, err := c.do(ctx, "PATCH", path, body); err != nil {
 		return err
 	}
