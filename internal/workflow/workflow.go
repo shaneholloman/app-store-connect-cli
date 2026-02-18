@@ -59,7 +59,7 @@ func (s *Step) UnmarshalJSON(data []byte) error {
 	}
 	// Ensure there is exactly one JSON value.
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		return fmt.Errorf("step must be a single JSON value: %w", err)
+		return fmt.Errorf("step must be a single JSON value: trailing data")
 	}
 	*s = Step(alias)
 	return nil

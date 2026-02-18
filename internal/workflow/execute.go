@@ -80,9 +80,7 @@ func Run(ctx context.Context, def *Definition, opts RunOptions) (*RunResult, err
 
 	if err != nil {
 		result.Status = "error"
-		if hook := strings.TrimSpace(def.Error); hook != "" {
-			_ = runHook(ctx, hook, env, opts.DryRun, opts.Stdout, opts.Stderr)
-		}
+		_ = runHook(ctx, def.Error, env, opts.DryRun, opts.Stdout, opts.Stderr)
 		return result, err
 	}
 
