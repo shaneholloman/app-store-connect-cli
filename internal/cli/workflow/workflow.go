@@ -94,8 +94,9 @@ func workflowRunCommand() *ffcli.Command {
 			if err != nil {
 				if result != nil {
 					_ = printJSON(os.Stdout, result, *pretty)
+					return shared.NewReportedError(err)
 				}
-				return shared.NewReportedError(err)
+				return fmt.Errorf("workflow run: %w", err)
 			}
 
 			return printJSON(os.Stdout, result, *pretty)

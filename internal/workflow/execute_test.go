@@ -901,3 +901,26 @@ func TestRun_DurationMS_Populated(t *testing.T) {
 		t.Fatalf("expected non-negative step DurationMS, got %d", result.Steps[0].DurationMS)
 	}
 }
+
+func TestRun_DurationMS_IncludesAfterAll(t *testing.T) {
+	// after_all hook sleeps 100ms. DurationMS must include that time.
+	def := &Definition{
+		AfterAll: "sleep 0.1",
+		Workflows: map[string]Workflow{
+			"test": {Steps: []Step{{Run: "echo fast"}}},
+		},
+	}
+	opts := runOpts("test")
+
+	result, err := Run(context.Background(), def, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("expected ok, got %q", result.Status)
+	}
+	// The after_all hook sleeps 100ms, so total duration must be >= 100ms.
+	if result.DurationMS < 100 {
+		t.Fatalf("expected DurationMS >= 100 (must include after_all time), got %d", result.DurationMS)
+	}
+}

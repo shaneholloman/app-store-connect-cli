@@ -93,6 +93,7 @@ func Run(ctx context.Context, def *Definition, opts RunOptions) (*RunResult, err
 	}
 
 	result.Status = "ok"
+	result.DurationMS = time.Since(start).Milliseconds()
 	return result, nil
 }
 

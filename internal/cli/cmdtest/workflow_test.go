@@ -126,6 +126,39 @@ func TestWorkflowRun_PrivateWorkflow(t *testing.T) {
 		if !strings.Contains(err.Error(), "private") {
 			t.Fatalf("expected 'private' in error, got %v", err)
 		}
+		// Must NOT be a ReportedError — cmd/run.go needs to print it to stderr.
+		if _, ok := errors.AsType[ReportedError](err); ok {
+			t.Fatal("private workflow error must not be ReportedError (would cause silent exit)")
+		}
+	})
+}
+
+func TestWorkflowRun_UnknownWorkflow(t *testing.T) {
+	dir := t.TempDir()
+	path := writeWorkflowJSON(t, dir, `{
+		"workflows": {
+			"beta": {"steps": ["echo hello"]}
+		}
+	}`)
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	_, _ = captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "run", "--file", path, "nonexistent"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if err == nil {
+			t.Fatal("expected error for unknown workflow")
+		}
+		if !strings.Contains(err.Error(), "unknown workflow") {
+			t.Fatalf("expected 'unknown workflow' in error, got %v", err)
+		}
+		// Must NOT be a ReportedError — cmd/run.go needs to print it to stderr.
+		if _, ok := errors.AsType[ReportedError](err); ok {
+			t.Fatal("unknown workflow error must not be ReportedError (would cause silent exit)")
+		}
 	})
 }
 
