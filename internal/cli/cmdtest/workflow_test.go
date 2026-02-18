@@ -280,6 +280,32 @@ func TestWorkflowRun_DryRunFlagAfterName_InvalidValue(t *testing.T) {
 	}
 }
 
+func TestWorkflowRun_FileFlagAfterName_MissingValue(t *testing.T) {
+	dir := t.TempDir()
+	path := writeWorkflowJSON(t, dir, `{
+		"workflows": {
+			"beta": {"steps": ["echo hello"]}
+		}
+	}`)
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	_, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "run", "--file", path, "beta", "--file", "--dry-run"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected ErrHelp, got %v", err)
+		}
+	})
+
+	if !strings.Contains(stderr, "--file requires a value") {
+		t.Fatalf("expected missing file value error, got %q", stderr)
+	}
+}
+
 func TestWorkflowRun_Valid_WithJSONCComments(t *testing.T) {
 	dir := t.TempDir()
 	path := writeWorkflowJSON(t, dir, `{

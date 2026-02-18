@@ -238,7 +238,7 @@ func parseRunTailArgs(args []string, fs *flag.FlagSet) ([]string, error) {
 				continue
 			case "file":
 				if !hasValue {
-					if i+1 >= len(args) {
+					if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 						return nil, shared.UsageError("--file requires a value")
 					}
 					i++
