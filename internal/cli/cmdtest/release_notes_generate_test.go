@@ -193,8 +193,29 @@ func runGit(t *testing.T, dir string, args ...string) {
 
 	c := exec.Command("git", args...)
 	c.Dir = dir
+	// When tests run under git hooks, the parent process may export GIT_* repo override
+	// variables. Remove them so this helper always targets the temp repo in dir.
+	c.Env = cleanGitRepoEnv(os.Environ())
 	out, err := c.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, string(out))
 	}
+}
+
+func cleanGitRepoEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		switch {
+		case strings.HasPrefix(kv, "GIT_DIR="):
+			continue
+		case strings.HasPrefix(kv, "GIT_WORK_TREE="):
+			continue
+		case strings.HasPrefix(kv, "GIT_INDEX_FILE="):
+			continue
+		case strings.HasPrefix(kv, "GIT_COMMON_DIR="):
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
 }
