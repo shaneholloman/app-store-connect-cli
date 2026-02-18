@@ -272,7 +272,7 @@ func TestIssue616_GameCenterDetailAndGroupRelationshipEndpoints_PATCH(t *testing
 		{
 			name:     "UpdateGameCenterDetailChallengesMinimumPlatformVersionsRelationship",
 			wantPath: "/v1/gameCenterDetails/detail-1/relationships/challengesMinimumPlatformVersions",
-			wantType: ResourceTypeAppStoreVersions,
+			wantType: ResourceTypeGameCenterAppVersions,
 			wantIDs:  []string{"ver-1", "ver-2"},
 			call: func(client *Client) error {
 				return client.UpdateGameCenterDetailChallengesMinimumPlatformVersionsRelationship(ctx, "detail-1", []string{"ver-1", "ver-2"})

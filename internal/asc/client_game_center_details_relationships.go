@@ -107,7 +107,7 @@ func (c *Client) GetGameCenterDetailLeaderboardSetReleasesRelationships(ctx cont
 
 // UpdateGameCenterDetailChallengesMinimumPlatformVersionsRelationship replaces the challengesMinimumPlatformVersions relationship.
 func (c *Client) UpdateGameCenterDetailChallengesMinimumPlatformVersionsRelationship(ctx context.Context, detailID string, versionIDs []string) error {
-	return c.updateGameCenterDetailToManyRelationship(ctx, detailID, "challengesMinimumPlatformVersions", ResourceTypeAppStoreVersions, versionIDs)
+	return c.updateGameCenterDetailToManyRelationship(ctx, detailID, "challengesMinimumPlatformVersions", ResourceTypeGameCenterAppVersions, versionIDs)
 }
 
 // UpdateGameCenterDetailGameCenterAchievementsRelationship replaces the gameCenterAchievements relationship.
