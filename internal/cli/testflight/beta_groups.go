@@ -352,7 +352,6 @@ func BetaGroupsUpdateCommand() *ffcli.Command {
 	publicLinkLimitEnabled := fs.Bool("public-link-limit-enabled", false, "Enable public link limit")
 	publicLinkLimit := fs.Int("public-link-limit", 0, "Public link limit (1-10000)")
 	feedbackEnabled := fs.Bool("feedback-enabled", false, "Enable feedback")
-	internal := fs.Bool("internal", false, "Set as internal group")
 	allBuilds := fs.Bool("all-builds", false, "Grant access to all builds")
 	output := shared.BindOutputFlags(fs)
 
@@ -365,7 +364,7 @@ func BetaGroupsUpdateCommand() *ffcli.Command {
 Examples:
   asc testflight beta-groups update --id "GROUP_ID" --name "New Name"
   asc testflight beta-groups update --id "GROUP_ID" --public-link-enabled --public-link-limit 100
-  asc testflight beta-groups update --id "GROUP_ID" --feedback-enabled --internal`,
+  asc testflight beta-groups update --id "GROUP_ID" --feedback-enabled`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -390,7 +389,6 @@ Examples:
 				visited["public-link-limit-enabled"] ||
 				visited["public-link-limit"] ||
 				visited["feedback-enabled"] ||
-				visited["internal"] ||
 				visited["all-builds"]
 			if !hasUpdates {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
@@ -413,7 +411,6 @@ Examples:
 			var publicLinkEnabledAttr *bool
 			var publicLinkLimitEnabledAttr *bool
 			var feedbackEnabledAttr *bool
-			var internalAttr *bool
 			var allBuildsAttr *bool
 
 			if visited["public-link-enabled"] {
@@ -424,9 +421,6 @@ Examples:
 			}
 			if visited["feedback-enabled"] {
 				feedbackEnabledAttr = feedbackEnabled
-			}
-			if visited["internal"] {
-				internalAttr = internal
 			}
 			if visited["all-builds"] {
 				allBuildsAttr = allBuilds
@@ -442,7 +436,6 @@ Examples:
 						PublicLinkLimitEnabled: publicLinkLimitEnabledAttr,
 						PublicLinkLimit:        *publicLinkLimit,
 						FeedbackEnabled:        feedbackEnabledAttr,
-						IsInternalGroup:        internalAttr,
 						HasAccessToAllBuilds:   allBuildsAttr,
 					},
 				},
