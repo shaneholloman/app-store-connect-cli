@@ -18,8 +18,8 @@ func DocsCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "docs",
 		ShortUsage: "asc docs <subcommand> [flags]",
-		ShortHelp:  "Generate ASC documentation helpers.",
-		LongHelp: `Generate ASC documentation helpers.
+		ShortHelp:  "Generate asc cli documentation helpers.",
+		LongHelp: `Generate asc cli documentation helpers.
 
 Examples:
   asc docs init

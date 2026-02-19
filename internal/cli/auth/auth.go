@@ -31,8 +31,8 @@ func AuthCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "auth",
 		ShortUsage: "asc auth <subcommand> [flags]",
-		ShortHelp:  "Manage App Store Connect API authentication.",
-		LongHelp: `Manage App Store Connect API authentication.
+		ShortHelp:  "Manage authentication for the App Store Connect API.",
+		LongHelp: `Manage authentication for the App Store Connect API.
 
 Authentication is handled via App Store Connect API keys. Generate keys at:
 https://appstoreconnect.apple.com/access/integrations/api
@@ -410,8 +410,8 @@ func AuthLoginCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "login",
 		ShortUsage: "asc auth login [flags]",
-		ShortHelp:  "Register and store App Store Connect API key.",
-		LongHelp: `Register and store App Store Connect API key.
+		ShortHelp:  "Register and store App Store Connect API key credentials.",
+		LongHelp: `Register and store App Store Connect API key credentials.
 
 This command stores your API credentials in the system keychain when available,
 with a local config fallback (restricted permissions). Use --bypass-keychain to

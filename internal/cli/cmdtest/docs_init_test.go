@@ -104,7 +104,7 @@ func runInitCreatesReferenceAndLinks(t *testing.T, args []string) {
 	if err != nil {
 		t.Fatalf("read ASC.md error: %v", err)
 	}
-	if !strings.Contains(string(ascData), "# ASC CLI Reference") {
+	if !strings.Contains(string(ascData), "# asc cli reference") {
 		t.Fatalf("expected ASC.md to contain header, got %q", string(ascData))
 	}
 

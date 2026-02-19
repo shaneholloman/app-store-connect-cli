@@ -81,8 +81,8 @@ func PricingTerritoriesListCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "list",
 		ShortUsage: "asc pricing territories list [flags]",
-		ShortHelp:  "List App Store Connect territories.",
-		LongHelp: `List App Store Connect territories.
+		ShortHelp:  "List territories in App Store Connect.",
+		LongHelp: `List territories in App Store Connect.
 
 Examples:
   asc pricing territories list

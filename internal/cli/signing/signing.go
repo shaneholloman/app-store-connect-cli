@@ -16,7 +16,7 @@ func SigningCommand() *ffcli.Command {
 		Name:       "signing",
 		ShortUsage: "asc signing <subcommand> [flags]",
 		ShortHelp:  "Manage signing certificates and profiles.",
-		LongHelp: `Manage signing assets for App Store Connect.
+		LongHelp: `Manage signing assets in App Store Connect.
 
 Examples:
   asc signing fetch --bundle-id com.example.app --profile-type IOS_APP_STORE --output ./signing`,

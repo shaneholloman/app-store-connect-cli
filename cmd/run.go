@@ -135,10 +135,14 @@ func startAsyncUpdateCheck(opts update.Options) {
 	asyncOpts.ShowProgress = false
 	asyncOpts.Output = io.Discard
 
+	// Capture the function pointer at spawn time so tests (and any other callers)
+	// can safely swap the global hook without affecting already-started goroutines.
+	fn := checkAndUpdateFn
+
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), asyncUpdateTimeout)
 		defer cancel()
-		_, _ = checkAndUpdateFn(ctx, asyncOpts)
+		_, _ = fn(ctx, asyncOpts)
 	}()
 }
 

@@ -22,8 +22,8 @@ func WebhooksCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "webhooks",
 		ShortUsage: "asc webhooks <subcommand> [flags]",
-		ShortHelp:  "Manage App Store Connect webhooks.",
-		LongHelp: `Manage App Store Connect webhooks.
+		ShortHelp:  "Manage webhooks in App Store Connect.",
+		LongHelp: `Manage webhooks in App Store Connect.
 
 Examples:
   asc webhooks list --app "APP_ID"

@@ -15,7 +15,7 @@ func SandboxCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "sandbox",
 		ShortUsage: "asc sandbox <subcommand> [flags]",
-		ShortHelp:  "Manage App Store Connect sandbox testers.",
+		ShortHelp:  "Manage sandbox testers in App Store Connect.",
 		LongHelp: `Manage sandbox testers for in-app purchase testing.
 
 Examples:

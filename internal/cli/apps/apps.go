@@ -34,8 +34,8 @@ func AppsCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "apps",
 		ShortUsage: "asc apps <subcommand> [flags]",
-		ShortHelp:  "List and manage apps from App Store Connect.",
-		LongHelp: `List and manage apps from App Store Connect.
+		ShortHelp:  "List and manage apps in App Store Connect.",
+		LongHelp: `List and manage apps in App Store Connect.
 
 Examples:
   asc apps

@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an idea or improvement for asc (App Store Connect CLI)
+description: Suggest an idea or improvement for asc cli
 title: "feat: "
 labels:
   - enhancement

@@ -20,8 +20,8 @@ func UsersCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "users",
 		ShortUsage: "asc users <subcommand> [flags]",
-		ShortHelp:  "Manage App Store Connect users and invitations.",
-		LongHelp: `Manage App Store Connect users and invitations.
+		ShortHelp:  "Manage users and invitations in App Store Connect.",
+		LongHelp: `Manage users and invitations in App Store Connect.
 
 Examples:
   asc users list
@@ -65,8 +65,8 @@ func UsersListCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "list",
 		ShortUsage: "asc users list [flags]",
-		ShortHelp:  "List App Store Connect users.",
-		LongHelp: `List App Store Connect users.
+		ShortHelp:  "List users in App Store Connect.",
+		LongHelp: `List users in App Store Connect.
 
 Examples:
   asc users list

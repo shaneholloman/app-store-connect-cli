@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/github/downloads/rudrankriyam/App-Store-Connect-CLI/total?style=for-the-badge&color=green" alt="Downloads">
 </p>
 
-A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect API](https://developer.apple.com/app-store-connect/api/). Automate your iOS, macOS, tvOS, and visionOS app workflows from your terminal, IDE, or CI/CD pipeline. A modern **fastlane alternative** built as a single Go binary.
+A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect API](https://developer.apple.com/app-store-connect/api/). Automate your iOS, macOS, tvOS, and visionOS app workflows from your terminal, IDE, or CI/CD pipeline. Built as a single Go binary.
 
 ### Features
 
@@ -24,9 +24,10 @@ A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect A
 - **Game Center** -- achievements, leaderboards, leaderboard sets, and localizations
 - **Screenshots & Previews** -- upload, frame, and manage App Store media assets
 - **Webhooks** -- create and manage App Store Connect webhooks
+- **Workflow** -- multi-step automation in `.asc/workflow.json` (JSON stdout)
 - **Agent-friendly** -- JSON-first output, explicit flags, no interactive prompts, clean exit codes
 
-## Why ASC?
+## Why asc?
 
 | Problem | Solution |
 |---------|----------|
@@ -37,7 +38,7 @@ A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect A
 ## Table of Contents
 
 - [Features](#features)
-- [Why ASC?](#why-asc)
+- [Why asc?](#why-asc)
 - [Quick Start](#quick-start)
   - [Install](#install)
   - [Authenticate](#authenticate)
@@ -66,6 +67,7 @@ A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect A
   - [Performance](#performance)
   - [Webhooks](#webhooks)
   - [Publish (End-to-End Workflows)](#publish-end-to-end-workflows)
+  - [Workflow](#workflow)
   - [App Clips](#app-clips)
   - [Encryption](#encryption)
   - [Screenshots & Video Previews](#screenshots--video-previews)
@@ -95,7 +97,7 @@ A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect A
 - [Documentation](#documentation)
 - [How to test in <10 minutes](#how-to-test-in-10-minutes)
 - [Security](#security)
-- [ASC Skills](#asc-skills)
+- [asc skills](#asc-skills)
 - [Wall of Apps](#wall-of-apps)
 - [Acknowledgements](#acknowledgements)
 - [Contributing](#contributing)
@@ -574,7 +576,7 @@ asc analytics download --request-id "REQUEST_ID" --instance-id "INSTANCE_ID"
 
 Notes:
 - Sales report date formats: DAILY/WEEKLY `YYYY-MM-DD`, MONTHLY `YYYY-MM`, YEARLY `YYYY`
-- Reports may not be available yet; ASC returns availability errors when data is pending
+- Reports may not be available yet; the App Store Connect API returns availability errors when data is pending
 - Use `ASC_TIMEOUT` or `ASC_TIMEOUT_SECONDS` for long analytics pagination
 - `asc analytics get --date ... --paginate` will scan all report pages (slower, but avoids missing instances)
 
@@ -1105,6 +1107,33 @@ Notes:
 - `--version` and `--build-number` are auto-extracted from the IPA if not provided
 - Default timeout is 30 minutes; override with `--timeout`
 
+### Workflow
+
+Define named, multi-step automation sequences in `.asc/workflow.json`.
+Workflows compose existing `asc` commands and normal shell commands, and support:
+- Sub-workflows (workflow steps)
+- Definition-level hooks (`before_all`, `after_all`, `error`)
+- Conditionals (`if`)
+- JSON-only stdout (step/hook command output streams to stderr)
+
+Docs:
+- Run `asc workflow --help` to print a full `.asc/workflow.json` example
+- See [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md)
+
+```bash
+# Validate workflow.json for structural errors + cycles
+asc workflow validate
+
+# List available workflows (JSON)
+asc workflow list
+
+# Dry-run (no side effects)
+asc workflow run --dry-run beta
+
+# Run with params (KEY:VALUE or KEY=VALUE)
+asc workflow run beta BUILD_ID:123456789 GROUP_ID:abcdef
+```
+
 ### App Clips
 
 ```bash
@@ -1528,7 +1557,7 @@ asc build-localizations get --id "LOCALIZATION_ID"
 
 ### Migrate (Fastlane Compatibility)
 
-Validate and migrate metadata between ASC's `.strings` format and Deliver-style directory layout.
+Validate and migrate metadata between asc cli's `.strings` format and Deliver-style directory layout.
 
 ```bash
 # Validate metadata against App Store Connect character limits (offline)
@@ -1721,7 +1750,7 @@ make build
 - Report/artifact file helpers use atomic `O_NOFOLLOW` on Unix-like systems
 - On platforms without a portable `O_NOFOLLOW`, helpers use best-effort pre/post `Lstat` checks to reject symlinks and detect path swaps (residual TOCTOU window remains)
 
-## ASC Skills
+## asc skills
 
 Agent Skills for automating `asc` workflows including builds, TestFlight, metadata sync, submissions, and signing. https://github.com/rudrankriyam/app-store-connect-cli-skills
 
@@ -1733,6 +1762,7 @@ Apps shipping with asc-cli. [Add yours via PR](https://github.com/rudrankriyam/A
 | App | Link | Creator | Platform |
 |:----|:-----|:--------|:---------|
 | bijou.fm | [Open](https://apps.apple.com/us/app/bijou-fm-for-last-fm/id6450460066) | zchwyng | iOS, macOS, tvOS, visionOS |
+| Bobbin | [Open](https://apps.apple.com/us/app/threads-growth-bobbin/id6756035789) | ljyjeffrey | iOS |
 | CodexMonitor | [Open](https://github.com/Dimillian/CodexMonitor) | Dimillian | macOS, iOS |
 | Dandelion | [Open](https://apps.apple.com/us/app/dandelion-write-and-let-go/id6757363901) | joeycast | iOS, macOS |
 | DoubleMemory | [Open](https://apps.apple.com/app/id6737529034) | randomor | iOS, macOS |
@@ -1747,6 +1777,7 @@ Apps shipping with asc-cli. [Add yours via PR](https://github.com/rudrankriyam/A
 | Repetti | [Open](https://apps.apple.com/us/app/repetti-the-chores-list-app/id6758055413) | rursache | iOS |
 | Steps: Workout & Pedometer | [Open](https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378) | Hieu Dinh | iOS |
 | Summit | [Open](https://apps.apple.com/app/id6756911679) | OscarGorog | iOS |
+| ToMe: Save to Self | [Open](https://apps.apple.com/app/id6755589008) | framara | iOS, macOS |
 | TV Show Tracker | [Open](https://apps.apple.com/us/app/tv-show-tracker-tv-club/id6497563903) | rursache | iOS |
 | Unlimited Clipboard History | [Open](https://apps.apple.com/us/app/unlimited-clipboard-history/id6705136056) | yspreen | macOS |
 | Video Annotation | [Open](https://apps.apple.com/us/app/video-annotation/id6758316355) | antranapp | iOS |
@@ -1762,7 +1793,7 @@ This command updates `docs/wall-of-apps.json` and re-syncs the generated Wall sn
 
 ## Acknowledgements
 
-Local screenshot framing in ASC uses Koubou (pinned to `0.13.0`) for deterministic device-frame rendering.
+Local screenshot framing in asc cli uses Koubou (pinned to `0.13.0`) for deterministic device-frame rendering.
 GitHub: https://github.com/bitomule/koubou
 
 ## Contributing

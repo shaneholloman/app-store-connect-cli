@@ -34,8 +34,8 @@ func DevicesCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "devices",
 		ShortUsage: "asc devices <subcommand> [flags]",
-		ShortHelp:  "Manage App Store Connect devices.",
-		LongHelp: `Manage App Store Connect devices.
+		ShortHelp:  "Manage devices in App Store Connect.",
+		LongHelp: `Manage devices in App Store Connect.
 
 Examples:
   asc devices list
@@ -77,8 +77,8 @@ func DevicesListCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "list",
 		ShortUsage: "asc devices list [flags]",
-		ShortHelp:  "List App Store Connect devices.",
-		LongHelp: `List App Store Connect devices.
+		ShortHelp:  "List devices in App Store Connect.",
+		LongHelp: `List devices in App Store Connect.
 
 Examples:
   asc devices list

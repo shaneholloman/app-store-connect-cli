@@ -21,8 +21,8 @@ func AgreementsCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "agreements",
 		ShortUsage: "asc agreements <subcommand> [flags]",
-		ShortHelp:  "Manage App Store Connect agreements.",
-		LongHelp: `Manage App Store Connect agreements.
+		ShortHelp:  "Manage agreements in App Store Connect.",
+		LongHelp: `Manage agreements in App Store Connect.
 
 Examples:
   asc agreements territories list --id "EULA_ID"`,

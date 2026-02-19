@@ -73,8 +73,8 @@ func DocsInitCommand() *ffcli.Command {
 		"docs init",
 		"init",
 		"asc docs init [flags]",
-		"Create an ASC.md command reference in the current repo.",
-		`Create an ASC.md command reference in the current repo.
+		"Create an ASC.md command reference for the asc cli in the current repo.",
+		`Create an ASC.md command reference for the asc cli in the current repo.
 
 Examples:
   asc docs init
@@ -322,7 +322,7 @@ func updateAgentsLink(path string, relRef string) (bool, error) {
 		return writeIfChanged(path, strings.Join(lines, "\n"))
 	}
 
-	section := fmt.Sprintf("## ASC CLI Reference\n\n%s", desiredLine)
+	section := fmt.Sprintf("## asc cli reference\n\n%s", desiredLine)
 	updated := appendSection(string(data), section)
 	return writeIfChanged(path, updated)
 }

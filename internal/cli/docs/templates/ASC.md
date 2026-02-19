@@ -1,8 +1,9 @@
-# ASC CLI Reference
+# asc cli reference
 
-AI-friendly command catalog and workflow notes for the `asc` CLI.
-Use this alongside the ASC CLI README (examples) and `asc --help` (source of truth).
-Generate this file in any repo with `asc init` (or `asc docs init`).
+Unofficial CLI for the App Store Connect API. AI-friendly command catalog and
+workflow notes for the asc cli. Use this alongside the asc cli readme
+(examples) and `asc --help` (source of truth). Generate this file in any repo
+with `asc init` (or `asc docs init`).
 
 ## Command Discovery (Source of Truth)
 
@@ -23,7 +24,7 @@ Do not memorize flags. Always use `--help` for the current interface.
 
 ## Common Patterns
 
-- IDs are App Store Connect resource IDs (use list commands to find them).
+- IDs are App Store Connect API resource IDs (use list commands to find them).
 - `--app "APP_ID"` is often required (or set `ASC_APP_ID`).
 - `--paginate` fetches all pages; use `--limit` and `--next` for manual pagination.
 - Output formats: `--output json|table|markdown` and `--pretty` for readable JSON.
@@ -81,10 +82,10 @@ asc migrate export --app "APP_ID" --output ./exported-metadata
 
 Use `asc <command> --help` for subcommands and flags.
 
-- `auth` - Manage App Store Connect API authentication.
-- `install` - Install optional ASC components.
-- `init` - Initialize ASC helper docs in the current repo.
-- `docs` - Generate ASC CLI reference docs for a repo.
+- `auth` - Manage authentication for the App Store Connect API.
+- `install` - Install optional asc components.
+- `init` - Initialize asc helper docs in the current repo.
+- `docs` - Generate asc cli reference docs for a repo.
 - `release-notes` - Generate and manage App Store release notes.
 - `feedback` - List TestFlight feedback from beta testers.
 - `crashes` - List and export TestFlight crash reports.
@@ -93,14 +94,14 @@ Use `asc <command> --help` for subcommands and flags.
 - `analytics` - Request and download analytics and sales reports.
 - `performance` - Access performance metrics and diagnostic logs.
 - `finance` - Download payments and financial reports.
-- `apps` - List and manage apps from App Store Connect.
+- `apps` - List and manage apps in App Store Connect.
 - `app-clips` - Manage App Clip experiences and invocations.
 - `android-ios-mapping` - Manage Android-to-iOS app mapping details.
 - `app-setup` - Post-create app setup automation.
 - `app-tags` - Manage app tags for App Store visibility.
 - `marketplace` - Manage marketplace resources.
 - `alternative-distribution` - Manage alternative distribution resources.
-- `webhooks` - Manage App Store Connect webhooks.
+- `webhooks` - Manage webhooks in App Store Connect.
 - `nominations` - Manage featuring nominations.
 - `bundle-ids` - Manage bundle IDs and capabilities.
 - `merchant-ids` - Manage merchant IDs and certificates.
@@ -109,20 +110,21 @@ Use `asc <command> --help` for subcommands and flags.
 - `profiles` - Manage provisioning profiles.
 - `offer-codes` - Manage subscription offer codes.
 - `win-back-offers` - Manage win-back offers for subscriptions.
-- `users` - Manage App Store Connect users and invitations.
+- `users` - Manage users and invitations in App Store Connect.
 - `actors` - Lookup actors (users, API keys) by ID.
-- `devices` - Manage App Store Connect devices.
+- `devices` - Manage devices in App Store Connect.
 - `testflight` - Manage TestFlight resources.
-- `builds` - Manage builds in App Store Connect.
+- `builds` - Manage builds (TestFlight/App Store).
 - `build-bundles` - Manage build bundles and App Clip data.
 - `publish` - End-to-end publish workflows for TestFlight and App Store.
+- `workflow` - Run multi-step automation workflows.
 - `versions` - Manage App Store versions.
 - `product-pages` - Manage custom product pages and product page experiments.
 - `routing-coverage` - Manage routing app coverage files.
 - `app-info` - Manage App Store version metadata.
 - `app-infos` - List app info records for an app.
 - `eula` - Manage End User License Agreements (EULA).
-- `agreements` - Manage App Store Connect agreements.
+- `agreements` - Manage agreements in App Store Connect.
 - `pricing` - Manage app pricing and availability.
 - `pre-orders` - Manage app pre-orders.
 - `pre-release-versions` - Manage TestFlight pre-release versions.
@@ -132,11 +134,11 @@ Use `asc <command> --help` for subcommands and flags.
 - `build-localizations` - Manage build release notes localizations.
 - `beta-app-localizations` - Manage TestFlight beta app localizations.
 - `beta-build-localizations` - Manage TestFlight beta build localizations.
-- `sandbox` - Manage App Store Connect sandbox testers.
+- `sandbox` - Manage sandbox testers in App Store Connect.
 - `video-previews` - Manage App Store app preview videos.
 - `signing` - Manage signing certificates and profiles.
 - `notarization` - Manage macOS notarization submissions.
-- `iap` - Manage in-app purchases in App Store Connect.
+- `iap` - Manage in-app purchases.
 - `app-events` - Manage App Store in-app events.
 - `subscriptions` - Manage subscription groups and subscriptions.
 - `submit` - Submit builds for App Store review.
@@ -149,7 +151,7 @@ Use `asc <command> --help` for subcommands and flags.
 - `migrate` - Migrate metadata from/to fastlane format.
 - `validate` - Run pre-submission metadata and asset validation checks.
 - `notify` - Send notifications to external services.
-- `game-center` - Manage Game Center resources in App Store Connect.
+- `game-center` - Manage Game Center resources.
 - `version` - Print version information and exit.
 - `completion` - Print shell completion scripts.
 
@@ -177,6 +179,6 @@ Use `asc <command> --help` for subcommands and flags.
 
 ## API References (Offline)
 
-In the ASC CLI repo, see:
+In the asc cli repo, see:
 - `docs/openapi/latest.json`
 - `docs/openapi/paths.txt`

@@ -134,8 +134,8 @@ func TestNewInitReferenceCommand_PrefixesErrors(t *testing.T) {
 		"docs init",
 		"init",
 		"asc docs init [flags]",
-		"Create an ASC.md command reference in the current repo.",
-		"Create an ASC.md command reference in the current repo.",
+		"Create an ASC.md command reference for the asc cli in the current repo.",
+		"Create an ASC.md command reference for the asc cli in the current repo.",
 		"docs init",
 	)
 	if err := cmd.FlagSet.Parse([]string{"--path", repo}); err != nil {
@@ -159,8 +159,8 @@ func TestNewInitReferenceCommand_UsesDefaultUsageFunc(t *testing.T) {
 		"docs init",
 		"init",
 		"asc docs init [flags]",
-		"Create an ASC.md command reference in the current repo.",
-		"Create an ASC.md command reference in the current repo.",
+		"Create an ASC.md command reference for the asc cli in the current repo.",
+		"Create an ASC.md command reference for the asc cli in the current repo.",
 		"docs init",
 	)
 	if cmd.UsageFunc == nil {

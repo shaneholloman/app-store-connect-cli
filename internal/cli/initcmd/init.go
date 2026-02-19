@@ -11,8 +11,8 @@ func InitCommand() *ffcli.Command {
 		"init",
 		"init",
 		"asc init [flags]",
-		"Initialize ASC helper docs in the current repo.",
-		`Initialize ASC helper docs in the current repo.
+		"Initialize asc helper docs in the current repo.",
+		`Initialize asc helper docs in the current repo.
 
 Examples:
   asc init

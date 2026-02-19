@@ -114,7 +114,7 @@ jobs:
             end
 
             test do
-              assert_match "ASC is a lightweight CLI", shell_output("#{bin}/asc --help")
+              assert_match "asc is a lightweight cli", shell_output("#{bin}/asc --help")
             end
           end
           EOF

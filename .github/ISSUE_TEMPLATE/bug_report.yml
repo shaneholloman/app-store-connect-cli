@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a bug in asc (App Store Connect CLI)
+description: Report a bug in asc cli
 title: "bug: "
 labels:
   - bug

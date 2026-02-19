@@ -95,8 +95,8 @@ func TestFlightAppsListCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "list",
 		ShortUsage: "asc testflight apps list [flags]",
-		ShortHelp:  "List apps in App Store Connect for TestFlight.",
-		LongHelp: `List apps in App Store Connect for TestFlight.
+		ShortHelp:  "List apps for TestFlight.",
+		LongHelp: `List apps for TestFlight.
 
 Examples:
   asc testflight apps list
