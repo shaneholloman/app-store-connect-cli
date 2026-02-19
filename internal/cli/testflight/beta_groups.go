@@ -25,9 +25,10 @@ func BetaGroupsCommand() *ffcli.Command {
 
 Examples:
   asc testflight beta-groups list --app "APP_ID"
-  asc testflight beta-groups list --global
-  asc testflight beta-groups list --global --limit 50
+  asc testflight beta-groups list --app "APP_ID" --internal
+  asc testflight beta-groups list --global --internal
   asc testflight beta-groups create --app "APP_ID" --name "Beta Testers"
+  asc testflight beta-groups create --app "APP_ID" --name "Internal Testers" --internal
   asc testflight beta-groups app get --group-id "GROUP_ID"
   asc testflight beta-groups beta-recruitment-criteria get --group-id "GROUP_ID"
   asc testflight beta-groups beta-recruitment-criterion-compatible-build-check get --group-id "GROUP_ID"`,
@@ -58,6 +59,8 @@ func BetaGroupsListCommand() *ffcli.Command {
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
 	global := fs.Bool("global", false, "List beta groups across all apps (top-level endpoint)")
+	internal := fs.Bool("internal", false, "Filter to internal groups only")
+	external := fs.Bool("external", false, "Filter to external groups only")
 	output := shared.BindOutputFlags(fs)
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
@@ -71,10 +74,13 @@ func BetaGroupsListCommand() *ffcli.Command {
 
 Examples:
   asc testflight beta-groups list --app "APP_ID"
+  asc testflight beta-groups list --app "APP_ID" --internal
+  asc testflight beta-groups list --app "APP_ID" --external
   asc testflight beta-groups list --app "APP_ID" --limit 10
   asc testflight beta-groups list --app "APP_ID" --paginate
   asc testflight beta-groups list --global
-  asc testflight beta-groups list --global --limit 50`,
+  asc testflight beta-groups list --global --limit 50
+  asc testflight beta-groups list --global --internal`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -86,6 +92,11 @@ Examples:
 			}
 
 			resolvedAppID := shared.ResolveAppID(*appID)
+
+			if *internal && *external {
+				fmt.Fprintln(os.Stderr, "Error: --internal and --external are mutually exclusive")
+				return flag.ErrHelp
+			}
 
 			// Reject --global + --app combination (check explicit flag, not resolved value)
 			if *global && strings.TrimSpace(*appID) != "" {
@@ -107,12 +118,25 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
+			var internalFilter *bool
+			if *internal {
+				v := true
+				internalFilter = &v
+			} else if *external {
+				v := false
+				internalFilter = &v
+			}
+
 			opts := []asc.BetaGroupsOption{
 				asc.WithBetaGroupsLimit(*limit),
 				asc.WithBetaGroupsNextURL(*next),
 			}
 
 			if *global {
+				if internalFilter != nil {
+					opts = append(opts, asc.WithBetaGroupsIsInternal(*internalFilter))
+				}
+
 				if *paginate {
 					paginateOpts := append(opts, asc.WithBetaGroupsLimit(200))
 					groups, err := shared.PaginateWithSpinner(requestCtx,
@@ -136,6 +160,63 @@ Examples:
 				}
 
 				return shared.PrintOutput(groups, *output.Output, *output.Pretty)
+			}
+
+			// The app-scoped endpoint /v1/apps/{id}/betaGroups does not accept
+			// filter[isInternalGroup], so we apply the filter client-side.
+			if internalFilter != nil {
+				var groups *asc.BetaGroupsResponse
+
+				if *paginate {
+					paginateOpts := append(opts, asc.WithBetaGroupsLimit(200))
+					resp, err := shared.PaginateWithSpinner(requestCtx,
+						func(ctx context.Context) (asc.PaginatedResponse, error) {
+							return client.GetBetaGroups(ctx, resolvedAppID, paginateOpts...)
+						},
+						func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+							return client.GetBetaGroups(ctx, resolvedAppID, asc.WithBetaGroupsNextURL(nextURL))
+						},
+					)
+					if err != nil {
+						return fmt.Errorf("beta-groups list: %w", err)
+					}
+					var ok bool
+					groups, ok = resp.(*asc.BetaGroupsResponse)
+					if !ok {
+						return fmt.Errorf("beta-groups list: unexpected response type %T", resp)
+					}
+				} else {
+					// To apply the filter correctly, fetch all pages even without --paginate.
+					paginateOpts := append(opts, asc.WithBetaGroupsLimit(200))
+					firstPage, err := client.GetBetaGroups(requestCtx, resolvedAppID, paginateOpts...)
+					if err != nil {
+						return fmt.Errorf("beta-groups list: failed to fetch: %w", err)
+					}
+					resp, err := asc.PaginateAll(requestCtx, firstPage, func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+						return client.GetBetaGroups(ctx, resolvedAppID, asc.WithBetaGroupsNextURL(nextURL))
+					})
+					if err != nil {
+						return fmt.Errorf("beta-groups list: %w", err)
+					}
+					var ok bool
+					groups, ok = resp.(*asc.BetaGroupsResponse)
+					if !ok {
+						return fmt.Errorf("beta-groups list: unexpected response type %T", resp)
+					}
+				}
+
+				filtered := *groups
+				filtered.Data = make([]asc.Resource[asc.BetaGroupAttributes], 0, len(groups.Data))
+				for _, g := range groups.Data {
+					if g.Attributes.IsInternalGroup == *internalFilter {
+						filtered.Data = append(filtered.Data, g)
+					}
+				}
+				if *limit > 0 && len(filtered.Data) > *limit {
+					filtered.Data = filtered.Data[:*limit]
+				}
+
+				return shared.PrintOutput(&filtered, *output.Output, *output.Pretty)
 			}
 
 			if *paginate {
@@ -171,6 +252,7 @@ func BetaGroupsCreateCommand() *ffcli.Command {
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
 	name := fs.String("name", "", "Beta group name")
+	internal := fs.Bool("internal", false, "Create as internal group")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -180,7 +262,8 @@ func BetaGroupsCreateCommand() *ffcli.Command {
 		LongHelp: `Create a TestFlight beta group.
 
 Examples:
-  asc testflight beta-groups create --app "APP_ID" --name "Beta Testers"`,
+  asc testflight beta-groups create --app "APP_ID" --name "Beta Testers"
+  asc testflight beta-groups create --app "APP_ID" --name "Internal Testers" --internal`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -202,7 +285,14 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			group, err := client.CreateBetaGroup(requestCtx, resolvedAppID, strings.TrimSpace(*name))
+			attrs := asc.BetaGroupAttributes{
+				Name: strings.TrimSpace(*name),
+			}
+			if *internal {
+				attrs.IsInternalGroup = true
+			}
+
+			group, err := client.CreateBetaGroupWithAttributes(requestCtx, resolvedAppID, attrs)
 			if err != nil {
 				return fmt.Errorf("beta-groups create: failed to create: %w", err)
 			}
@@ -263,8 +353,6 @@ func BetaGroupsUpdateCommand() *ffcli.Command {
 	publicLinkLimitEnabled := fs.Bool("public-link-limit-enabled", false, "Enable public link limit")
 	publicLinkLimit := fs.Int("public-link-limit", 0, "Public link limit (1-10000)")
 	feedbackEnabled := fs.Bool("feedback-enabled", false, "Enable feedback")
-	internal := fs.Bool("internal", false, "Set as internal group")
-	allBuilds := fs.Bool("all-builds", false, "Grant access to all builds")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -276,7 +364,7 @@ func BetaGroupsUpdateCommand() *ffcli.Command {
 Examples:
   asc testflight beta-groups update --id "GROUP_ID" --name "New Name"
   asc testflight beta-groups update --id "GROUP_ID" --public-link-enabled --public-link-limit 100
-  asc testflight beta-groups update --id "GROUP_ID" --feedback-enabled --internal`,
+  asc testflight beta-groups update --id "GROUP_ID" --feedback-enabled`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -300,9 +388,7 @@ Examples:
 				visited["public-link-enabled"] ||
 				visited["public-link-limit-enabled"] ||
 				visited["public-link-limit"] ||
-				visited["feedback-enabled"] ||
-				visited["internal"] ||
-				visited["all-builds"]
+				visited["feedback-enabled"]
 			if !hasUpdates {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
 				return flag.ErrHelp
@@ -324,8 +410,6 @@ Examples:
 			var publicLinkEnabledAttr *bool
 			var publicLinkLimitEnabledAttr *bool
 			var feedbackEnabledAttr *bool
-			var internalAttr *bool
-			var allBuildsAttr *bool
 
 			if visited["public-link-enabled"] {
 				publicLinkEnabledAttr = publicLinkEnabled
@@ -335,12 +419,6 @@ Examples:
 			}
 			if visited["feedback-enabled"] {
 				feedbackEnabledAttr = feedbackEnabled
-			}
-			if visited["internal"] {
-				internalAttr = internal
-			}
-			if visited["all-builds"] {
-				allBuildsAttr = allBuilds
 			}
 
 			req := asc.BetaGroupUpdateRequest{
@@ -353,8 +431,6 @@ Examples:
 						PublicLinkLimitEnabled: publicLinkLimitEnabledAttr,
 						PublicLinkLimit:        *publicLinkLimit,
 						FeedbackEnabled:        feedbackEnabledAttr,
-						IsInternalGroup:        internalAttr,
-						HasAccessToAllBuilds:   allBuildsAttr,
 					},
 				},
 			}

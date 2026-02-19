@@ -349,14 +349,20 @@ asc testflight metrics beta-tester-usages --app "APP_ID"
 # List beta groups for an app
 asc testflight beta-groups list --app "APP_ID"
 
+# Filter beta groups by internal/external
+asc testflight beta-groups list --app "APP_ID" --internal
+asc testflight beta-groups list --app "APP_ID" --external
+asc testflight beta-groups list --global --internal
+
 # Fetch all beta groups (all pages)
 asc testflight beta-groups list --app "APP_ID" --paginate
 
 # Create, fetch, update, delete
 asc testflight beta-groups create --app "APP_ID" --name "Beta Testers"
+asc testflight beta-groups create --app "APP_ID" --name "Internal Testers" --internal
 asc testflight beta-groups get --id "GROUP_ID"
 asc testflight beta-groups update --id "GROUP_ID" --name "New Name"
-asc testflight beta-groups update --id "GROUP_ID" --public-link-enabled true --feedback-enabled true
+asc testflight beta-groups update --id "GROUP_ID" --public-link-enabled --feedback-enabled
 asc testflight beta-groups delete --id "GROUP_ID" --confirm
 
 # Add/remove testers

@@ -42,6 +42,7 @@ Do not memorize flags. Always use `--help` for the current interface.
 | List builds | `asc builds list --app "APP_ID"` |
 | List TestFlight apps | `asc testflight apps list` |
 | List beta groups | `asc testflight beta-groups list --app "APP_ID"` |
+| List internal beta groups | `asc testflight beta-groups list --app "APP_ID" --internal` |
 | Submit for review | `asc submit create --app "APP_ID" --version "VERSION" --build "BUILD_ID" --confirm` |
 | Download localizations | `asc localizations download --version "VERSION_ID" --path "./localizations"` |
 
@@ -66,6 +67,7 @@ asc submit create --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --confirm
 
 ```bash
 asc testflight beta-groups list --app "APP_ID"
+asc testflight beta-groups list --app "APP_ID" --internal
 asc builds add-groups --build "BUILD_ID" --group "GROUP_ID"
 ```
 

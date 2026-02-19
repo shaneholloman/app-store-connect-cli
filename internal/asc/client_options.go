@@ -1763,6 +1763,13 @@ func WithBetaGroupsNextURL(next string) BetaGroupsOption {
 	}
 }
 
+// WithBetaGroupsIsInternal filters beta groups by internal/external groups.
+func WithBetaGroupsIsInternal(isInternal bool) BetaGroupsOption {
+	return func(q *betaGroupsQuery) {
+		q.isInternalGroup = &isInternal
+	}
+}
+
 // WithBetaGroupBuildsLimit sets the max number of builds to return for a group.
 func WithBetaGroupBuildsLimit(limit int) BetaGroupBuildsOption {
 	return func(q *betaGroupBuildsQuery) {
