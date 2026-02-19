@@ -31,7 +31,6 @@ Do not memorize flags. Always use `--help` for the current interface.
 - Destructive operations require `--confirm`.
 - Profiles: `--profile "NAME"` and `--strict-auth` for auth resolution safety.
 - Debugging: `--debug`, `--api-debug`, `--retry-log`.
-- Disable update checks: `--no-update`.
 
 ## Quick Lookup
 
@@ -83,7 +82,7 @@ asc migrate export --app "APP_ID" --output ./exported-metadata
 Use `asc <command> --help` for subcommands and flags.
 
 - `auth` - Manage authentication for the App Store Connect API.
-- `install` - Install optional asc components.
+- `install-skills` - Install the asc skill pack for App Store Connect workflows.
 - `init` - Initialize asc helper docs in the current repo.
 - `docs` - Generate asc cli reference docs for a repo.
 - `release-notes` - Generate and manage App Store release notes.
@@ -159,7 +158,6 @@ Use `asc <command> --help` for subcommands and flags.
 
 - `--api-debug` - HTTP request/response logging (redacted)
 - `--debug` - Debug logging
-- `--no-update` - Disable update checks and auto-update
 - `--profile` - Use a named authentication profile
 - `--report` - Report format for CI output
 - `--report-file` - Path to write CI report file
@@ -174,7 +172,6 @@ Use `asc <command> --help` for subcommands and flags.
 - `ASC_TIMEOUT`, `ASC_TIMEOUT_SECONDS` - Request timeout
 - `ASC_UPLOAD_TIMEOUT`, `ASC_UPLOAD_TIMEOUT_SECONDS` - Upload timeout
 - `ASC_DEBUG` - Debug output (`api` enables HTTP logs)
-- `ASC_NO_UPDATE` - Disable update checks
 - `ASC_SPINNER_DISABLED` - Disable interactive stderr spinner
 
 ## API References (Offline)

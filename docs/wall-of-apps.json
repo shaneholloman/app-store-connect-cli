@@ -124,5 +124,17 @@
     "link": "https://apps.apple.com/app/id6755589008",
     "creator": "framara",
     "platform": ["iOS", "macOS"]
+  },
+    {
+    "app": "Plinky",
+    "link": "https://apps.apple.com/us/app/plinky-easily-save-links/id1597187737",
+    "creator": "mergesort",
+    "platform": ["iOS", "macOS"]
+  },
+    {
+    "app": "Inkput",
+    "link": "https://apps.apple.com/app/id6758570182",
+    "creator": "funclosure",
+    "platform": ["iOS", "macOS"]
   }
 ]

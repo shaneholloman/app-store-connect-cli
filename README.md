@@ -9,6 +9,10 @@
   <img src="https://img.shields.io/github/downloads/rudrankriyam/App-Store-Connect-CLI/total?style=for-the-badge&color=green" alt="Downloads">
 </p>
 
+<p align="center">
+  <img src="docs/images/banner.png" alt="asc — App Store Connect CLI" width="600">
+</p>
+
 A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect API](https://developer.apple.com/app-store-connect/api/). Automate your iOS, macOS, tvOS, and visionOS app workflows from your terminal, IDE, or CI/CD pipeline. Built as a single Go binary.
 
 ### Features
@@ -112,7 +116,7 @@ A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect A
 ```bash
 # Via Homebrew (recommended)
 brew tap rudrankriyam/tap
-brew install rudrankriyam/tap/asc
+brew install asc
 
 # Install script (macOS/Linux)
 curl -fsSL https://raw.githubusercontent.com/rudrankriyam/App-Store-Connect-CLI/main/install.sh | bash
@@ -128,7 +132,10 @@ make build
 
 ### Updates
 
-`asc` checks for updates on startup and auto-updates when installed via the GitHub release install script. Homebrew installs will show a `brew upgrade` hint instead. Disable update checks with `--no-update` or `ASC_NO_UPDATE=1`.
+`asc` does not self-update. Update it using your install method:
+
+- Homebrew: `brew upgrade asc`
+- Install script: re-run `install.sh` (or download the latest release from GitHub)
 
 ### Authenticate
 
@@ -1696,7 +1703,7 @@ asc feedback --app "123456789"
 ```bash
 # Add tap and install
 brew tap rudrankriyam/tap
-brew install rudrankriyam/tap/asc
+brew install asc
 ```
 
 ### GitHub Actions (CI/CD)
@@ -1768,12 +1775,14 @@ Apps shipping with asc-cli. [Add yours via PR](https://github.com/rudrankriyam/A
 | DoubleMemory | [Open](https://apps.apple.com/app/id6737529034) | randomor | iOS, macOS |
 | Dripped | [Open](https://apps.apple.com/app/id6749790183) | mithileshchellapan | iOS |
 | Fisherman SMS Filtering | [Open](https://apps.apple.com/app/id6449192504) | MGidnian | iOS |
+| Inkput | [Open](https://apps.apple.com/app/id6758570182) | funclosure | iOS, macOS |
 | kora: Music Reviews & Ratings | [Open](https://apps.apple.com/app/id6502549140) | adamjhf | iOS |
 | Lumical: Scan to Calendar | [Open](https://apps.apple.com/us/app/lumical-scan-to-calendar/id6753274309) | arunavo4 | iOS |
 | MileIO | [Open](https://apps.apple.com/app/id6758225631) | Juergen | iOS |
 | Mixtape | [Open](https://apps.apple.com/us/app/mixtape-personal-music-gift/id6756442910) | jimripple | iOS |
 | Morning Pages | [Open](https://apps.apple.com/us/app/morning-pages/id6738604034) | zchwyng | iOS, macOS |
 | Parsely | [Open](https://testflight.apple.com/join/HjUZtzVm) | sambitcreate | iOS |
+| Plinky | [Open](https://apps.apple.com/us/app/plinky-easily-save-links/id1597187737) | mergesort | iOS, macOS |
 | Repetti | [Open](https://apps.apple.com/us/app/repetti-the-chores-list-app/id6758055413) | rursache | iOS |
 | Steps: Workout & Pedometer | [Open](https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378) | Hieu Dinh | iOS |
 | Summit | [Open](https://apps.apple.com/app/id6756911679) | OscarGorog | iOS |
