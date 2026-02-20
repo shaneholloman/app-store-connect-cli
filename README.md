@@ -1816,7 +1816,7 @@ Grouped alphabetically. Click any tile to open the app.
 
 |   |   |   |   |
 |:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/24/e2/39/24e2393e-069b-ec74-07fc-d235ee6ba652/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg" alt="kora: Music Reviews &amp; Ratings icon" width="64" height="64" /><br/>kora: Music Reviews &amp; Ratings<br/><sub>by adamjhf</sub>](https://apps.apple.com/app/id6502549140) |   |   |   |
+| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d3/13/e3/d313e374-c818-c1e9-1676-e1d50342052f/AppIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg" alt="KeepCount: Tally Counter icon" width="64" height="64" /><br/>KeepCount: Tally Counter<br/><sub>by thillsman</sub>](https://apps.apple.com/us/app/keepcount-tally-counter/id6758891370) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/24/e2/39/24e2393e-069b-ec74-07fc-d235ee6ba652/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg" alt="kora: Music Reviews &amp; Ratings icon" width="64" height="64" /><br/>kora: Music Reviews &amp; Ratings<br/><sub>by adamjhf</sub>](https://apps.apple.com/app/id6502549140) |   |   |
 
 #### L
 
@@ -1846,7 +1846,7 @@ Grouped alphabetically. Click any tile to open the app.
 
 |   |   |   |   |
 |:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4f/0e/e0/4f0ee04c-7e2f-cc56-62d1-81f138c840bb/StepsIcon-0-1x_U007ephone-0-1-85-220-0.png/512x512bb.jpg" alt="Steps: Workout &amp; Pedometer icon" width="64" height="64" /><br/>Steps: Workout &amp; Pedometer<br/><sub>by Hieu Dinh</sub>](https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/32/ed/56/32ed5661-a8ff-7f13-47bb-08a87a15fd00/Icon-0-1x_U007epad-0-1-sRGB-85-220-0.png/512x512bb.jpg" alt="Summit icon" width="64" height="64" /><br/>Summit<br/><sub>by OscarGorog</sub>](https://apps.apple.com/app/id6756911679) |   |   |
+| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4f/0e/e0/4f0ee04c-7e2f-cc56-62d1-81f138c840bb/StepsIcon-0-1x_U007ephone-0-1-85-220-0.png/512x512bb.jpg" alt="Steps: Workout &amp; Pedometer icon" width="64" height="64" /><br/>Steps: Workout &amp; Pedometer<br/><sub>by Hieu Dinh</sub>](https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/71/b6/15/71b615cb-78e2-d82b-8005-ccd9a0364b6a/sw-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220-0.png/512x512bb.jpg" alt="Sticky Widgets icon" width="64" height="64" /><br/>Sticky Widgets<br/><sub>by thillsman</sub>](https://apps.apple.com/us/app/sticky-widgets/id1533254320) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/32/ed/56/32ed5661-a8ff-7f13-47bb-08a87a15fd00/Icon-0-1x_U007epad-0-1-sRGB-85-220-0.png/512x512bb.jpg" alt="Summit icon" width="64" height="64" /><br/>Summit<br/><sub>by OscarGorog</sub>](https://apps.apple.com/app/id6756911679) |   |
 
 #### T
 
@@ -1891,6 +1891,7 @@ Grouped alphabetically. Click any tile to open the app.
 | Fisherman SMS Filtering | [Open](https://apps.apple.com/app/id6449192504) | MGidnian | iOS |
 | Goshuin Atlas | [Open](https://apps.apple.com/app/goshuin-atlas-japan/id6746737093) | thedaviddias | iOS |
 | Inkput | [Open](https://apps.apple.com/app/id6758570182) | funclosure | iOS, macOS |
+| KeepCount: Tally Counter | [Open](https://apps.apple.com/us/app/keepcount-tally-counter/id6758891370) | thillsman | iOS |
 | kora: Music Reviews & Ratings | [Open](https://apps.apple.com/app/id6502549140) | adamjhf | iOS |
 | Lumical: Scan to Calendar | [Open](https://apps.apple.com/us/app/lumical-scan-to-calendar/id6753274309) | arunavo4 | iOS |
 | Meshing | [Open](https://apps.apple.com/app/id6567933550) | rudrankriyam | iOS, macOS |
@@ -1901,6 +1902,7 @@ Grouped alphabetically. Click any tile to open the app.
 | Plinky | [Open](https://apps.apple.com/us/app/plinky-easily-save-links/id1597187737) | mergesort | iOS, macOS |
 | Repetti | [Open](https://apps.apple.com/us/app/repetti-the-chores-list-app/id6758055413) | rursache | iOS |
 | Steps: Workout & Pedometer | [Open](https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378) | Hieu Dinh | iOS |
+| Sticky Widgets | [Open](https://apps.apple.com/us/app/sticky-widgets/id1533254320) | thillsman | iOS, visionOS |
 | Summit | [Open](https://apps.apple.com/app/id6756911679) | OscarGorog | iOS |
 | Timefall | [Open](https://apps.apple.com/app/id6757712804) | vatrueshka | iOS, macOS |
 | ToMe: Save to Self | [Open](https://apps.apple.com/app/id6755589008) | framara | iOS, macOS |

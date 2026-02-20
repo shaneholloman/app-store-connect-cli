@@ -62,6 +62,13 @@
     "platform": ["iOS", "macOS"]
   },
   {
+    "app": "KeepCount: Tally Counter",
+    "link": "https://apps.apple.com/us/app/keepcount-tally-counter/id6758891370",
+    "creator": "thillsman",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d3/13/e3/d313e374-c818-c1e9-1676-e1d50342052f/AppIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
     "app": "kora: Music Reviews & Ratings",
     "link": "https://apps.apple.com/app/id6502549140",
     "creator": "adamjhf",
@@ -72,7 +79,7 @@
     "app": "Lumical: Scan to Calendar",
     "link": "https://apps.apple.com/us/app/lumical-scan-to-calendar/id6753274309",
     "creator": "arunavo4",
-    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/00/99/67/00996711-9110-a2bd-2f9f-d6197bfea3fd/Lumical-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/05/6a/92/056a928c-8748-1457-e513-43e96ce8a97e/Lumical-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg",
     "platform": ["iOS"]
   },
   {
@@ -129,6 +136,13 @@
     "creator": "Hieu Dinh",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4f/0e/e0/4f0ee04c-7e2f-cc56-62d1-81f138c840bb/StepsIcon-0-1x_U007ephone-0-1-85-220-0.png/512x512bb.jpg",
     "platform": ["iOS"]
+  },
+  {
+    "app": "Sticky Widgets",
+    "link": "https://apps.apple.com/us/app/sticky-widgets/id1533254320",
+    "creator": "thillsman",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/71/b6/15/71b615cb-78e2-d82b-8005-ccd9a0364b6a/sw-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220-0.png/512x512bb.jpg",
+    "platform": ["iOS", "visionOS"]
   },
   {
     "app": "Summit",
