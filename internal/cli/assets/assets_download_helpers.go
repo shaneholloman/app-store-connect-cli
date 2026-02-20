@@ -21,6 +21,7 @@ const (
 	assetDownloadMaxAttempts  = 4
 	assetDownloadInitialDelay = 200 * time.Millisecond
 	assetDownloadMaxDelay     = 2 * time.Second
+	assetDownloadUserAgent    = "curl/8.7.1 App-Store-Connect-CLI/asset-download"
 )
 
 type downloadHTTPStatusError struct {
@@ -152,6 +153,7 @@ func downloadURLToFileOnce(ctx context.Context, rawURL string, outputPath string
 		return 0, "", err
 	}
 	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", assetDownloadUserAgent)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
