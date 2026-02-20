@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -272,6 +273,56 @@ Old wall content.
 	}
 	if !strings.Contains(stdout.String(), "Updated app entry in") {
 		t.Fatalf("expected update confirmation in stdout, got: %s", stdout.String())
+	}
+}
+
+func TestRunUpdatePreservesExistingIconWhenLookupFails(t *testing.T) {
+	tmpRepo := t.TempDir()
+	withWorkingDirectory(t, tmpRepo)
+
+	writeFile(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"), `[
+  {
+    "app": "Dandelion",
+    "link": "https://apps.apple.com/us/app/dandelion-write-and-let-go/id6757363901",
+    "creator": "old-creator",
+    "icon": "https://example.com/existing-icon.png",
+    "platform": ["iOS"]
+  }
+]`)
+
+	writeFile(t, filepath.Join(tmpRepo, "README.md"), `# Demo
+<!-- WALL-OF-APPS:START -->
+Old wall content.
+<!-- WALL-OF-APPS:END -->
+`)
+
+	previousLookup := lookupAppStoreArtworkURLs
+	t.Cleanup(func() { lookupAppStoreArtworkURLs = previousLookup })
+	lookupAppStoreArtworkURLs = func(ids []string) (map[string]string, error) {
+		return nil, fmt.Errorf("temporary app store outage")
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := run([]string{
+		"--app", "Dandelion",
+		"--link", "https://apps.apple.com/us/app/dandelion-write-and-let-go/id6757363901",
+		"--creator", "joeycast",
+		"--platform", "iOS, macOS",
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("run failed: %v (stderr: %s)", err, stderr.String())
+	}
+
+	entries := readJSONEntries(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"))
+	if len(entries) != 1 {
+		t.Fatalf("expected single JSON entry after update, got %d", len(entries))
+	}
+	if entries[0].Icon != "https://example.com/existing-icon.png" {
+		t.Fatalf("expected existing icon to be preserved, got %q", entries[0].Icon)
+	}
+	if !strings.Contains(stderr.String(), "Warning: unable to refresh App Store icons:") {
+		t.Fatalf("expected icon refresh warning in stderr, got: %s", stderr.String())
 	}
 }
 

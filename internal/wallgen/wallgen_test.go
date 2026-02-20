@@ -125,6 +125,42 @@ Old content.
 	}
 }
 
+func TestGenerateEscapesBracketsInIconLinkText(t *testing.T) {
+	tmpRepo := t.TempDir()
+
+	writeFile(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"), `[
+  {
+    "app": "App [Beta]",
+    "link": "https://example.com/brackets",
+    "creator": "Team [Core]",
+    "icon": "https://example.com/icon.png",
+    "platform": ["iOS"]
+  }
+]`)
+
+	writeFile(t, filepath.Join(tmpRepo, "README.md"), `# Demo
+<!-- WALL-OF-APPS:START -->
+Old content.
+<!-- WALL-OF-APPS:END -->
+`)
+
+	result, err := Generate(tmpRepo)
+	if err != nil {
+		t.Fatalf("generate failed: %v", err)
+	}
+
+	readmeBytes, err := os.ReadFile(result.ReadmePath)
+	if err != nil {
+		t.Fatalf("read generated README: %v", err)
+	}
+	readme := string(readmeBytes)
+
+	expectedIconCell := `[<img src="https://example.com/icon.png" alt="App [Beta] icon" width="64" height="64" /><br/>App \[Beta\]<br/><sub>by Team \[Core\]</sub>](https://example.com/brackets)`
+	if !strings.Contains(readme, expectedIconCell) {
+		t.Fatalf("expected escaped icon link text in README, got:\n%s", readme)
+	}
+}
+
 func TestGenerateFailsWhenCreatorMissing(t *testing.T) {
 	tmpRepo := t.TempDir()
 

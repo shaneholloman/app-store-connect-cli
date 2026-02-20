@@ -99,16 +99,21 @@ func readEntries(sourcePath string) ([]WallEntry, error) {
 		normalized = append(normalized, item)
 	}
 
-	sort.SliceStable(normalized, func(i, j int) bool {
-		leftApp := strings.ToLower(normalized[i].App)
-		rightApp := strings.ToLower(normalized[j].App)
+	SortEntriesByApp(normalized)
+
+	return normalized, nil
+}
+
+// SortEntriesByApp sorts entries by app name (case-insensitive), then link.
+func SortEntriesByApp(entries []WallEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		leftApp := strings.ToLower(strings.TrimSpace(entries[i].App))
+		rightApp := strings.ToLower(strings.TrimSpace(entries[j].App))
 		if leftApp != rightApp {
 			return leftApp < rightApp
 		}
-		return strings.ToLower(normalized[i].Link) < strings.ToLower(normalized[j].Link)
+		return strings.ToLower(strings.TrimSpace(entries[i].Link)) < strings.ToLower(strings.TrimSpace(entries[j].Link))
 	})
-
-	return normalized, nil
 }
 
 func normalizeEntry(entry WallEntry, index int) (WallEntry, error) {
@@ -325,6 +330,8 @@ func escapeIconText(value string) string {
 		"<", "&lt;",
 		">", "&gt;",
 		"|", "&#124;",
+		"[", `\[`,
+		"]", `\]`,
 	)
 	return replacer.Replace(clean)
 }

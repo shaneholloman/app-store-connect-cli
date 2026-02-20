@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -149,25 +148,17 @@ func readEntries(path string) ([]wallgen.WallEntry, error) {
 func upsertByApp(entries []wallgen.WallEntry, candidate wallgen.WallEntry) ([]wallgen.WallEntry, string) {
 	for i := range entries {
 		if strings.EqualFold(strings.TrimSpace(entries[i].App), candidate.App) {
+			if strings.TrimSpace(candidate.Icon) == "" {
+				candidate.Icon = strings.TrimSpace(entries[i].Icon)
+			}
 			entries[i] = candidate
-			sortEntriesByApp(entries)
+			wallgen.SortEntriesByApp(entries)
 			return entries, "Updated"
 		}
 	}
 	entries = append(entries, candidate)
-	sortEntriesByApp(entries)
+	wallgen.SortEntriesByApp(entries)
 	return entries, "Added"
-}
-
-func sortEntriesByApp(entries []wallgen.WallEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		leftApp := strings.ToLower(strings.TrimSpace(entries[i].App))
-		rightApp := strings.ToLower(strings.TrimSpace(entries[j].App))
-		if leftApp != rightApp {
-			return leftApp < rightApp
-		}
-		return strings.ToLower(strings.TrimSpace(entries[i].Link)) < strings.ToLower(strings.TrimSpace(entries[j].Link))
-	})
 }
 
 func writeEntries(path string, entries []wallgen.WallEntry) error {
