@@ -7,6 +7,7 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/accessibility"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/account"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/actors"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/agerating"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/agreements"
@@ -38,6 +39,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/gamecenter"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/iap"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/initcmd"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/insights"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/install"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/localizations"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/marketplace"
@@ -95,11 +97,13 @@ func VersionCommand(version string) *ffcli.Command {
 func Subcommands(version string) []*ffcli.Command {
 	subs := []*ffcli.Command{
 		auth.AuthCommand(),
+		account.AccountCommand(),
 		install.InstallSkillsCommand(),
 		initcmd.InitCommand(),
 		docs.DocsCommand(),
 		diffcmd.DiffCommand(),
 		status.StatusCommand(),
+		insights.InsightsCommand(),
 		releasenotes.ReleaseNotesCommand(),
 		feedback.FeedbackCommand(),
 		crashes.CrashesCommand(),

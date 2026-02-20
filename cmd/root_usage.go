@@ -23,7 +23,7 @@ var rootUsageGroups = []rootCommandGroup{
 	},
 	{
 		title:    "ANALYTICS & FINANCE COMMANDS",
-		commands: []string{"analytics", "finance", "performance", "feedback", "crashes"},
+		commands: []string{"analytics", "insights", "finance", "performance", "feedback", "crashes"},
 	},
 	{
 		title: "APP MANAGEMENT COMMANDS",
@@ -58,7 +58,7 @@ var rootUsageGroups = []rootCommandGroup{
 	},
 	{
 		title:    "TEAM & ACCESS COMMANDS",
-		commands: []string{"users", "actors", "devices"},
+		commands: []string{"account", "users", "actors", "devices"},
 	},
 	{
 		title:    "AUTOMATION COMMANDS",

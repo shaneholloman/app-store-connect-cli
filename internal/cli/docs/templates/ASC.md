@@ -37,6 +37,7 @@ Do not memorize flags. Always use `--help` for the current interface.
 | Task | Command |
 |------|---------|
 | Check auth status | `asc auth status` |
+| Check account health | `asc account status` |
 | Generate ASC.md | `asc init` |
 | List apps | `asc apps` |
 | List builds | `asc builds list --app "APP_ID"` |
@@ -44,6 +45,7 @@ Do not memorize flags. Always use `--help` for the current interface.
 | List beta groups | `asc testflight beta-groups list --app "APP_ID"` |
 | List internal beta groups | `asc testflight beta-groups list --app "APP_ID" --internal` |
 | Submit for review | `asc submit create --app "APP_ID" --version "VERSION" --build "BUILD_ID" --confirm` |
+| Weekly insights summary | `asc insights weekly --app "APP_ID" --source analytics --week "YYYY-MM-DD"` |
 | Download localizations | `asc localizations download --version "VERSION_ID" --path "./localizations"` |
 
 ## Common Workflows
@@ -84,11 +86,13 @@ asc migrate export --app "APP_ID" --output ./exported-metadata
 Use `asc <command> --help` for subcommands and flags.
 
 - `auth` - Manage authentication for the App Store Connect API.
+- `account` - Inspect account-level health and access signals.
 - `install-skills` - Install the asc skill pack for App Store Connect workflows.
 - `init` - Initialize asc helper docs in the current repo.
 - `docs` - Generate asc cli reference docs for a repo.
 - `diff` - Generate deterministic non-mutating diff plans.
 - `status` - Show a release pipeline dashboard for an app.
+- `insights` - Generate weekly insights from App Store data sources.
 - `release-notes` - Generate and manage App Store release notes.
 - `feedback` - List TestFlight feedback from beta testers.
 - `crashes` - List and export TestFlight crash reports.
