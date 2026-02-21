@@ -103,6 +103,7 @@ A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect A
 - [Security](#security)
 - [asc skills](#asc-skills)
 - [Wall of Apps](#wall-of-apps)
+- [Add Your App to the Wall](#add-your-app-to-the-wall)
 - [Acknowledgements](#acknowledgements)
 - [Contributing](#contributing)
 - [License](#license)
@@ -1767,147 +1768,7 @@ Agent Skills for automating `asc` workflows including builds, TestFlight, metada
 <!-- WALL-OF-APPS:START -->
 ## Wall of Apps
 
-Apps shipping with asc. Pulled live from [wall-of-apps.json](https://github.com/rudrankriyam/App-Store-Connect-CLI/blob/main/docs/wall-of-apps.json).
-
-### App Icons
-
-Grouped alphabetically. Click any tile to open the app.
-
-#### B
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/1f/a9/bc/1fa9bcd6-5795-038c-d4ec-80dec18706ac/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-85-220.png/512x512bb.jpg" alt="bijou.fm icon" width="64" height="64" /><br/>bijou.fm<br/><sub>by zchwyng</sub>](https://apps.apple.com/us/app/bijou-fm-for-last-fm/id6450460066) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fe/a3/9d/fea39d77-422f-d815-5af9-c0ee518f5b97/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg" alt="Bobbin icon" width="64" height="64" /><br/>Bobbin<br/><sub>by ljyjeffrey</sub>](https://apps.apple.com/us/app/threads-growth-bobbin/id6756035789) |   |   |
-
-#### C
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [CodexMonitor<br/><sub>by Dimillian</sub>](https://github.com/Dimillian/CodexMonitor) |   |   |   |
-
-#### D
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/e1/e4/e3/e1e4e3af-42bc-bbb0-cd4d-3876d720de3e/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg" alt="Dandelion icon" width="64" height="64" /><br/>Dandelion<br/><sub>by joeycast</sub>](https://apps.apple.com/us/app/dandelion-write-and-let-go/id6757363901) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/65/58/32/6558325e-7e32-4385-90a8-454c6b80e373/DoubleMemory-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg" alt="DoubleMemory icon" width="64" height="64" /><br/>DoubleMemory<br/><sub>by randomor</sub>](https://apps.apple.com/app/id6737529034) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/45/67/fd/4567fd8b-feb1-c665-e8e0-4b05a3016150/DrippedIcon-0-1x_U007ephone-0-1-85-220-0.png/512x512bb.jpg" alt="Dripped icon" width="64" height="64" /><br/>Dripped<br/><sub>by mithileshchellapan</sub>](https://apps.apple.com/app/id6749790183) |   |
-
-#### F
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f1/f9/ea/f1f9ea55-8410-9a4e-4316-eee4553386df/AppIcon-0-0-1x_U007epad-0-11-0-85-220.png/512x512bb.jpg" alt="Fisherman SMS Filtering icon" width="64" height="64" /><br/>Fisherman SMS Filtering<br/><sub>by MGidnian</sub>](https://apps.apple.com/app/id6449192504) |   |   |   |
-
-#### G
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/2d/9d/e0/2d9de059-9ce5-c003-50e8-0dcb07c23b1b/AppIcon-0-1x_U007ephone-0-1-85-220-0.jpeg/512x512bb.jpg" alt="Goshuin Atlas icon" width="64" height="64" /><br/>Goshuin Atlas<br/><sub>by thedaviddias</sub>](https://apps.apple.com/app/goshuin-atlas-japan/id6746737093) |   |   |   |
-
-#### I
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/69/df/b8/69dfb86c-bad9-dd2c-01c8-431cdef5a989/AppIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg" alt="Inkput icon" width="64" height="64" /><br/>Inkput<br/><sub>by funclosure</sub>](https://apps.apple.com/app/id6758570182) |   |   |   |
-
-#### K
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d3/13/e3/d313e374-c818-c1e9-1676-e1d50342052f/AppIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg" alt="KeepCount: Tally Counter icon" width="64" height="64" /><br/>KeepCount: Tally Counter<br/><sub>by thillsman</sub>](https://apps.apple.com/us/app/keepcount-tally-counter/id6758891370) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/24/e2/39/24e2393e-069b-ec74-07fc-d235ee6ba652/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg" alt="kora: Music Reviews &amp; Ratings icon" width="64" height="64" /><br/>kora: Music Reviews &amp; Ratings<br/><sub>by adamjhf</sub>](https://apps.apple.com/app/id6502549140) |   |   |
-
-#### L
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/05/6a/92/056a928c-8748-1457-e513-43e96ce8a97e/Lumical-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg" alt="Lumical: Scan to Calendar icon" width="64" height="64" /><br/>Lumical: Scan to Calendar<br/><sub>by arunavo4</sub>](https://apps.apple.com/us/app/lumical-scan-to-calendar/id6753274309) |   |   |   |
-
-#### M
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/77/7b/8f/777b8f6c-b8e6-0fef-50fb-9e6a59166d06/Meshing_Icon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg" alt="Meshing icon" width="64" height="64" /><br/>Meshing<br/><sub>by rudrankriyam</sub>](https://apps.apple.com/app/id6567933550) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b1/15/5d/b1155d6a-ae6a-021c-b4a7-8b27d309c044/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg" alt="MileIO icon" width="64" height="64" /><br/>MileIO<br/><sub>by Juergen</sub>](https://apps.apple.com/app/id6758225631) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a8/90/14/a89014d6-2934-3899-6d96-2c06aa0de85f/AppIcon-0-0-1x_U007ephone-0-11-0-85-220.png/512x512bb.jpg" alt="Mixtape icon" width="64" height="64" /><br/>Mixtape<br/><sub>by jimripple</sub>](https://apps.apple.com/us/app/mixtape-personal-music-gift/id6756442910) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d7/6d/14/d76d1421-b875-20c8-273c-2147f685e680/app-icon-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg" alt="Morning Pages icon" width="64" height="64" /><br/>Morning Pages<br/><sub>by zchwyng</sub>](https://apps.apple.com/us/app/morning-pages/id6738604034) |
-
-#### P
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [Parsely<br/><sub>by sambitcreate</sub>](https://testflight.apple.com/join/HjUZtzVm) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/22/d3/2a/22d32adc-7513-2a04-438a-570d6ad8602e/App_Icon__U0028Primary_U0029-0-1x_U007epad-0-1-4-85-220-0.png/512x512bb.jpg" alt="Plinky icon" width="64" height="64" /><br/>Plinky<br/><sub>by mergesort</sub>](https://apps.apple.com/us/app/plinky-easily-save-links/id1597187737) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4e/76/02/4e76028d-5ff0-61e0-9c52-98946b87a3df/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-P3-85-220.png/512x512bb.jpg" alt="Positive icon" width="64" height="64" /><br/>Positive<br/><sub>by DanielStormApps</sub>](https://apps.apple.com/us/app/positive/id653287635) |   |
-
-#### R
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/e8/77/5c/e8775cab-2c64-3b11-e132-c636f3993a44/Icon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg" alt="Repetti icon" width="64" height="64" /><br/>Repetti<br/><sub>by rursache</sub>](https://apps.apple.com/us/app/repetti-the-chores-list-app/id6758055413) |   |   |   |
-
-#### S
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4f/0e/e0/4f0ee04c-7e2f-cc56-62d1-81f138c840bb/StepsIcon-0-1x_U007ephone-0-1-85-220-0.png/512x512bb.jpg" alt="Steps: Workout &amp; Pedometer icon" width="64" height="64" /><br/>Steps: Workout &amp; Pedometer<br/><sub>by Hieu Dinh</sub>](https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/71/b6/15/71b615cb-78e2-d82b-8005-ccd9a0364b6a/sw-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220-0.png/512x512bb.jpg" alt="Sticky Widgets icon" width="64" height="64" /><br/>Sticky Widgets<br/><sub>by thillsman</sub>](https://apps.apple.com/us/app/sticky-widgets/id1533254320) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/32/ed/56/32ed5661-a8ff-7f13-47bb-08a87a15fd00/Icon-0-1x_U007epad-0-1-sRGB-85-220-0.png/512x512bb.jpg" alt="Summit icon" width="64" height="64" /><br/>Summit<br/><sub>by OscarGorog</sub>](https://apps.apple.com/app/id6756911679) |   |
-
-#### T
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/98/0e/91/980e91cd-ce57-7711-f659-8779f25dd3ab/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg" alt="Timefall icon" width="64" height="64" /><br/>Timefall<br/><sub>by vatrueshka</sub>](https://apps.apple.com/app/id6757712804) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/48/a9/38/48a93885-b678-f1a0-92af-cd8c9cb73d62/ToMe_Liquid-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg" alt="ToMe: Save to Self icon" width="64" height="64" /><br/>ToMe: Save to Self<br/><sub>by framara</sub>](https://apps.apple.com/app/id6755589008) | [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/43/b8/67/43b86702-f67b-c314-f65b-cd60980205b0/Icon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg" alt="TV Show Tracker icon" width="64" height="64" /><br/>TV Show Tracker<br/><sub>by rursache</sub>](https://apps.apple.com/us/app/tv-show-tracker-tv-club/id6497563903) |   |
-
-#### U
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6a/1e/8f/6a1e8f8e-1f53-fcde-f26b-f814416eeb69/glass-0-0-85-220-0-6-0-2x-sRGB.png/512x512bb.png" alt="Unlimited Clipboard History icon" width="64" height="64" /><br/>Unlimited Clipboard History<br/><sub>by yspreen</sub>](https://apps.apple.com/us/app/unlimited-clipboard-history/id6705136056) |   |   |   |
-
-#### V
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/b4/35/bb/b435bbb4-8830-0c99-3ad5-7aa00c898d46/AppIcon-1x_U007emarketing-0-8-0-85-220-0.png/512x512bb.jpg" alt="Video Annotation icon" width="64" height="64" /><br/>Video Annotation<br/><sub>by antranapp</sub>](https://apps.apple.com/us/app/video-annotation/id6758316355) |   |   |   |
-
-#### W
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d8/48/f4/d848f4b9-7de8-3d14-57d0-bf534e142069/AppIcon-1x_U007ephone-0-1-85-220-0.png/512x512bb.jpg" alt="Writone - Reply Assistant icon" width="64" height="64" /><br/>Writone - Reply Assistant<br/><sub>by evanyi</sub>](https://apps.apple.com/app/id6758207392) |   |   |   |
-
-#### X
-
-|   |   |   |   |
-|:--:|:--:|:--:|:--:|
-| [<img src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d7/4d/4c/d74d4c07-c147-fa7e-86fe-cff01727629b/XO-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg" alt="XO: Have I Ever icon" width="64" height="64" /><br/>XO: Have I Ever<br/><sub>by arunavo4</sub>](https://apps.apple.com/us/app/xo-have-i-ever/id6757594745) |   |   |   |
-
-### Details
-
-| App | Link | Creator | Platform |
-|:----|:-----|:--------|:---------|
-| bijou.fm | [Open](https://apps.apple.com/us/app/bijou-fm-for-last-fm/id6450460066) | zchwyng | iOS, macOS, tvOS, visionOS |
-| Bobbin | [Open](https://apps.apple.com/us/app/threads-growth-bobbin/id6756035789) | ljyjeffrey | iOS |
-| CodexMonitor | [Open](https://github.com/Dimillian/CodexMonitor) | Dimillian | macOS, iOS |
-| Dandelion | [Open](https://apps.apple.com/us/app/dandelion-write-and-let-go/id6757363901) | joeycast | iOS, macOS |
-| DoubleMemory | [Open](https://apps.apple.com/app/id6737529034) | randomor | iOS, macOS |
-| Dripped | [Open](https://apps.apple.com/app/id6749790183) | mithileshchellapan | iOS |
-| Fisherman SMS Filtering | [Open](https://apps.apple.com/app/id6449192504) | MGidnian | iOS |
-| Goshuin Atlas | [Open](https://apps.apple.com/app/goshuin-atlas-japan/id6746737093) | thedaviddias | iOS |
-| Inkput | [Open](https://apps.apple.com/app/id6758570182) | funclosure | iOS, macOS |
-| KeepCount: Tally Counter | [Open](https://apps.apple.com/us/app/keepcount-tally-counter/id6758891370) | thillsman | iOS |
-| kora: Music Reviews & Ratings | [Open](https://apps.apple.com/app/id6502549140) | adamjhf | iOS |
-| Lumical: Scan to Calendar | [Open](https://apps.apple.com/us/app/lumical-scan-to-calendar/id6753274309) | arunavo4 | iOS |
-| Meshing | [Open](https://apps.apple.com/app/id6567933550) | rudrankriyam | iOS, macOS |
-| MileIO | [Open](https://apps.apple.com/app/id6758225631) | Juergen | iOS |
-| Mixtape | [Open](https://apps.apple.com/us/app/mixtape-personal-music-gift/id6756442910) | jimripple | iOS |
-| Morning Pages | [Open](https://apps.apple.com/us/app/morning-pages/id6738604034) | zchwyng | iOS, macOS |
-| Parsely | [Open](https://testflight.apple.com/join/HjUZtzVm) | sambitcreate | iOS |
-| Plinky | [Open](https://apps.apple.com/us/app/plinky-easily-save-links/id1597187737) | mergesort | iOS, macOS |
-| Repetti | [Open](https://apps.apple.com/us/app/repetti-the-chores-list-app/id6758055413) | rursache | iOS |
-| Steps: Workout & Pedometer | [Open](https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378) | Hieu Dinh | iOS |
-| Sticky Widgets | [Open](https://apps.apple.com/us/app/sticky-widgets/id1533254320) | thillsman | iOS, visionOS |
-| Summit | [Open](https://apps.apple.com/app/id6756911679) | OscarGorog | iOS |
-| Timefall | [Open](https://apps.apple.com/app/id6757712804) | vatrueshka | iOS, macOS |
-| ToMe: Save to Self | [Open](https://apps.apple.com/app/id6755589008) | framara | iOS, macOS |
-| TV Show Tracker | [Open](https://apps.apple.com/us/app/tv-show-tracker-tv-club/id6497563903) | rursache | iOS |
-| Unlimited Clipboard History | [Open](https://apps.apple.com/us/app/unlimited-clipboard-history/id6705136056) | yspreen | macOS |
-| Video Annotation | [Open](https://apps.apple.com/us/app/video-annotation/id6758316355) | antranapp | iOS |
-| Writone - Reply Assistant | [Open](https://apps.apple.com/app/id6758207392) | evanyi | iOS |
-| XO: Have I Ever | [Open](https://apps.apple.com/us/app/xo-have-i-ever/id6757594745) | arunavo4 | iOS |
+**30 apps ship with asc.** [See the Wall of Apps →](https://asccli.sh/#wall-of-apps)
 
 Want to add yours? [Open a PR](https://github.com/rudrankriyam/App-Store-Connect-CLI/pulls).
 <!-- WALL-OF-APPS:END -->
@@ -1917,7 +1778,7 @@ Want to add yours? [Open a PR](https://github.com/rudrankriyam/App-Store-Connect
 Use:
 `make generate app APP="Your App Name" LINK="https://apps.apple.com/app/id1234567890" CREATOR="your-github-handle" PLATFORM="iOS,macOS"`
 
-This command updates `docs/wall-of-apps.json` and re-syncs the generated Wall snippet in `README.md`.
+This command updates `docs/wall-of-apps.json` and re-syncs the Wall snippet in `README.md`.
 
 ## Acknowledgements
 

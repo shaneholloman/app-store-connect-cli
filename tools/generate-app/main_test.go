@@ -106,9 +106,11 @@ Old wall content.
 		t.Fatalf("read README: %v", err)
 	}
 	readme := string(readmeBytes)
-	expectedRow := "| Dandelion | [Open](https://apps.apple.com/us/app/dandelion-write-and-let-go/id6757363901) | joeycast | iOS, macOS |"
-	if !strings.Contains(readme, expectedRow) {
-		t.Fatalf("expected generated README row, got:\n%s", readme)
+	if !strings.Contains(readme, "**2 apps ship with asc.**") {
+		t.Fatalf("expected app count teaser in README, got:\n%s", readme)
+	}
+	if !strings.Contains(readme, "https://asccli.sh/#wall-of-apps") {
+		t.Fatalf("expected website link in README, got:\n%s", readme)
 	}
 	if !strings.Contains(stdout.String(), "Added app entry in") {
 		t.Fatalf("expected add confirmation in stdout, got: %s", stdout.String())
@@ -225,8 +227,8 @@ Old wall content.
 		t.Fatalf("read README: %v", err)
 	}
 	readme := string(readmeBytes)
-	if !strings.Contains(readme, `<img src="https://example.com/beta-icon.png" alt="Beta icon" width="64" height="64" /><br/>Beta<br/><sub>by creator-beta</sub>`) {
-		t.Fatalf("expected icon tag in README, got:\n%s", readme)
+	if !strings.Contains(readme, "**2 apps ship with asc.**") {
+		t.Fatalf("expected app count teaser in README, got:\n%s", readme)
 	}
 }
 

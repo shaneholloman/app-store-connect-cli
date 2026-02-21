@@ -8,26 +8,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 const (
 	startMarker         = "<!-- WALL-OF-APPS:START -->"
 	endMarker           = "<!-- WALL-OF-APPS:END -->"
-	wallSourceURL       = "https://github.com/rudrankriyam/App-Store-Connect-CLI/blob/main/docs/wall-of-apps.json"
 	wallPullRequestsURL = "https://github.com/rudrankriyam/App-Store-Connect-CLI/pulls"
-	iconGridColumns     = 4
-	iconTileSize        = 64
+	wallWebsiteURL      = "https://asccli.sh/#wall-of-apps"
 )
-
-var platformDisplayNames = map[string]string{
-	"IOS":       "iOS",
-	"MAC_OS":    "macOS",
-	"WATCH_OS":  "watchOS",
-	"TV_OS":     "tvOS",
-	"VISION_OS": "visionOS",
-}
 
 var platformAliases = map[string]string{
 	"ios":       "IOS",
@@ -188,152 +176,12 @@ func buildSnippet(entries []WallEntry) string {
 	lines := []string{
 		"## Wall of Apps",
 		"",
-		fmt.Sprintf("Apps shipping with asc. Pulled live from [wall-of-apps.json](%s).", wallSourceURL),
+		fmt.Sprintf("**%d apps ship with asc.** [See the Wall of Apps →](%s)", len(entries), wallWebsiteURL),
 		"",
-		"### App Icons",
-		"",
-		"Grouped alphabetically. Click any tile to open the app.",
+		fmt.Sprintf("Want to add yours? [Open a PR](%s).", wallPullRequestsURL),
 	}
-
-	groupedEntries := make(map[string][]WallEntry)
-	groupOrder := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		group := iconGroupKey(entry.App)
-		if _, exists := groupedEntries[group]; !exists {
-			groupOrder = append(groupOrder, group)
-		}
-		groupedEntries[group] = append(groupedEntries[group], entry)
-	}
-
-	for _, group := range groupOrder {
-		lines = append(lines, "", "#### "+group, "", buildIconGridHeaderRow(iconGridColumns), buildIconGridAlignRow(iconGridColumns))
-
-		iconCells := make([]string, 0, len(groupedEntries[group]))
-		for _, entry := range groupedEntries[group] {
-			iconCells = append(iconCells, buildIconCell(entry))
-		}
-		for i := 0; i < len(iconCells); i += iconGridColumns {
-			rowEnd := i + iconGridColumns
-			if rowEnd > len(iconCells) {
-				rowEnd = len(iconCells)
-			}
-			row := append([]string{}, iconCells[i:rowEnd]...)
-			for len(row) < iconGridColumns {
-				row = append(row, " ")
-			}
-			lines = append(lines, "| "+strings.Join(row, " | ")+" |")
-		}
-	}
-
-	lines = append(lines,
-		"",
-		"### Details",
-		"",
-		"| App | Link | Creator | Platform |",
-		"|:----|:-----|:--------|:---------|",
-	)
-
-	for _, entry := range entries {
-		platforms := make([]string, 0, len(entry.Platform))
-		for _, platform := range entry.Platform {
-			platforms = append(platforms, displayPlatform(platform))
-		}
-		lines = append(lines, fmt.Sprintf(
-			"| %s | [Open](%s) | %s | %s |",
-			escapeCell(entry.App),
-			entry.Link,
-			escapeCell(entry.Creator),
-			escapeCell(strings.Join(platforms, ", ")),
-		))
-	}
-	lines = append(lines, "", fmt.Sprintf("Want to add yours? [Open a PR](%s).", wallPullRequestsURL))
 
 	return strings.Join(lines, "\n") + "\n"
-}
-
-func buildIconGridHeaderRow(columns int) string {
-	cells := make([]string, columns)
-	for i := 0; i < columns; i++ {
-		cells[i] = " "
-	}
-	return "| " + strings.Join(cells, " | ") + " |"
-}
-
-func buildIconGridAlignRow(columns int) string {
-	cells := make([]string, columns)
-	for i := 0; i < columns; i++ {
-		cells[i] = ":--:"
-	}
-	return "|" + strings.Join(cells, "|") + "|"
-}
-
-func buildIconCell(entry WallEntry) string {
-	name := escapeIconText(entry.App)
-	creator := escapeIconText(entry.Creator)
-	if entry.Icon == "" {
-		return fmt.Sprintf("[%s<br/><sub>by %s</sub>](%s)", name, creator, entry.Link)
-	}
-	return fmt.Sprintf(
-		`[<img src="%s" alt="%s icon" width="%d" height="%d" /><br/>%s<br/><sub>by %s</sub>](%s)`,
-		escapeHTMLAttr(entry.Icon),
-		escapeHTMLAttr(entry.App),
-		iconTileSize,
-		iconTileSize,
-		name,
-		creator,
-		entry.Link,
-	)
-}
-
-func iconGroupKey(appName string) string {
-	trimmed := strings.TrimSpace(appName)
-	if trimmed == "" {
-		return "#"
-	}
-	r, _ := utf8.DecodeRuneInString(trimmed)
-	if r == utf8.RuneError {
-		return "#"
-	}
-	upper := unicode.ToUpper(r)
-	if (upper >= 'A' && upper <= 'Z') || (upper >= '0' && upper <= '9') {
-		return string(upper)
-	}
-	return "#"
-}
-
-func displayPlatform(value string) string {
-	if name, ok := platformDisplayNames[value]; ok {
-		return name
-	}
-	return value
-}
-
-func escapeCell(value string) string {
-	escaped := strings.ReplaceAll(value, "|", "\\|")
-	return strings.TrimSpace(strings.ReplaceAll(escaped, "\n", " "))
-}
-
-func escapeHTMLAttr(value string) string {
-	replacer := strings.NewReplacer(
-		"&", "&amp;",
-		`"`, "&quot;",
-		"<", "&lt;",
-		">", "&gt;",
-	)
-	return replacer.Replace(strings.TrimSpace(value))
-}
-
-func escapeIconText(value string) string {
-	clean := strings.TrimSpace(strings.ReplaceAll(value, "\n", " "))
-	replacer := strings.NewReplacer(
-		"&", "&amp;",
-		"<", "&lt;",
-		">", "&gt;",
-		"|", "&#124;",
-		"[", `\[`,
-		"]", `\]`,
-	)
-	return replacer.Replace(clean)
 }
 
 func syncReadme(snippet string, readmePath string) error {
