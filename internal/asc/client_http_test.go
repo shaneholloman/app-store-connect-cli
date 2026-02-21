@@ -1135,6 +1135,23 @@ func TestCreateAppStoreVersion(t *testing.T) {
 	}
 }
 
+func TestDeleteAppStoreVersion(t *testing.T) {
+	response := jsonResponse(http.StatusNoContent, ``)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appStoreVersions/VERSION_123" {
+			t.Fatalf("expected path /v1/appStoreVersions/VERSION_123, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if err := client.DeleteAppStoreVersion(context.Background(), "VERSION_123"); err != nil {
+		t.Fatalf("DeleteAppStoreVersion() error: %v", err)
+	}
+}
+
 func TestAttachBuildToVersion(t *testing.T) {
 	response := jsonResponse(http.StatusNoContent, ``)
 	client := newTestClient(t, func(req *http.Request) {
@@ -6505,6 +6522,23 @@ func TestUpdateSubscriptionGroup(t *testing.T) {
 	}
 }
 
+func TestDeleteSubscriptionGroup(t *testing.T) {
+	response := jsonResponse(http.StatusNoContent, ``)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/subscriptionGroups/group-1" {
+			t.Fatalf("expected path /v1/subscriptionGroups/group-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if err := client.DeleteSubscriptionGroup(context.Background(), "group-1"); err != nil {
+		t.Fatalf("DeleteSubscriptionGroup() error: %v", err)
+	}
+}
+
 func TestGetSubscriptions_WithLimit(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"subscriptions","id":"sub-1","attributes":{"name":"Monthly","productId":"com.example.sub.monthly"}}]}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -6559,6 +6593,23 @@ func TestCreateSubscription(t *testing.T) {
 	}
 	if _, err := client.CreateSubscription(context.Background(), "group-1", createSubAttrs); err != nil {
 		t.Fatalf("CreateSubscription() error: %v", err)
+	}
+}
+
+func TestDeleteSubscription(t *testing.T) {
+	response := jsonResponse(http.StatusNoContent, ``)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/subscriptions/sub-1" {
+			t.Fatalf("expected path /v1/subscriptions/sub-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if err := client.DeleteSubscription(context.Background(), "sub-1"); err != nil {
+		t.Fatalf("DeleteSubscription() error: %v", err)
 	}
 }
 
@@ -6708,6 +6759,23 @@ func TestUpdateUser_SendsRequest(t *testing.T) {
 		AllAppsVisible: &allAppsVisible,
 	}); err != nil {
 		t.Fatalf("UpdateUser() error: %v", err)
+	}
+}
+
+func TestDeleteUser_SendsRequest(t *testing.T) {
+	response := jsonResponse(http.StatusNoContent, ``)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("expected DELETE, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/users/user-1" {
+			t.Fatalf("expected path /v1/users/user-1, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if err := client.DeleteUser(context.Background(), "user-1"); err != nil {
+		t.Fatalf("DeleteUser() error: %v", err)
 	}
 }
 

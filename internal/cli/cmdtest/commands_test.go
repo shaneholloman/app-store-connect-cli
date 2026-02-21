@@ -3053,6 +3053,16 @@ func TestLocalizationsValidationErrors(t *testing.T) {
 			args:    []string{"localizations", "upload", "--type", "app-info", "--path", "localizations"},
 			wantErr: "--app is required",
 		},
+		{
+			name:    "localizations screenshot-sets delete missing id",
+			args:    []string{"localizations", "screenshot-sets", "delete", "--confirm"},
+			wantErr: "Error: --id is required",
+		},
+		{
+			name:    "localizations screenshot-sets delete missing confirm",
+			args:    []string{"localizations", "screenshot-sets", "delete", "--id", "SET_ID"},
+			wantErr: "Error: --confirm is required to delete",
+		},
 	}
 
 	for _, test := range tests {
@@ -3624,6 +3634,16 @@ func TestVersionsValidationErrors(t *testing.T) {
 			name:    "release missing confirm",
 			args:    []string{"versions", "release", "--version-id", "VERSION_123"},
 			wantErr: "Error: --confirm is required to release a version",
+		},
+		{
+			name:    "delete missing version id",
+			args:    []string{"versions", "delete", "--confirm"},
+			wantErr: "Error: --version-id is required",
+		},
+		{
+			name:    "delete missing confirm",
+			args:    []string{"versions", "delete", "--version-id", "VERSION_123"},
+			wantErr: "Error: --confirm is required to delete a version",
 		},
 	}
 
