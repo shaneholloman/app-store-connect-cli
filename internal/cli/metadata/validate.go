@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
 
@@ -231,60 +230,44 @@ func validateDir(dir string) (ValidateResult, error) {
 
 func versionLengthIssues(filePath, version, locale string, loc VersionLocalization) []ValidateIssue {
 	issues := make([]ValidateIssue, 0, 4)
-
-	addIssue := func(field string, length, limit int) {
+	for _, issue := range validation.VersionLocalizationLengthIssues(validation.VersionLocalization{
+		Description:     loc.Description,
+		Keywords:        loc.Keywords,
+		WhatsNew:        loc.WhatsNew,
+		PromotionalText: loc.PromotionalText,
+	}) {
 		issues = append(issues, ValidateIssue{
 			Scope:    versionDirName,
 			File:     filePath,
 			Locale:   locale,
 			Version:  version,
-			Field:    field,
+			Field:    issue.Field,
 			Severity: issueSeverityError,
-			Message:  fmt.Sprintf("%s exceeds %d characters", field, limit),
-			Length:   length,
-			Limit:    limit,
+			Message:  fmt.Sprintf("%s exceeds %d characters", issue.Field, issue.Limit),
+			Length:   issue.Length,
+			Limit:    issue.Limit,
 		})
 	}
-
-	if length := utf8.RuneCountInString(loc.Description); length > validation.LimitDescription {
-		addIssue("description", length, validation.LimitDescription)
-	}
-	if length := utf8.RuneCountInString(loc.Keywords); length > validation.LimitKeywords {
-		addIssue("keywords", length, validation.LimitKeywords)
-	}
-	if length := utf8.RuneCountInString(loc.WhatsNew); length > validation.LimitWhatsNew {
-		addIssue("whatsNew", length, validation.LimitWhatsNew)
-	}
-	if length := utf8.RuneCountInString(loc.PromotionalText); length > validation.LimitPromotionalText {
-		addIssue("promotionalText", length, validation.LimitPromotionalText)
-	}
-
 	return issues
 }
 
 func appInfoLengthIssues(filePath, locale string, loc AppInfoLocalization) []ValidateIssue {
 	issues := make([]ValidateIssue, 0, 2)
-
-	addIssue := func(field string, length, limit int) {
+	for _, issue := range validation.AppInfoLocalizationLengthIssues(validation.AppInfoLocalization{
+		Name:     loc.Name,
+		Subtitle: loc.Subtitle,
+	}) {
 		issues = append(issues, ValidateIssue{
 			Scope:    appInfoDirName,
 			File:     filePath,
 			Locale:   locale,
-			Field:    field,
+			Field:    issue.Field,
 			Severity: issueSeverityError,
-			Message:  fmt.Sprintf("%s exceeds %d characters", field, limit),
-			Length:   length,
-			Limit:    limit,
+			Message:  fmt.Sprintf("%s exceeds %d characters", issue.Field, issue.Limit),
+			Length:   issue.Length,
+			Limit:    issue.Limit,
 		})
 	}
-
-	if length := utf8.RuneCountInString(loc.Name); length > validation.LimitName {
-		addIssue("name", length, validation.LimitName)
-	}
-	if length := utf8.RuneCountInString(loc.Subtitle); length > validation.LimitSubtitle {
-		addIssue("subtitle", length, validation.LimitSubtitle)
-	}
-
 	return issues
 }
 

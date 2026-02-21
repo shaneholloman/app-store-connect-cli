@@ -414,12 +414,19 @@ func readAppInfoLocalizationPatchFromFile(path string) (appInfoLocalPatch, error
 	setFields := make(map[string]string)
 	loc := AppInfoLocalization{}
 	for key, rawValue := range raw {
-		value, err := decodeStringFieldPatch(key, rawValue, appInfoPlanFields)
+		canonicalKey, err := canonicalStringFieldPatchKey(key, appInfoPlanFields)
 		if err != nil {
 			return appInfoLocalPatch{}, err
 		}
-		setFields[key] = value
-		switch key {
+		if _, exists := setFields[canonicalKey]; exists {
+			return appInfoLocalPatch{}, fmt.Errorf("json: duplicate field %q", canonicalKey)
+		}
+		value, err := decodeStringFieldPatch(canonicalKey, rawValue)
+		if err != nil {
+			return appInfoLocalPatch{}, err
+		}
+		setFields[canonicalKey] = value
+		switch canonicalKey {
 		case "name":
 			loc.Name = value
 		case "subtitle":
@@ -457,12 +464,19 @@ func readVersionLocalizationPatchFromFile(path string) (versionLocalPatch, error
 	setFields := make(map[string]string)
 	loc := VersionLocalization{}
 	for key, rawValue := range raw {
-		value, err := decodeStringFieldPatch(key, rawValue, versionPlanFields)
+		canonicalKey, err := canonicalStringFieldPatchKey(key, versionPlanFields)
 		if err != nil {
 			return versionLocalPatch{}, err
 		}
-		setFields[key] = value
-		switch key {
+		if _, exists := setFields[canonicalKey]; exists {
+			return versionLocalPatch{}, fmt.Errorf("json: duplicate field %q", canonicalKey)
+		}
+		value, err := decodeStringFieldPatch(canonicalKey, rawValue)
+		if err != nil {
+			return versionLocalPatch{}, err
+		}
+		setFields[canonicalKey] = value
+		switch canonicalKey {
 		case "description":
 			loc.Description = value
 		case "keywords":
@@ -488,15 +502,21 @@ func readVersionLocalizationPatchFromFile(path string) (versionLocalPatch, error
 	}, nil
 }
 
-func decodeStringFieldPatch(field string, raw json.RawMessage, allowed []string) (string, error) {
-	allowedSet := make(map[string]struct{}, len(allowed))
+func canonicalStringFieldPatchKey(field string, allowed []string) (string, error) {
 	for _, key := range allowed {
-		allowedSet[key] = struct{}{}
+		if field == key {
+			return key, nil
+		}
 	}
-	if _, ok := allowedSet[field]; !ok {
-		return "", fmt.Errorf("json: unknown field %q", field)
+	for _, key := range allowed {
+		if strings.EqualFold(field, key) {
+			return key, nil
+		}
 	}
+	return "", fmt.Errorf("json: unknown field %q", field)
+}
 
+func decodeStringFieldPatch(field string, raw json.RawMessage) (string, error) {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return "", err

@@ -153,6 +153,31 @@ func TestReadAppInfoLocalizationPatchTracksExplicitFields(t *testing.T) {
 	}
 }
 
+func TestReadAppInfoLocalizationPatchAcceptsCaseInsensitiveKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "en-US.json")
+	if err := os.WriteFile(path, []byte(`{"Name":"New Name","SubTitle":"New Subtitle"}`), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	patch, err := readAppInfoLocalizationPatchFromFile(path)
+	if err != nil {
+		t.Fatalf("readAppInfoLocalizationPatchFromFile() error: %v", err)
+	}
+	if patch.localization.Name != "New Name" {
+		t.Fatalf("expected name set, got %+v", patch.localization)
+	}
+	if patch.localization.Subtitle != "New Subtitle" {
+		t.Fatalf("expected subtitle set, got %+v", patch.localization)
+	}
+	if patch.setFields["name"] != "New Name" {
+		t.Fatalf("expected canonical field key name in setFields, got %+v", patch.setFields)
+	}
+	if patch.setFields["subtitle"] != "New Subtitle" {
+		t.Fatalf("expected canonical field key subtitle in setFields, got %+v", patch.setFields)
+	}
+}
+
 func TestReadAppInfoLocalizationPatchRejectsLegacyClearToken(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "en-US.json")
@@ -166,5 +191,30 @@ func TestReadAppInfoLocalizationPatchRejectsLegacyClearToken(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported clear token __ASC_DELETE__") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestReadVersionLocalizationPatchAcceptsCaseInsensitiveKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "en-US.json")
+	if err := os.WriteFile(path, []byte(`{"Description":"New Description","Whatsnew":"New What's New"}`), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	patch, err := readVersionLocalizationPatchFromFile(path)
+	if err != nil {
+		t.Fatalf("readVersionLocalizationPatchFromFile() error: %v", err)
+	}
+	if patch.localization.Description != "New Description" {
+		t.Fatalf("expected description set, got %+v", patch.localization)
+	}
+	if patch.localization.WhatsNew != "New What's New" {
+		t.Fatalf("expected whatsNew set, got %+v", patch.localization)
+	}
+	if patch.setFields["description"] != "New Description" {
+		t.Fatalf("expected canonical field key description in setFields, got %+v", patch.setFields)
+	}
+	if patch.setFields["whatsNew"] != "New What's New" {
+		t.Fatalf("expected canonical field key whatsNew in setFields, got %+v", patch.setFields)
 	}
 }
