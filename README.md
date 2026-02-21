@@ -115,11 +115,10 @@ A **fast**, **lightweight**, and **scriptable** CLI for the [App Store Connect A
 
 ```bash
 # Via Homebrew (recommended)
-brew tap rudrankriyam/tap
 brew install asc
 
 # Install script (macOS/Linux)
-curl -fsSL https://raw.githubusercontent.com/rudrankriyam/App-Store-Connect-CLI/main/install.sh | bash
+curl -fsSL https://asccli.sh/install | bash
 
 # Installs to ~/.local/bin by default (ensure it's on your PATH)
 
@@ -1707,8 +1706,6 @@ asc feedback --app "123456789"
 ### Homebrew (macOS)
 
 ```bash
-# Add tap and install
-brew tap rudrankriyam/tap
 brew install asc
 ```
 
