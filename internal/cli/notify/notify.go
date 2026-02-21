@@ -56,8 +56,8 @@ func slackFlags(fs *flag.FlagSet) (
 	blocksFile = fs.String("blocks-file", "", "Path to Slack Block Kit JSON array file")
 	payloadJSON = fs.String("payload-json", "", "JSON object of release fields to include as Slack attachment fields")
 	payloadFile = fs.String("payload-file", "", "Path to JSON object file for release payload fields")
-	pretext = fs.String("pretext", "", "Optional text shown above attachment payload fields")
-	success = fs.Bool("success", true, "Set attachment color to success (true) or failure (false)")
+	pretext = fs.String("pretext", "", "Optional text shown above attachment payload fields (requires --payload-json/--payload-file)")
+	success = fs.Bool("success", true, "Set attachment color to success (true) or failure (false); requires --payload-json/--payload-file")
 	return
 }
 
@@ -100,6 +100,7 @@ The webhook URL can be provided via --webhook flag or ASC_SLACK_WEBHOOK env var.
 When using blocks, keep --message as the top-level text fallback.
 Slack may ignore channel overrides for incoming webhooks based on app settings.
 For --thread-ts, use the parent message ts from Slack APIs/events (webhook POST returns only "ok").
+--pretext and --success are attachment options and require --payload-json/--payload-file.
 
 Examples:
   asc notify slack --webhook "https://hooks.slack.com/..." --message "Build uploaded"
@@ -136,6 +137,14 @@ Examples:
 			releasePayload, err := parseSlackPayload(*payloadJSON, *payloadFile)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err.Error())
+				return flag.ErrHelp
+			}
+			visited := map[string]bool{}
+			fs.Visit(func(f *flag.Flag) {
+				visited[f.Name] = true
+			})
+			if releasePayload == nil && (visited["pretext"] || visited["success"]) {
+				fmt.Fprintln(os.Stderr, "Error: --pretext and --success require --payload-json or --payload-file")
 				return flag.ErrHelp
 			}
 
@@ -267,9 +276,15 @@ func parseSlackPayload(payloadJSON string, payloadFile string) (map[string]any, 
 		return nil, fmt.Errorf("%s must contain a JSON object", source)
 	}
 
+	decoder := json.NewDecoder(strings.NewReader(payloadJSON))
+	decoder.UseNumber()
+
 	var payload map[string]any
-	if err := json.Unmarshal([]byte(payloadJSON), &payload); err != nil {
+	if err := decoder.Decode(&payload); err != nil {
 		return nil, fmt.Errorf("%s must contain a JSON object: %w", source, err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return nil, fmt.Errorf("%s must contain a single JSON object", source)
 	}
 	if payload == nil {
 		return nil, fmt.Errorf("%s must contain a JSON object", source)
@@ -317,6 +332,8 @@ func formatPayloadValue(value any) string {
 		return "null"
 	case string:
 		return typed
+	case json.Number:
+		return typed.String()
 	default:
 		encoded, err := json.Marshal(typed)
 		if err != nil {

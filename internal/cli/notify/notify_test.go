@@ -222,7 +222,7 @@ func TestNotifySlackWithPayloadJSON(t *testing.T) {
 	root := SlackCommand()
 	root.FlagSet.SetOutput(io.Discard)
 
-	payload := `{"app":"ExampleApp","version":"1.2.3","build":"42"}`
+	payload := `{"app":"ExampleApp","version":"1.2.3","build":42,"release_id":123456789012345678901234567890}`
 	err := root.Parse([]string{"--message", "Release submitted", "--payload-json", payload})
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
@@ -272,6 +272,9 @@ func TestNotifySlackWithPayloadJSON(t *testing.T) {
 	}
 	if gotFields["build"] != "42" {
 		t.Fatalf("expected build field, got %q", gotFields["build"])
+	}
+	if gotFields["release_id"] != "123456789012345678901234567890" {
+		t.Fatalf("expected release_id field to preserve precision, got %q", gotFields["release_id"])
 	}
 }
 
@@ -488,6 +491,16 @@ func TestNotifySlackPayloadValidationErrors(t *testing.T) {
 			args:       []string{"--message", "hello", "--payload-json", "{}", "--payload-file", payloadPath},
 			wantErrMsg: "only one of --payload-json or --payload-file may be set",
 		},
+		{
+			name:       "pretext without payload",
+			args:       []string{"--message", "hello", "--pretext", "Release metadata"},
+			wantErrMsg: "--pretext and --success require --payload-json or --payload-file",
+		},
+		{
+			name:       "success without payload",
+			args:       []string{"--message", "hello", "--success=false"},
+			wantErrMsg: "--pretext and --success require --payload-json or --payload-file",
+		},
 	}
 
 	for _, test := range tests {
@@ -517,6 +530,20 @@ func TestNotifySlackPayloadValidationErrors(t *testing.T) {
 				t.Fatalf("expected error %q, got %q", test.wantErrMsg, stderr)
 			}
 		})
+	}
+}
+
+func TestParseSlackPayloadUsesJSONNumber(t *testing.T) {
+	payload, err := parseSlackPayload(`{"release_id":123456789012345678901234567890}`, "")
+	if err != nil {
+		t.Fatalf("parseSlackPayload returned error: %v", err)
+	}
+	value, ok := payload["release_id"].(json.Number)
+	if !ok {
+		t.Fatalf("expected json.Number, got %T", payload["release_id"])
+	}
+	if value.String() != "123456789012345678901234567890" {
+		t.Fatalf("expected exact number lexeme, got %q", value.String())
 	}
 }
 

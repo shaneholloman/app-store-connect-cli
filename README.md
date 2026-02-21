@@ -1305,6 +1305,7 @@ Notes:
 - `--thread-ts` posts the message as a reply in an existing Slack thread and requires a parent message `ts` from Slack APIs/events
 - `--channel` is sent in payload for compatibility, but incoming webhooks may ignore channel overrides based on app config
 - `--blocks-json` / `--blocks-file` are preferred for new layouts; `--payload-*` uses attachment fields for fastlane parity
+- `--pretext` and `--success` are attachment options and require `--payload-json` or `--payload-file`
 
 ### Apps & Builds
 
