@@ -101,9 +101,9 @@ var (
 		portraitLandscape(1668, 2388),
 		portraitLandscape(1668, 2420),
 	)
-	ipad105Dimensions   = portraitLandscape(1668, 2224)
-	ipad97Dimensions    = portraitLandscape(1536, 2048)
-	desktopDimensions   = combineDimensions(
+	ipad105Dimensions = portraitLandscape(1668, 2224)
+	ipad97Dimensions  = portraitLandscape(1536, 2048)
+	desktopDimensions = combineDimensions(
 		singleOrientation(1280, 800),
 		singleOrientation(1440, 900),
 		singleOrientation(2560, 1600),
