@@ -92,6 +92,28 @@ format:
 	$(GO) fmt ./...
 	gofumpt -w .
 
+.PHONY: format-check
+format-check:
+	@echo "$(BLUE)Checking formatting (no writes)...$(NC)"
+	@if ! command -v gofumpt >/dev/null 2>&1; then \
+		echo "$(YELLOW)gofumpt not found; install with: make tools (or: $(GO) install mvdan.cc/gofumpt@latest)$(NC)"; \
+		exit 1; \
+	fi
+	@unformatted_gofmt="$$(gofmt -l .)"; \
+	unformatted_gofumpt="$$(gofumpt -l .)"; \
+	if [ -n "$$unformatted_gofmt" ] || [ -n "$$unformatted_gofumpt" ]; then \
+		echo "Formatting issues detected."; \
+		if [ -n "$$unformatted_gofmt" ]; then \
+			echo "gofmt:"; \
+			echo "$$unformatted_gofmt"; \
+		fi; \
+		if [ -n "$$unformatted_gofumpt" ]; then \
+			echo "gofumpt:"; \
+			echo "$$unformatted_gofumpt"; \
+		fi; \
+		exit 1; \
+	fi
+
 # Install dev tools
 .PHONY: tools
 tools:
@@ -148,6 +170,27 @@ update-wall-of-apps:
 	@echo "$(BLUE)Updating Wall of Apps snippets...$(NC)"
 	$(GO) run ./tools/update-wall-of-apps
 
+# Run focused performance benchmark snapshot
+.PHONY: bench-perf
+bench-perf:
+	@echo "$(BLUE)Running focused performance benchmarks...$(NC)"
+	bash ./scripts/perf-bench.sh
+
+# Compare two benchmark snapshots (BASE and NEW paths required)
+.PHONY: bench-perf-compare
+bench-perf-compare:
+	@if [ -z "$(BASE)" ] || [ -z "$(NEW)" ]; then \
+		echo "Usage: make bench-perf-compare BASE=.perf/bench-old.txt NEW=.perf/bench-new.txt"; \
+		exit 1; \
+	fi
+	@if command -v benchstat >/dev/null 2>&1; then \
+		benchstat "$(BASE)" "$(NEW)"; \
+	else \
+		echo "$(YELLOW)benchstat not found; install with: go install golang.org/x/perf/cmd/benchstat@latest$(NC)"; \
+		echo "$(YELLOW)Falling back to raw diff output.$(NC)"; \
+		diff -u "$(BASE)" "$(NEW)" || true; \
+	fi
+
 # Clean build artifacts
 .PHONY: clean
 clean:
@@ -196,6 +239,7 @@ help:
 	@echo "  test-integration  Run opt-in integration tests"
 	@echo "  lint           Lint the code"
 	@echo "  format         Format code"
+	@echo "  format-check   Check formatting without writing files"
 	@echo "  tools          Install dev tools"
 	@echo "  install-hooks  Install local git hooks"
 	@echo "  deps           Install dependencies"
@@ -204,6 +248,8 @@ help:
 	@echo "  generate app   Generate/update Wall app entry in JSON + README"
 	@echo "                 Usage: make generate app APP=\"Name\" LINK=\"https://...\" CREATOR=\"you\" PLATFORM=\"iOS,macOS\""
 	@echo "  update-wall-of-apps Update Wall of Apps snippets"
+	@echo "  bench-perf     Run focused perf benchmark snapshot"
+	@echo "  bench-perf-compare Compare two perf snapshots (BASE=... NEW=...)"
 	@echo "  clean          Clean build artifacts"
 	@echo "  install        Install binary"
 	@echo "  uninstall      Uninstall binary"
