@@ -46,28 +46,41 @@ for (const line of lines) {
   const change = match[2].trim().replace('−', '-');
   const pValue = parseFloat(match[3]);
 
-  let icon, verdict;
+  let icon, verdict, deltaDisplay;
   if (change === '~') {
     icon = '~';
     verdict = 'no change';
+    deltaDisplay = '~';
   } else {
     const pct = parseFloat(change);
     if (isNaN(pct)) {
       icon = '~';
       verdict = 'no change';
-    } else if (pct > 5 && pValue < 0.05) {
-      icon = ':warning:';
-      verdict = `**${change} slower**`;
-    } else if (pct < -5 && pValue < 0.05) {
-      icon = ':rocket:';
-      verdict = `**${change} faster**`;
+      deltaDisplay = change;
     } else {
-      icon = ':white_check_mark:';
-      verdict = 'within noise';
+      const magnitude = `${Math.abs(pct).toFixed(2)}%`;
+      if (pct < 0) {
+        deltaDisplay = `${magnitude} faster`;
+      } else if (pct > 0) {
+        deltaDisplay = `${magnitude} slower`;
+      } else {
+        deltaDisplay = magnitude;
+      }
+
+      if (pct > 5 && pValue < 0.05) {
+        icon = ':warning:';
+        verdict = `**${magnitude} slower**`;
+      } else if (pct < -5 && pValue < 0.05) {
+        icon = ':rocket:';
+        verdict = `**${magnitude} faster**`;
+      } else {
+        icon = ':white_check_mark:';
+        verdict = 'within noise';
+      }
     }
   }
 
-  results.push({ icon, name, change, pValue, verdict });
+  results.push({ icon, name, change, deltaDisplay, pValue, verdict });
 }
 
 let body;
@@ -98,7 +111,9 @@ if (results.length === 0) {
   const table = [
     '| | Benchmark | Delta | Verdict |',
     '|---|---|---|---|',
-    ...results.map(r => `| ${r.icon} | \`${r.name}\` | ${r.change} (p=${r.pValue.toFixed(3)}) | ${r.verdict} |`),
+    ...results.map(
+      r => `| ${r.icon} | \`${r.name}\` | ${r.deltaDisplay} (p=${r.pValue.toFixed(3)}) | ${r.verdict} |`
+    ),
   ].join('\n');
 
   body = [
