@@ -49,9 +49,6 @@ After.
 		t.Fatalf("generate failed: %v", err)
 	}
 
-	alphaRow := "| Alpha App | [Open](https://example.com/alpha) | Alpha Creator | macOS, iOS |"
-	zuluRow := "| Zulu App | [Open](https://example.com/zulu) | Zulu Creator | iOS |"
-
 	readmeBytes, err := os.ReadFile(result.ReadmePath)
 	if err != nil {
 		t.Fatalf("read generated README: %v", err)
@@ -60,19 +57,105 @@ After.
 	if strings.Contains(readme, "Old content.") {
 		t.Fatalf("expected README snippet to be replaced, got:\n%s", readme)
 	}
-	if !strings.Contains(readme, "| App | Link | Creator | Platform |") {
-		t.Fatalf("expected markdown table header in README, got:\n%s", readme)
+	if !strings.Contains(readme, "**2 apps ship with asc.**") {
+		t.Fatalf("expected app count teaser in README, got:\n%s", readme)
 	}
-	if !strings.Contains(readme, alphaRow) || !strings.Contains(readme, zuluRow) {
-		t.Fatalf("expected README to include generated rows, got:\n%s", readme)
+	if !strings.Contains(readme, "https://asccli.sh/#wall-of-apps") {
+		t.Fatalf("expected website link in README, got:\n%s", readme)
 	}
-	alphaIdx := strings.Index(readme, alphaRow)
-	zuluIdx := strings.Index(readme, zuluRow)
-	if alphaIdx > zuluIdx {
-		t.Fatalf("expected deterministic app sorting in README, got:\n%s", readme)
+	if !strings.Contains(readme, "Want to add yours?") {
+		t.Fatalf("expected PR link in README, got:\n%s", readme)
 	}
 	if _, err := os.Stat(filepath.Join(tmpRepo, "docs", "generated", "app-wall.md")); !os.IsNotExist(err) {
 		t.Fatalf("expected no generated wall file, stat error: %v", err)
+	}
+}
+
+func TestGenerateCountsEntriesCorrectly(t *testing.T) {
+	tmpRepo := t.TempDir()
+
+	writeFile(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"), `[
+  {
+    "app": "Alpha App",
+    "link": "https://example.com/alpha",
+    "creator": "Alpha Creator",
+    "icon": "https://example.com/alpha-icon.png",
+    "platform": ["iOS"]
+  },
+  {
+    "app": "Beta App",
+    "link": "https://example.com/beta",
+    "creator": "Beta Creator",
+    "platform": ["iOS"]
+  },
+  {
+    "app": "Zulu App",
+    "link": "https://example.com/zulu",
+    "creator": "Zulu Creator",
+    "platform": ["iOS"]
+  }
+]`)
+
+	writeFile(t, filepath.Join(tmpRepo, "README.md"), `# Demo
+<!-- WALL-OF-APPS:START -->
+Old content.
+<!-- WALL-OF-APPS:END -->
+`)
+
+	result, err := Generate(tmpRepo)
+	if err != nil {
+		t.Fatalf("generate failed: %v", err)
+	}
+
+	readmeBytes, err := os.ReadFile(result.ReadmePath)
+	if err != nil {
+		t.Fatalf("read generated README: %v", err)
+	}
+	readme := string(readmeBytes)
+
+	if !strings.Contains(readme, "**3 apps ship with asc.**") {
+		t.Fatalf("expected 3-app count in README, got:\n%s", readme)
+	}
+}
+
+func TestGenerateDoesNotIncludeIconGrid(t *testing.T) {
+	tmpRepo := t.TempDir()
+
+	writeFile(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"), `[
+  {
+    "app": "Alpha App",
+    "link": "https://example.com/alpha",
+    "creator": "Alpha Creator",
+    "icon": "https://example.com/alpha-icon.png",
+    "platform": ["iOS"]
+  }
+]`)
+
+	writeFile(t, filepath.Join(tmpRepo, "README.md"), `# Demo
+<!-- WALL-OF-APPS:START -->
+Old content.
+<!-- WALL-OF-APPS:END -->
+`)
+
+	result, err := Generate(tmpRepo)
+	if err != nil {
+		t.Fatalf("generate failed: %v", err)
+	}
+
+	readmeBytes, err := os.ReadFile(result.ReadmePath)
+	if err != nil {
+		t.Fatalf("read generated README: %v", err)
+	}
+	readme := string(readmeBytes)
+
+	if strings.Contains(readme, "### App Icons") {
+		t.Fatalf("expected no icon grid in slim snippet, got:\n%s", readme)
+	}
+	if strings.Contains(readme, "### Details") {
+		t.Fatalf("expected no details table in slim snippet, got:\n%s", readme)
+	}
+	if strings.Contains(readme, "<img src=") {
+		t.Fatalf("expected no img tags in slim snippet, got:\n%s", readme)
 	}
 }
 
@@ -120,19 +203,9 @@ Old content.
 <!-- WALL-OF-APPS:END -->
 `)
 
-	result, err := Generate(tmpRepo)
+	_, err := Generate(tmpRepo)
 	if err != nil {
 		t.Fatalf("generate failed: %v", err)
-	}
-
-	generatedContentBytes, err := os.ReadFile(result.ReadmePath)
-	if err != nil {
-		t.Fatalf("read generated README: %v", err)
-	}
-	generatedContent := string(generatedContentBytes)
-	row := "| Platform App | [Open](https://example.com/platform) | Platform Creator | Android, watchOS, tvOS, iOS, visionOS |"
-	if !strings.Contains(generatedContent, row) {
-		t.Fatalf("expected row with custom and normalized platform labels, got:\n%s", generatedContent)
 	}
 }
 
@@ -304,118 +377,6 @@ Old content.
 				t.Fatalf("expected link validation error, got %v", err)
 			}
 		})
-	}
-}
-
-func TestGenerateSortsByLinkWhenAppNamesMatch(t *testing.T) {
-	tmpRepo := t.TempDir()
-
-	writeFile(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"), `[
-  {
-    "app": "Same App",
-    "link": "https://b.example.com",
-    "creator": "Creator B",
-    "platform": ["iOS"]
-  },
-  {
-    "app": "Same App",
-    "link": "https://a.example.com",
-    "creator": "Creator A",
-    "platform": ["iOS"]
-  }
-]`)
-	writeFile(t, filepath.Join(tmpRepo, "README.md"), `# Demo
-<!-- WALL-OF-APPS:START -->
-Old content.
-<!-- WALL-OF-APPS:END -->
-`)
-
-	result, err := Generate(tmpRepo)
-	if err != nil {
-		t.Fatalf("generate failed: %v", err)
-	}
-
-	readmeBytes, err := os.ReadFile(result.ReadmePath)
-	if err != nil {
-		t.Fatalf("read generated README: %v", err)
-	}
-	readme := string(readmeBytes)
-
-	rowA := "| Same App | [Open](https://a.example.com) | Creator A | iOS |"
-	rowB := "| Same App | [Open](https://b.example.com) | Creator B | iOS |"
-	if !strings.Contains(readme, rowA) || !strings.Contains(readme, rowB) {
-		t.Fatalf("expected both rows in README, got:\n%s", readme)
-	}
-	if strings.Index(readme, rowA) > strings.Index(readme, rowB) {
-		t.Fatalf("expected same-name apps to be sorted by link, got:\n%s", readme)
-	}
-}
-
-func TestGenerateEscapesMarkdownCells(t *testing.T) {
-	tmpRepo := t.TempDir()
-
-	writeFile(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"), `[
-  {
-    "app": "Pipe|App\nName",
-    "link": "https://example.com/pipe",
-    "creator": "Creator|Team\nOne",
-    "platform": ["iOS"]
-  }
-]`)
-	writeFile(t, filepath.Join(tmpRepo, "README.md"), `# Demo
-<!-- WALL-OF-APPS:START -->
-Old content.
-<!-- WALL-OF-APPS:END -->
-`)
-
-	result, err := Generate(tmpRepo)
-	if err != nil {
-		t.Fatalf("generate failed: %v", err)
-	}
-
-	readmeBytes, err := os.ReadFile(result.ReadmePath)
-	if err != nil {
-		t.Fatalf("read generated README: %v", err)
-	}
-	readme := string(readmeBytes)
-
-	expectedRow := "| Pipe\\|App Name | [Open](https://example.com/pipe) | Creator\\|Team One | iOS |"
-	if !strings.Contains(readme, expectedRow) {
-		t.Fatalf("expected escaped markdown row, got:\n%s", readme)
-	}
-}
-
-func TestGenerateDedupesUnknownPlatformsCaseInsensitive(t *testing.T) {
-	tmpRepo := t.TempDir()
-
-	writeFile(t, filepath.Join(tmpRepo, "docs", "wall-of-apps.json"), `[
-  {
-    "app": "Web App",
-    "link": "https://example.com/web",
-    "creator": "Web Creator",
-    "platform": ["Web", "web", "WEB", "iOS", "IOS"]
-  }
-]`)
-	writeFile(t, filepath.Join(tmpRepo, "README.md"), `# Demo
-<!-- WALL-OF-APPS:START -->
-Old content.
-<!-- WALL-OF-APPS:END -->
-`)
-
-	result, err := Generate(tmpRepo)
-	if err != nil {
-		t.Fatalf("generate failed: %v", err)
-	}
-
-	readmeBytes, err := os.ReadFile(result.ReadmePath)
-	if err != nil {
-		t.Fatalf("read generated README: %v", err)
-	}
-	readme := string(readmeBytes)
-
-	expectedRow := "| Web App | [Open](https://example.com/web) | Web Creator | Web, iOS |"
-	if !strings.Contains(readme, expectedRow) {
-		t.Fatalf("expected deduped platform row, got:\n%s", readme)
 	}
 }
 

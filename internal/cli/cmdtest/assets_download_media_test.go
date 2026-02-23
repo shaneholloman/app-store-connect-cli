@@ -42,6 +42,9 @@ func TestScreenshotsDownload_ByID_WritesFile(t *testing.T) {
 			if req.URL.Path != "/assets/1242x2688bb.png" {
 				t.Fatalf("unexpected asset path: %s", req.URL.Path)
 			}
+			if got := strings.TrimSpace(req.Header.Get("User-Agent")); got != "curl/8.7.1 App-Store-Connect-CLI/asset-download" {
+				t.Fatalf("unexpected user agent: %q", got)
+			}
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader("PNGDATA")),
@@ -193,6 +196,111 @@ func TestScreenshotsDownload_ByLocalization_WritesFiles(t *testing.T) {
 	}
 	if got.Total != 1 || got.Downloaded != 1 || got.Failed != 0 {
 		t.Fatalf("unexpected result: %+v", got)
+	}
+
+	wantPath := filepath.Join(outDir, "APP_IPHONE_65", "01_shot-1_screen.png")
+	data, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+	if string(data) != "PNGDATA" {
+		t.Fatalf("unexpected file contents: %q", string(data))
+	}
+}
+
+func TestScreenshotsDownload_ByLocalization_RetriesTransientForbidden(t *testing.T) {
+	setupAuth(t)
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	assetAttempts := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Host {
+		case "api.appstoreconnect.apple.com":
+			if req.Method != http.MethodGet {
+				t.Fatalf("expected GET, got %s", req.Method)
+			}
+			switch req.URL.Path {
+			case "/v1/appStoreVersionLocalizations/loc-1/appScreenshotSets":
+				body := `{"data":[{"type":"appScreenshotSets","id":"set-1","attributes":{"screenshotDisplayType":"APP_IPHONE_65"}}]}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+				}, nil
+			case "/v1/appScreenshotSets/set-1/appScreenshots":
+				body := `{"data":[{"type":"appScreenshots","id":"shot-1","attributes":{"fileName":"screen.png","fileSize":7,"imageAsset":{"templateUrl":"https://example.com/screen_{w}x{h}.{f}","width":100,"height":200}}}]}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+				}, nil
+			default:
+				t.Fatalf("unexpected API path: %s", req.URL.Path)
+				return nil, nil
+			}
+		case "example.com":
+			if req.Method != http.MethodGet {
+				t.Fatalf("expected GET, got %s", req.Method)
+			}
+			if req.URL.Path != "/screen_100x200.png" {
+				t.Fatalf("unexpected asset path: %s", req.URL.Path)
+			}
+			assetAttempts++
+			if assetAttempts == 1 {
+				return &http.Response{
+					StatusCode: http.StatusForbidden,
+					Body:       io.NopCloser(strings.NewReader("403 Forbidden")),
+					Header:     http.Header{"Content-Type": []string{"text/plain"}},
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("PNGDATA")),
+				Header:     http.Header{"Content-Type": []string{"image/png"}},
+			}, nil
+		default:
+			t.Fatalf("unexpected host: %s", req.URL.Host)
+			return nil, nil
+		}
+	})
+
+	outDir := filepath.Join(t.TempDir(), "shots")
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	type result struct {
+		Total      int `json:"total"`
+		Downloaded int `json:"downloaded"`
+		Failed     int `json:"failed"`
+	}
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"screenshots", "download", "--version-localization", "loc-1", "--output-dir", outDir}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var got result
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode stdout JSON: %v (stdout=%q)", err, stdout)
+	}
+	if got.Total != 1 || got.Downloaded != 1 || got.Failed != 0 {
+		t.Fatalf("unexpected result: %+v", got)
+	}
+	if assetAttempts != 2 {
+		t.Fatalf("expected 2 download attempts, got %d", assetAttempts)
 	}
 
 	wantPath := filepath.Join(outDir, "APP_IPHONE_65", "01_shot-1_screen.png")

@@ -120,7 +120,7 @@ type SubscriptionPriceAttributes struct {
 // SubscriptionPriceCreateAttributes describes attributes for creating a price.
 type SubscriptionPriceCreateAttributes struct {
 	StartDate string `json:"startDate,omitempty"`
-	Preserved *bool  `json:"preserved,omitempty"`
+	Preserved *bool  `json:"preserveCurrentPrice,omitempty"`
 }
 
 // SubscriptionPriceRelationships describes relationships for prices.

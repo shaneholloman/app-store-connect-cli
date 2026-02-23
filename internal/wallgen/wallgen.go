@@ -11,17 +11,11 @@ import (
 )
 
 const (
-	startMarker = "<!-- WALL-OF-APPS:START -->"
-	endMarker   = "<!-- WALL-OF-APPS:END -->"
+	startMarker         = "<!-- WALL-OF-APPS:START -->"
+	endMarker           = "<!-- WALL-OF-APPS:END -->"
+	wallPullRequestsURL = "https://github.com/rudrankriyam/App-Store-Connect-CLI/pulls"
+	wallWebsiteURL      = "https://asccli.sh/#wall-of-apps"
 )
-
-var platformDisplayNames = map[string]string{
-	"IOS":       "iOS",
-	"MAC_OS":    "macOS",
-	"WATCH_OS":  "watchOS",
-	"TV_OS":     "tvOS",
-	"VISION_OS": "visionOS",
-}
 
 var platformAliases = map[string]string{
 	"ios":       "IOS",
@@ -40,6 +34,7 @@ type WallEntry struct {
 	App      string   `json:"app"`
 	Link     string   `json:"link"`
 	Creator  string   `json:"creator"`
+	Icon     string   `json:"icon,omitempty"`
 	Platform []string `json:"platform"`
 }
 
@@ -92,22 +87,28 @@ func readEntries(sourcePath string) ([]WallEntry, error) {
 		normalized = append(normalized, item)
 	}
 
-	sort.SliceStable(normalized, func(i, j int) bool {
-		leftApp := strings.ToLower(normalized[i].App)
-		rightApp := strings.ToLower(normalized[j].App)
+	SortEntriesByApp(normalized)
+
+	return normalized, nil
+}
+
+// SortEntriesByApp sorts entries by app name (case-insensitive), then link.
+func SortEntriesByApp(entries []WallEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		leftApp := strings.ToLower(strings.TrimSpace(entries[i].App))
+		rightApp := strings.ToLower(strings.TrimSpace(entries[j].App))
 		if leftApp != rightApp {
 			return leftApp < rightApp
 		}
-		return strings.ToLower(normalized[i].Link) < strings.ToLower(normalized[j].Link)
+		return strings.ToLower(strings.TrimSpace(entries[i].Link)) < strings.ToLower(strings.TrimSpace(entries[j].Link))
 	})
-
-	return normalized, nil
 }
 
 func normalizeEntry(entry WallEntry, index int) (WallEntry, error) {
 	entry.App = strings.TrimSpace(entry.App)
 	entry.Link = strings.TrimSpace(entry.Link)
 	entry.Creator = strings.TrimSpace(entry.Creator)
+	entry.Icon = strings.TrimSpace(entry.Icon)
 	if entry.App == "" {
 		return WallEntry{}, fmt.Errorf("entry #%d: 'app' is required", index)
 	}
@@ -123,6 +124,15 @@ func normalizeEntry(entry WallEntry, index int) (WallEntry, error) {
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return WallEntry{}, fmt.Errorf("entry #%d: 'link' must be a valid http/https URL", index)
+	}
+	if entry.Icon != "" {
+		parsedIconURL, iconErr := url.Parse(entry.Icon)
+		if iconErr != nil || parsedIconURL.Scheme == "" || parsedIconURL.Host == "" {
+			return WallEntry{}, fmt.Errorf("entry #%d: 'icon' must be a valid http/https URL", index)
+		}
+		if parsedIconURL.Scheme != "http" && parsedIconURL.Scheme != "https" {
+			return WallEntry{}, fmt.Errorf("entry #%d: 'icon' must be a valid http/https URL", index)
+		}
 	}
 	if len(entry.Platform) == 0 {
 		return WallEntry{}, fmt.Errorf("entry #%d: 'platform' must be a non-empty array", index)
@@ -166,39 +176,12 @@ func buildSnippet(entries []WallEntry) string {
 	lines := []string{
 		"## Wall of Apps",
 		"",
-		"Apps shipping with asc-cli. [Add yours via PR](https://github.com/rudrankriyam/App-Store-Connect-CLI/pulls)!",
+		fmt.Sprintf("**%d apps ship with asc.** [See the Wall of Apps →](%s)", len(entries), wallWebsiteURL),
 		"",
-		"| App | Link | Creator | Platform |",
-		"|:----|:-----|:--------|:---------|",
-	}
-
-	for _, entry := range entries {
-		platforms := make([]string, 0, len(entry.Platform))
-		for _, platform := range entry.Platform {
-			platforms = append(platforms, displayPlatform(platform))
-		}
-		lines = append(lines, fmt.Sprintf(
-			"| %s | [Open](%s) | %s | %s |",
-			escapeCell(entry.App),
-			entry.Link,
-			escapeCell(entry.Creator),
-			escapeCell(strings.Join(platforms, ", ")),
-		))
+		fmt.Sprintf("Want to add yours? [Open a PR](%s).", wallPullRequestsURL),
 	}
 
 	return strings.Join(lines, "\n") + "\n"
-}
-
-func displayPlatform(value string) string {
-	if name, ok := platformDisplayNames[value]; ok {
-		return name
-	}
-	return value
-}
-
-func escapeCell(value string) string {
-	escaped := strings.ReplaceAll(value, "|", "\\|")
-	return strings.TrimSpace(strings.ReplaceAll(escaped, "\n", " "))
 }
 
 func syncReadme(snippet string, readmePath string) error {

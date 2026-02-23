@@ -7,6 +7,7 @@ import (
 	"github.com/peterbourgon/ff/v3/ffcli"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/accessibility"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/account"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/actors"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/agerating"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/agreements"
@@ -29,6 +30,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/completion"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/crashes"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/devices"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/diffcmd"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/docs"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/encryption"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/eula"
@@ -37,10 +39,12 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/gamecenter"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/iap"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/initcmd"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/insights"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/install"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/localizations"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/marketplace"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/merchantids"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/metadata"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/migrate"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/nominations"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/notarization"
@@ -62,6 +66,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/screenshots"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/signing"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/status"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/submit"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/subscriptions"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/testflight"
@@ -93,9 +98,14 @@ func VersionCommand(version string) *ffcli.Command {
 func Subcommands(version string) []*ffcli.Command {
 	subs := []*ffcli.Command{
 		auth.AuthCommand(),
+		auth.AuthDoctorCommand(),
+		account.AccountCommand(),
 		install.InstallSkillsCommand(),
 		initcmd.InitCommand(),
 		docs.DocsCommand(),
+		diffcmd.DiffCommand(),
+		status.StatusCommand(),
+		insights.InsightsCommand(),
 		releasenotes.ReleaseNotesCommand(),
 		feedback.FeedbackCommand(),
 		crashes.CrashesCommand(),
@@ -139,6 +149,7 @@ func Subcommands(version string) []*ffcli.Command {
 		preorders.PreOrdersCommand(),
 		prerelease.PreReleaseVersionsCommand(),
 		localizations.LocalizationsCommand(),
+		metadata.MetadataCommand(),
 		screenshots.ScreenshotsCommand(),
 		videopreviews.VideoPreviewsCommand(),
 		backgroundassets.BackgroundAssetsCommand(),

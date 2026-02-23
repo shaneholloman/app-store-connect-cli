@@ -580,6 +580,11 @@ func normalizePreviewType(input string) (string, error) {
 	return value, nil
 }
 
+// NormalizePreviewType normalizes and validates a preview type.
+func NormalizePreviewType(input string) (string, error) {
+	return normalizePreviewType(input)
+}
+
 func ensurePreviewSet(ctx context.Context, client *asc.Client, localizationID, previewType string) (asc.Resource[asc.AppPreviewSetAttributes], error) {
 	resp, err := client.GetAppPreviewSets(ctx, localizationID)
 	if err != nil {
@@ -650,6 +655,11 @@ func uploadPreviewAsset(ctx context.Context, client *asc.Client, setID, filePath
 		AssetID:  created.Data.ID,
 		State:    state,
 	}, nil
+}
+
+// UploadPreviewAsset uploads a preview file to a set.
+func UploadPreviewAsset(ctx context.Context, client *asc.Client, setID, filePath string) (asc.AssetUploadResultItem, error) {
+	return uploadPreviewAsset(ctx, client, setID, filePath)
 }
 
 func detectPreviewMimeType(path string) (string, error) {

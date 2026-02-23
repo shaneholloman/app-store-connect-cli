@@ -685,12 +685,14 @@ func SubscriptionsPricesCommand() *ffcli.Command {
 Examples:
   asc subscriptions prices list --id "SUB_ID"
   asc subscriptions prices add --id "SUB_ID" --price-point "PRICE_POINT_ID"
+  asc subscriptions prices import --id "SUB_ID" --input "./prices.csv"
   asc subscriptions prices delete --price-id "PRICE_ID" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			SubscriptionsPricesListCommand(),
 			SubscriptionsPricesAddCommand(),
+			SubscriptionsPricesImportCommand(),
 			SubscriptionsPricesDeleteCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {

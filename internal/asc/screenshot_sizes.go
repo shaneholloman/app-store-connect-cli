@@ -92,11 +92,14 @@ var (
 	iphone40Dimensions = portraitLandscape(640, 1136)
 	iphone35Dimensions = portraitLandscape(640, 960)
 
-	ipadPro129Dimensions = portraitLandscape(2048, 2732)
-	ipadPro11Dimensions  = portraitLandscape(1668, 2388)
-	ipad105Dimensions    = portraitLandscape(1668, 2224)
-	ipad97Dimensions     = portraitLandscape(1536, 2048)
-	desktopDimensions    = combineDimensions(
+	ipadPro129Dimensions = combineDimensions(
+		portraitLandscape(2048, 2732),
+		portraitLandscape(2064, 2752),
+	)
+	ipadPro11Dimensions = portraitLandscape(1668, 2388)
+	ipad105Dimensions   = portraitLandscape(1668, 2224)
+	ipad97Dimensions    = portraitLandscape(1536, 2048)
+	desktopDimensions   = combineDimensions(
 		singleOrientation(1280, 800),
 		singleOrientation(1440, 900),
 		singleOrientation(2560, 1600),

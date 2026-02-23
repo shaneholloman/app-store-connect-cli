@@ -57,6 +57,25 @@ func TestScreenshotChecks_PassLatestLargeIPhoneSizes(t *testing.T) {
 	}
 }
 
+func TestScreenshotChecks_PassIPadPro129M5Size(t *testing.T) {
+	sets := []ScreenshotSet{
+		{
+			ID:          "set-1",
+			DisplayType: "APP_IPAD_PRO_3GEN_129",
+			Locale:      "en-US",
+			Screenshots: []Screenshot{
+				{ID: "shot-1", FileName: "shot-1.png", Width: 2064, Height: 2752},
+				{ID: "shot-2", FileName: "shot-2.png", Width: 2752, Height: 2064},
+			},
+		},
+	}
+
+	checks := screenshotChecks("IOS", sets)
+	if len(checks) != 0 {
+		t.Fatalf("expected no checks, got %d (%v)", len(checks), checks)
+	}
+}
+
 func TestScreenshotChecks_PassDesktopAndWatchUltraNewestSizes(t *testing.T) {
 	sets := []ScreenshotSet{
 		{

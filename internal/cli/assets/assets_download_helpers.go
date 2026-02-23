@@ -2,17 +2,36 @@ package assets
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
+
+const (
+	assetDownloadMaxAttempts  = 4
+	assetDownloadInitialDelay = 200 * time.Millisecond
+	assetDownloadMaxDelay     = 2 * time.Second
+	assetDownloadUserAgent    = "curl/8.7.1 App-Store-Connect-CLI/asset-download"
+)
+
+type downloadHTTPStatusError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *downloadHTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected status %d (%s)", e.StatusCode, e.Message)
+}
 
 func sanitizeBaseFileName(value string) string {
 	base := strings.TrimSpace(value)
@@ -98,11 +117,43 @@ func downloadURLToFile(ctx context.Context, rawURL string, outputPath string, ov
 		return 0, "", fmt.Errorf("output path is required")
 	}
 
+	delay := assetDownloadInitialDelay
+	var lastErr error
+	lastContentType := ""
+
+	for attempt := 1; attempt <= assetDownloadMaxAttempts; attempt++ {
+		written, contentType, err := downloadURLToFileOnce(ctx, rawURL, outputPath, overwrite)
+		if err == nil {
+			return written, contentType, nil
+		}
+
+		lastErr = err
+		lastContentType = contentType
+
+		if !isRetryableDownloadError(err) || attempt == assetDownloadMaxAttempts {
+			return 0, lastContentType, lastErr
+		}
+
+		if err := sleepWithContext(ctx, delay); err != nil {
+			return 0, lastContentType, err
+		}
+
+		delay *= 2
+		if delay > assetDownloadMaxDelay {
+			delay = assetDownloadMaxDelay
+		}
+	}
+
+	return 0, lastContentType, lastErr
+}
+
+func downloadURLToFileOnce(ctx context.Context, rawURL string, outputPath string, overwrite bool) (int64, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return 0, "", err
 	}
 	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", assetDownloadUserAgent)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -120,11 +171,54 @@ func downloadURLToFile(ctx context.Context, rawURL string, outputPath string, ov
 		if msg == "" {
 			msg = strings.TrimSpace(resp.Status)
 		}
-		return 0, contentType, fmt.Errorf("unexpected status %d (%s)", resp.StatusCode, msg)
+		return 0, contentType, &downloadHTTPStatusError{
+			StatusCode: resp.StatusCode,
+			Message:    msg,
+		}
 	}
 
 	n, err := writeDownloadedFile(outputPath, resp.Body, overwrite)
 	return n, contentType, err
+}
+
+func isRetryableDownloadError(err error) bool {
+	var statusErr *downloadHTTPStatusError
+	if errors.As(err, &statusErr) {
+		switch statusErr.StatusCode {
+		case http.StatusForbidden,
+			http.StatusRequestTimeout,
+			http.StatusTooManyRequests,
+			http.StatusBadGateway,
+			http.StatusServiceUnavailable,
+			http.StatusGatewayTimeout:
+			return true
+		default:
+			return false
+		}
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func writeDownloadedFile(path string, reader io.Reader, overwrite bool) (int64, error) {

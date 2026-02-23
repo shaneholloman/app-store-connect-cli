@@ -161,7 +161,7 @@ func TestRootCommand_UsageGroupsSubcommands(t *testing.T) {
 		t.Fatalf("expected GETTING STARTED group header, got %q", usage)
 	}
 
-	if !strings.Contains(usage, "  auth:") || !strings.Contains(usage, "  install-skills:") || !strings.Contains(usage, "  init:") {
+	if !strings.Contains(usage, "  auth:") || !strings.Contains(usage, "  doctor:") || !strings.Contains(usage, "  install-skills:") || !strings.Contains(usage, "  init:") {
 		t.Fatalf("expected grouped getting started commands with gh-style spacing, got %q", usage)
 	}
 

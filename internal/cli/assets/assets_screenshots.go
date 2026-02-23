@@ -631,6 +631,11 @@ func normalizeScreenshotDisplayType(input string) (string, error) {
 	return value, nil
 }
 
+// NormalizeScreenshotDisplayType normalizes and validates a screenshot display type.
+func NormalizeScreenshotDisplayType(input string) (string, error) {
+	return normalizeScreenshotDisplayType(input)
+}
+
 func normalizeScreenshotDisplayTypeAlias(value string) string {
 	return value
 }
@@ -642,6 +647,11 @@ func validateScreenshotDimensions(files []string, displayType string) error {
 		}
 	}
 	return nil
+}
+
+// ValidateScreenshotDimensions validates screenshot dimensions for all files.
+func ValidateScreenshotDimensions(files []string, displayType string) error {
+	return validateScreenshotDimensions(files, displayType)
 }
 
 func ensureScreenshotSet(ctx context.Context, client *asc.Client, localizationID, displayType string) (asc.Resource[asc.AppScreenshotSetAttributes], error) {

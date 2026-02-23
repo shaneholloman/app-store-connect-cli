@@ -128,6 +128,29 @@ func Bold(s string) string {
 	return bold + s + reset
 }
 
+// OrNA trims a string and returns "n/a" when empty.
+func OrNA(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "n/a"
+	}
+	return trimmed
+}
+
+// RenderSection renders a titled section as markdown or table output.
+func RenderSection(title string, headers []string, rows [][]string, markdown bool) {
+	if markdown {
+		fmt.Fprintf(os.Stdout, "### %s\n\n", title)
+		asc.RenderMarkdown(headers, rows)
+		fmt.Fprintln(os.Stdout)
+		return
+	}
+
+	fmt.Fprintf(os.Stdout, "%s\n", Bold(strings.ToUpper(title)))
+	asc.RenderTable(headers, rows)
+	fmt.Fprintln(os.Stdout)
+}
+
 func supportsANSI() bool {
 	if _, ok := os.LookupEnv("NO_COLOR"); ok {
 		return false

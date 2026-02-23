@@ -128,6 +128,25 @@ func TestScreenshotSizeEntryIncludesIPhone69Dimensions(t *testing.T) {
 	}
 }
 
+func TestScreenshotSizeEntryIncludesIPadPro129M5Dimensions(t *testing.T) {
+	entry, ok := ScreenshotSizeEntryForDisplayType("APP_IPAD_PRO_3GEN_129")
+	if !ok {
+		t.Fatal("expected APP_IPAD_PRO_3GEN_129 entry in screenshot size catalog")
+	}
+
+	expected := []ScreenshotDimension{
+		{Width: 2048, Height: 2732},
+		{Width: 2732, Height: 2048},
+		{Width: 2064, Height: 2752},
+		{Width: 2752, Height: 2064},
+	}
+	for _, dim := range expected {
+		if !containsScreenshotDimension(entry.Dimensions, dim) {
+			t.Fatalf("expected APP_IPAD_PRO_3GEN_129 to include %s, got %v", dim.String(), entry.Dimensions)
+		}
+	}
+}
+
 func TestScreenshotSizeEntryIncludesMacDesktopDimensions(t *testing.T) {
 	entry, ok := ScreenshotSizeEntryForDisplayType("APP_DESKTOP")
 	if !ok {
@@ -276,6 +295,29 @@ func TestValidateScreenshotDimensionsRejectsLegacyWatchSizes(t *testing.T) {
 			err := ValidateScreenshotDimensions(path, tc.displayType)
 			if err == nil {
 				t.Fatalf("expected dimensions %dx%d to be rejected for %s", tc.width, tc.height, tc.displayType)
+			}
+		})
+	}
+}
+
+func TestValidateScreenshotDimensionsAcceptsIPadPro129M5Size(t *testing.T) {
+	testCases := []struct {
+		name   string
+		width  int
+		height int
+	}{
+		{name: "2064x2752 portrait", width: 2064, height: 2752},
+		{name: "2752x2064 landscape", width: 2752, height: 2064},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "ipad-pro-129-m5.png")
+			writePNG(t, path, tc.width, tc.height)
+
+			if err := ValidateScreenshotDimensions(path, "APP_IPAD_PRO_3GEN_129"); err != nil {
+				t.Fatalf("expected dimensions %dx%d to be valid for APP_IPAD_PRO_3GEN_129, got %v", tc.width, tc.height, err)
 			}
 		})
 	}

@@ -24,11 +24,15 @@ func CustomPageLocalizationsPreviewSetsCommand() *ffcli.Command {
 		LongHelp: `Manage preview sets for a custom product page localization.
 
 Examples:
-  asc product-pages custom-pages localizations preview-sets list --localization-id "LOCALIZATION_ID"`,
+  asc product-pages custom-pages localizations preview-sets list --localization-id "LOCALIZATION_ID"
+  asc product-pages custom-pages localizations preview-sets upload --localization-id "LOCALIZATION_ID" --path "./previews" --device-type "IPHONE_65"
+  asc product-pages custom-pages localizations preview-sets sync --localization-id "LOCALIZATION_ID" --path "./previews" --device-type "IPHONE_65" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			CustomPageLocalizationsPreviewSetsListCommand(),
+			CustomPageLocalizationsPreviewSetsUploadCommand(),
+			CustomPageLocalizationsPreviewSetsSyncCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -63,8 +67,8 @@ Examples:
 				fmt.Fprintln(os.Stderr, "Error: --localization-id is required")
 				return flag.ErrHelp
 			}
-			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("custom-pages localizations preview-sets list: --limit must be between 1 and 200")
+			if *limit != 0 && (*limit < 1 || *limit > productPagesMaxLimit) {
+				return fmt.Errorf("custom-pages localizations preview-sets list: --limit must be between 1 and %d", productPagesMaxLimit)
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("custom-pages localizations preview-sets list: %w", err)
@@ -84,7 +88,7 @@ Examples:
 			}
 
 			if *paginate {
-				paginateOpts := append(opts, asc.WithAppCustomProductPageLocalizationPreviewSetsLimit(200))
+				paginateOpts := append(opts, asc.WithAppCustomProductPageLocalizationPreviewSetsLimit(productPagesMaxLimit))
 				firstPage, err := client.GetAppCustomProductPageLocalizationPreviewSets(requestCtx, trimmedID, paginateOpts...)
 				if err != nil {
 					return fmt.Errorf("custom-pages localizations preview-sets list: failed to fetch: %w", err)
@@ -119,11 +123,15 @@ func CustomPageLocalizationsScreenshotSetsCommand() *ffcli.Command {
 		LongHelp: `Manage screenshot sets for a custom product page localization.
 
 Examples:
-  asc product-pages custom-pages localizations screenshot-sets list --localization-id "LOCALIZATION_ID"`,
+  asc product-pages custom-pages localizations screenshot-sets list --localization-id "LOCALIZATION_ID"
+  asc product-pages custom-pages localizations screenshot-sets upload --localization-id "LOCALIZATION_ID" --path "./screenshots" --device-type "IPHONE_65"
+  asc product-pages custom-pages localizations screenshot-sets sync --localization-id "LOCALIZATION_ID" --path "./screenshots" --device-type "IPHONE_65" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			CustomPageLocalizationsScreenshotSetsListCommand(),
+			CustomPageLocalizationsScreenshotSetsUploadCommand(),
+			CustomPageLocalizationsScreenshotSetsSyncCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -158,8 +166,8 @@ Examples:
 				fmt.Fprintln(os.Stderr, "Error: --localization-id is required")
 				return flag.ErrHelp
 			}
-			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("custom-pages localizations screenshot-sets list: --limit must be between 1 and 200")
+			if *limit != 0 && (*limit < 1 || *limit > productPagesMaxLimit) {
+				return fmt.Errorf("custom-pages localizations screenshot-sets list: --limit must be between 1 and %d", productPagesMaxLimit)
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("custom-pages localizations screenshot-sets list: %w", err)
@@ -179,7 +187,7 @@ Examples:
 			}
 
 			if *paginate {
-				paginateOpts := append(opts, asc.WithAppCustomProductPageLocalizationScreenshotSetsLimit(200))
+				paginateOpts := append(opts, asc.WithAppCustomProductPageLocalizationScreenshotSetsLimit(productPagesMaxLimit))
 				firstPage, err := client.GetAppCustomProductPageLocalizationScreenshotSets(requestCtx, trimmedID, paginateOpts...)
 				if err != nil {
 					return fmt.Errorf("custom-pages localizations screenshot-sets list: failed to fetch: %w", err)

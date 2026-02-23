@@ -1,7 +1,10 @@
 package assets
 
 import (
+	"context"
 	"errors"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,5 +67,40 @@ func TestWriteDownloadedFile_Overwrite_ReplacesExistingFileOnSuccess(t *testing.
 	}
 	if string(data) != "NEW-DATA" {
 		t.Fatalf("expected new file contents, got %q", string(data))
+	}
+}
+
+func TestIsRetryableDownloadError_ContextErrorsAreNotRetryable(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "deadline exceeded",
+			err:  &url.Error{Op: "Get", URL: "https://example.com", Err: context.DeadlineExceeded},
+		},
+		{
+			name: "context canceled",
+			err:  &url.Error{Op: "Get", URL: "https://example.com", Err: context.Canceled},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if isRetryableDownloadError(tt.err) {
+				t.Fatalf("expected non-retryable error for %q", tt.name)
+			}
+		})
+	}
+}
+
+func TestIsRetryableDownloadError_TransientNetworkErrorIsRetryable(t *testing.T) {
+	err := &url.Error{
+		Op:  "Get",
+		URL: "https://example.com",
+		Err: &net.DNSError{IsTimeout: true},
+	}
+	if !isRetryableDownloadError(err) {
+		t.Fatalf("expected retryable network error")
 	}
 }

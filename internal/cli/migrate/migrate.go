@@ -30,13 +30,15 @@ This enables transitioning from fastlane's deliver tool to asc.
 
 Examples:
   asc migrate import --app "APP_ID" --version "VERSION_ID" --fastlane-dir ./fastlane
-  asc migrate export --app "APP_ID" --version "VERSION_ID" --output-dir ./fastlane`,
+  asc migrate export --app "APP_ID" --version "VERSION_ID" --output-dir ./fastlane
+  asc migrate metadata pull --app "APP_ID" --version "1.2.3" --dir "./metadata"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			MigrateImportCommand(),
 			MigrateExportCommand(),
 			MigrateValidateCommand(),
+			MigrateMetadataCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
