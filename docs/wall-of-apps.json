@@ -138,6 +138,13 @@
     "platform": ["iOS"]
   },
   {
+    "app": "Reps: AI Fitness & Recovery",
+    "link": "https://apps.apple.com/app/id6746460451",
+    "creator": "sidbmw",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/0d/32/7e/0d327e27-4d64-63f5-9b05-70a0a4f58bf6/Reps_AppIcon-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg",
+    "platform": ["iOS", "watchOS"]
+  },
+  {
     "app": "Repetti",
     "link": "https://apps.apple.com/us/app/repetti-the-chores-list-app/id6758055413",
     "creator": "rursache",
