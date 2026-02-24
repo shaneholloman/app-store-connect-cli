@@ -104,7 +104,7 @@ func TestBuildsLatestCommand_FlagDefinitions(t *testing.T) {
 	cmd := BuildsLatestCommand()
 
 	// Verify all expected flags exist
-	expectedFlags := []string{"app", "version", "platform", "output", "pretty", "next", "initial-build-number"}
+	expectedFlags := []string{"app", "version", "platform", "output", "pretty", "next", "initial-build-number", "exclude-expired"}
 	for _, name := range expectedFlags {
 		f := cmd.FlagSet.Lookup(name)
 		if f == nil {
@@ -124,6 +124,16 @@ func TestBuildsLatestCommand_FlagDefinitions(t *testing.T) {
 	}
 	if f := cmd.FlagSet.Lookup("initial-build-number"); f != nil && f.DefValue != "1" {
 		t.Errorf("expected --initial-build-number default to be '1', got %q", f.DefValue)
+	}
+	if f := cmd.FlagSet.Lookup("exclude-expired"); f != nil && f.DefValue != "false" {
+		t.Errorf("expected --exclude-expired default to be 'false', got %q", f.DefValue)
+	}
+}
+
+func TestBuildsLatestCommand_HelpMentionsExcludeExpired(t *testing.T) {
+	cmd := BuildsLatestCommand()
+	if !strings.Contains(cmd.LongHelp, "--exclude-expired") {
+		t.Fatalf("expected help text to mention --exclude-expired")
 	}
 }
 

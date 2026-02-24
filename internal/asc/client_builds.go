@@ -195,9 +195,9 @@ func (c *Client) GetBuilds(ctx context.Context, appID string, opts ...BuildsOpti
 		path = query.nextURL
 	} else {
 		values := url.Values{}
-		// Use /v1/builds endpoint when sorting, limiting, or filtering by preReleaseVersion,
+		// Use /v1/builds endpoint when sorting, limiting, or filtering by preReleaseVersion/expired,
 		// since /v1/apps/{id}/builds doesn't support these
-		if query.sort != "" || query.limit > 0 || query.preReleaseVersionID != "" {
+		if query.sort != "" || query.limit > 0 || query.preReleaseVersionID != "" || query.expired != nil {
 			path = "/v1/builds"
 			values.Set("filter[app]", appID)
 			if query.sort != "" {
@@ -208,6 +208,9 @@ func (c *Client) GetBuilds(ctx context.Context, appID string, opts ...BuildsOpti
 			}
 			if query.preReleaseVersionID != "" {
 				values.Set("filter[preReleaseVersion]", query.preReleaseVersionID)
+			}
+			if query.expired != nil {
+				values.Set("filter[expired]", strconv.FormatBool(*query.expired))
 			}
 		}
 		if queryString := values.Encode(); queryString != "" {

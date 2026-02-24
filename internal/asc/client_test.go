@@ -1290,6 +1290,23 @@ func TestBuildBuildsQuery(t *testing.T) {
 	}
 }
 
+func TestBuildBuildsQuery_WithExpiredFilter(t *testing.T) {
+	query := &buildsQuery{}
+	opts := []BuildsOption{
+		WithBuildsExpired(false),
+	}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	if query.expired == nil {
+		t.Fatal("expected expired filter to be set")
+	}
+	if *query.expired {
+		t.Fatalf("expected expired filter=false, got %v", *query.expired)
+	}
+}
+
 func TestBuildSubscriptionOfferCodeOneTimeUseCodesQuery(t *testing.T) {
 	query := &subscriptionOfferCodeOneTimeUseCodesQuery{}
 	opts := []SubscriptionOfferCodeOneTimeUseCodesOption{

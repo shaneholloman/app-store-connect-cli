@@ -1461,6 +1461,14 @@ func WithBuildsPreReleaseVersion(preReleaseVersionID string) BuildsOption {
 	}
 }
 
+// WithBuildsExpired filters builds by expired state.
+func WithBuildsExpired(expired bool) BuildsOption {
+	return func(q *buildsQuery) {
+		value := expired
+		q.expired = &value
+	}
+}
+
 // WithBuildBundlesLimit sets the max number of included build bundles to return.
 func WithBuildBundlesLimit(limit int) BuildBundlesOption {
 	return func(q *buildBundlesQuery) {

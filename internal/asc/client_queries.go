@@ -111,6 +111,7 @@ type buildsQuery struct {
 	listQuery
 	sort                string
 	preReleaseVersionID string
+	expired             *bool
 }
 
 type buildUploadsQuery struct {

@@ -958,6 +958,38 @@ func TestGetBuilds_WithPreReleaseVersion(t *testing.T) {
 	}
 }
 
+func TestGetBuilds_WithExpiredFilter(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"builds","id":"build-1","attributes":{"version":"1.0","uploadedDate":"2026-01-20T00:00:00Z","expired":false}}]}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		// Expired filtering requires /v1/builds endpoint.
+		if req.URL.Path != "/v1/builds" {
+			t.Fatalf("expected path /v1/builds, got %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("filter[app]") != "123" {
+			t.Fatalf("expected filter[app]=123, got %q", values.Get("filter[app]"))
+		}
+		if values.Get("filter[expired]") != "false" {
+			t.Fatalf("expected filter[expired]=false, got %q", values.Get("filter[expired]"))
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	builds, err := client.GetBuilds(context.Background(), "123", WithBuildsExpired(false))
+	if err != nil {
+		t.Fatalf("GetBuilds() error: %v", err)
+	}
+	if len(builds.Data) != 1 {
+		t.Fatalf("expected 1 build, got %d", len(builds.Data))
+	}
+	if builds.Data[0].ID != "build-1" {
+		t.Fatalf("expected build ID build-1, got %s", builds.Data[0].ID)
+	}
+}
+
 func TestGetAppStoreVersions_WithFilters(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"appStoreVersions","id":"1","attributes":{"versionString":"1.0.0","platform":"IOS"}}]}`)
 	client := newTestClient(t, func(req *http.Request) {
