@@ -178,7 +178,7 @@ Examples:
 			timeoutOverride := *timeout > 0
 			uploaded := false
 			resolvedVersionValue := ""
-			resolvedBuildNumberValue := buildNumberValue
+			resolvedBuildNumberValue := ""
 
 			var buildResp *asc.BuildResponse
 			if uploadMode {

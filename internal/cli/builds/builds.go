@@ -128,18 +128,6 @@ func (g resolvedBuildBetaGroup) NameForDisplay() string {
 	return g.ID
 }
 
-func resolveBuildBetaGroupIDs(ctx context.Context, client *asc.Client, buildID string, groups []string) ([]string, error) {
-	resolvedGroups, err := resolveBuildBetaGroups(ctx, client, buildID, groups)
-	if err != nil {
-		return nil, err
-	}
-	resolvedIDs := make([]string, 0, len(resolvedGroups))
-	for _, group := range resolvedGroups {
-		resolvedIDs = append(resolvedIDs, group.ID)
-	}
-	return resolvedIDs, nil
-}
-
 func resolveBuildBetaGroups(ctx context.Context, client *asc.Client, buildID string, groups []string) ([]resolvedBuildBetaGroup, error) {
 	buildApp, err := client.GetBuildApp(ctx, buildID)
 	if err != nil {

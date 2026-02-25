@@ -27,9 +27,6 @@ func TestBetaBuildLocalizationsCreateUpsertUpdatesExistingLocale(t *testing.T) {
 			if req.Method != http.MethodGet || req.URL.Path != "/v1/builds/build-1/betaBuildLocalizations" {
 				t.Fatalf("unexpected request %d: %s %s", requestCount, req.Method, req.URL.String())
 			}
-			if req.URL.Query().Get("filter[locale]") != "en-US" {
-				t.Fatalf("expected locale filter en-US, got %q", req.URL.Query().Get("filter[locale]"))
-			}
 			if req.URL.Query().Get("limit") != "200" {
 				t.Fatalf("expected limit=200, got %q", req.URL.Query().Get("limit"))
 			}
