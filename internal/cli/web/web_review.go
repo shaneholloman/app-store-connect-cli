@@ -51,7 +51,10 @@ func listReviewAttachmentsForSelector(
 func normalizeAttachmentFilename(attachment webcore.ReviewAttachment) string {
 	name := strings.TrimSpace(attachment.FileName)
 	if name != "" {
-		return name
+		base := filepath.Base(name)
+		if base != "" && base != "." && base != string(filepath.Separator) && base != ".." {
+			return base
+		}
 	}
 	id := strings.TrimSpace(attachment.AttachmentID)
 	if id == "" {
