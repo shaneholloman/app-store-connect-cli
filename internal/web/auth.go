@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -16,8 +18,11 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1Password/srp"
@@ -35,9 +40,21 @@ const (
 	// Apple currently uses RFC5054 group 2048 + 32-byte derived password.
 	srpClientSecretBytes  = 256
 	srpDerivedPasswordLen = 32
+
+	// Guardrails for unofficial web/iris calls.
+	webMinRequestIntervalEnv     = "ASC_WEB_MIN_REQUEST_INTERVAL"
+	defaultWebMinRequestInterval = 350 * time.Millisecond
+	minimumWebMinRequestInterval = 200 * time.Millisecond
 )
 
 var errTwoFactorRequired = errors.New("two-factor authentication required")
+
+var webTLSRootBundlePaths = []string{
+	"/etc/ssl/cert.pem",
+	"/private/etc/ssl/cert.pem",
+	"/opt/homebrew/etc/openssl@3/cert.pem",
+	"/usr/local/etc/openssl@3/cert.pem",
+}
 
 // AuthSession holds authenticated web-session state for internal API calls.
 type AuthSession struct {
@@ -72,6 +89,12 @@ func (e *TwoFactorRequiredError) Error() string {
 type Client struct {
 	httpClient *http.Client
 	baseURL    string
+
+	// Requests are intentionally throttled to reduce pressure on fragile, unofficial
+	// web-session endpoints and avoid bursty behavior against user accounts.
+	minRequestInterval time.Duration
+	rateLimitMu        sync.Mutex
+	nextAllowedAt      time.Time
 }
 
 // APIError wraps non-2xx internal web API responses.
@@ -156,12 +179,98 @@ func newWebHTTPClient(jar http.CookieJar) *http.Client {
 
 	cloned := transport.Clone()
 	cloned.TLSHandshakeTimeout = 30 * time.Second
+	applyDarwinTLSRootFallback(cloned)
 
 	return &http.Client{
 		Jar:       jar,
 		Timeout:   asc.ResolveTimeout(),
 		Transport: cloned,
 	}
+}
+
+func loadWebRootCAPoolFromPaths(paths []string) *x509.CertPool {
+	return loadWebRootCAPoolFromPathsWithBase(nil, paths)
+}
+
+func loadWebRootCAPoolFromPathsWithBase(base *x509.CertPool, paths []string) *x509.CertPool {
+	if len(paths) == 0 {
+		if base == nil {
+			return nil
+		}
+		return base
+	}
+	pool := base
+	if pool == nil {
+		pool = x509.NewCertPool()
+	}
+	appended := false
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		pemData, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if pool.AppendCertsFromPEM(pemData) {
+			appended = true
+		}
+	}
+	if !appended && base == nil {
+		return nil
+	}
+	return pool
+}
+
+func resolveDarwinTLSRootPool() *x509.CertPool {
+	systemPool, err := x509.SystemCertPool()
+	if err == nil && systemPool != nil {
+		return loadWebRootCAPoolFromPathsWithBase(systemPool.Clone(), webTLSRootBundlePaths)
+	}
+	return loadWebRootCAPoolFromPaths(webTLSRootBundlePaths)
+}
+
+func applyDarwinTLSRootFallback(transport *http.Transport) {
+	if transport == nil || runtime.GOOS != "darwin" {
+		return
+	}
+	if transport.TLSClientConfig != nil && transport.TLSClientConfig.RootCAs != nil {
+		return
+	}
+	rootPool := resolveDarwinTLSRootPool()
+	if rootPool == nil {
+		return
+	}
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{RootCAs: rootPool}
+		return
+	}
+	clonedTLS := transport.TLSClientConfig.Clone()
+	clonedTLS.RootCAs = rootPool
+	transport.TLSClientConfig = clonedTLS
+}
+
+func resolveWebMinRequestInterval() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(webMinRequestIntervalEnv))
+	if raw == "" {
+		return defaultWebMinRequestInterval
+	}
+	if millis, err := strconv.Atoi(raw); err == nil {
+		interval := time.Duration(millis) * time.Millisecond
+		if interval < minimumWebMinRequestInterval {
+			return minimumWebMinRequestInterval
+		}
+		return interval
+	}
+	interval, err := time.ParseDuration(raw)
+	if err != nil {
+		return defaultWebMinRequestInterval
+	}
+	if interval < minimumWebMinRequestInterval {
+		return minimumWebMinRequestInterval
+	}
+	return interval
 }
 
 func parseSigninInitResponse(data []byte) (*signinInitResponse, error) {
@@ -178,8 +287,9 @@ func parseSigninInitResponse(data []byte) (*signinInitResponse, error) {
 // NewClient creates an internal web API client from an authenticated session.
 func NewClient(session *AuthSession) *Client {
 	return &Client{
-		httpClient: session.Client,
-		baseURL:    appStoreBaseURL + "/iris/v1",
+		httpClient:         session.Client,
+		baseURL:            appStoreBaseURL + "/iris/v1",
+		minRequestInterval: resolveWebMinRequestInterval(),
 	}
 }
 
@@ -933,9 +1043,42 @@ func extractServiceErrorCodes(respBody []byte) []string {
 	return codes
 }
 
+func (c *Client) waitForRateLimit(ctx context.Context) error {
+	if c == nil || c.minRequestInterval <= 0 {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		c.rateLimitMu.Lock()
+		now := time.Now()
+		if c.nextAllowedAt.IsZero() || !now.Before(c.nextAllowedAt) {
+			c.nextAllowedAt = now.Add(c.minRequestInterval)
+			c.rateLimitMu.Unlock()
+			return nil
+		}
+		wait := time.Until(c.nextAllowedAt)
+		c.rateLimitMu.Unlock()
+
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 func (c *Client) doRequest(ctx context.Context, method, path string, body any) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if err := c.waitForRateLimit(ctx); err != nil {
+		return nil, err
 	}
 
 	var reqBody io.Reader

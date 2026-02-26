@@ -68,17 +68,22 @@ asc web auth status
 # Login with Apple ID for detached experimental workflows
 asc web auth login --apple-id "user@example.com" --password-stdin
 
-# Create app via internal web API (not official ASC API)
-asc web apps create \
-  --name "My App" \
-  --bundle-id "com.example.app" \
-  --sku "MYAPP123" \
-  --apple-id "user@example.com" \
-  --password-stdin
+# List review submissions for an app (internal web/iris)
+asc web review list --app "123456789" --apple-id "user@example.com"
+
+# Show latest unresolved review context and auto-download screenshots
+asc web review show \
+  --app "123456789" \
+  --apple-id "user@example.com"
 ```
 
 `asc web` is **experimental**, **unofficial**, and **discouraged** for production-critical automation.
 It is intentionally detached from official API-key-based `asc` workflows and may break without notice.
+Safety guardrails in `asc web`:
+- Low-rate request pacing for unofficial web/iris calls.
+- User-owned auth: commands scope cache by `--apple-id` to avoid accidental cross-account reuse.
+- Signed URLs/tokens are redacted from default output and error messages.
+- `asc web review show` auto-downloads available screenshots without printing signed download URLs.
 
 ### First command
 
