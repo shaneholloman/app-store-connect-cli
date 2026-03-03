@@ -214,6 +214,13 @@
     "platform": ["iOS", "macOS"]
   },
   {
+    "app": "Plinth.IT",
+    "link": "https://apps.apple.com/us/app/plinth-it/id6746931219",
+    "creator": "lanxinger",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/2f/57/02/2f570236-cd2e-4d0b-a797-1130d5b68c19/AppIcon-0-1x_U007emarketing-0-11-0-85-220-0.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
     "app": "Popcorn Stack: Track Watchlist",
     "link": "https://apps.apple.com/app/id6759187614",
     "creator": "maail",
