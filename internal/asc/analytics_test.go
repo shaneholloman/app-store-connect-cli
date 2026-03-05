@@ -203,32 +203,51 @@ func TestDeleteAnalyticsReportRequest_SendsRequest(t *testing.T) {
 func TestAnalyticsRelationshipEndpoints_WithLinkagesLimit(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
-		name string
-		path string
-		call func(*Client) error
+		name     string
+		path     string
+		response string
+		call     func(*testing.T, *Client)
 	}{
 		{
-			name: "GetAnalyticsReportRequestReportsRelationships",
-			path: "/v1/analyticsReportRequests/req-1/relationships/reports",
-			call: func(c *Client) error {
-				_, err := c.GetAnalyticsReportRequestReportsRelationships(ctx, "req-1", WithLinkagesLimit(10))
-				return err
+			name:     "GetAnalyticsReportRequestReportsRelationships",
+			path:     "/v1/analyticsReportRequests/req-1/relationships/reports",
+			response: `{"data":[{"type":"analyticsReports","id":"report-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAnalyticsReportRequestReportsRelationships(ctx, "req-1", WithLinkagesLimit(10))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReportRequestReportsRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "report-1" {
+					t.Fatalf("expected decoded analytics report relationship, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name: "GetAnalyticsReportInstancesRelationships",
-			path: "/v1/analyticsReports/report-1/relationships/instances",
-			call: func(c *Client) error {
-				_, err := c.GetAnalyticsReportInstancesRelationships(ctx, "report-1", WithLinkagesLimit(10))
-				return err
+			name:     "GetAnalyticsReportInstancesRelationships",
+			path:     "/v1/analyticsReports/report-1/relationships/instances",
+			response: `{"data":[{"type":"analyticsReportInstances","id":"inst-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAnalyticsReportInstancesRelationships(ctx, "report-1", WithLinkagesLimit(10))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReportInstancesRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "inst-1" {
+					t.Fatalf("expected decoded analytics instance relationship, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name: "GetAnalyticsReportInstanceSegmentsRelationships",
-			path: "/v1/analyticsReportInstances/inst-1/relationships/segments",
-			call: func(c *Client) error {
-				_, err := c.GetAnalyticsReportInstanceSegmentsRelationships(ctx, "inst-1", WithLinkagesLimit(10))
-				return err
+			name:     "GetAnalyticsReportInstanceSegmentsRelationships",
+			path:     "/v1/analyticsReportInstances/inst-1/relationships/segments",
+			response: `{"data":[{"type":"analyticsReportSegments","id":"seg-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAnalyticsReportInstanceSegmentsRelationships(ctx, "inst-1", WithLinkagesLimit(10))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReportInstanceSegmentsRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "seg-1" {
+					t.Fatalf("expected decoded analytics segment relationship, got %+v", resp.Data)
+				}
 			},
 		},
 	}
@@ -247,11 +266,9 @@ func TestAnalyticsRelationshipEndpoints_WithLinkagesLimit(t *testing.T) {
 					t.Fatalf("expected limit=10, got %q", got)
 				}
 				assertAuthorized(t, req)
-			}, jsonResponse(http.StatusOK, `{"data":[]}`))
+			}, jsonResponse(http.StatusOK, tt.response))
 
-			if err := tt.call(client); err != nil {
-				t.Fatalf("%s() error: %v", tt.name, err)
-			}
+			tt.call(t, client)
 		})
 	}
 }
@@ -259,48 +276,79 @@ func TestAnalyticsRelationshipEndpoints_WithLinkagesLimit(t *testing.T) {
 func TestAnalyticsListEndpoints_UseNextURL(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
-		name string
-		next string
-		call func(*Client, string) error
+		name     string
+		next     string
+		response string
+		call     func(*testing.T, *Client, string)
 	}{
 		{
-			name: "GetAnalyticsReports",
-			next: "https://api.appstoreconnect.apple.com/v1/analyticsReportRequests/req-1/reports?cursor=abc",
-			call: func(c *Client, next string) error {
-				_, err := c.GetAnalyticsReports(ctx, "req-1", WithAnalyticsReportsNextURL(next))
-				return err
+			name:     "GetAnalyticsReports",
+			next:     "https://api.appstoreconnect.apple.com/v1/analyticsReportRequests/req-1/reports?cursor=abc",
+			response: `{"data":[{"type":"analyticsReports","id":"report-1"}]}`,
+			call: func(t *testing.T, c *Client, next string) {
+				resp, err := c.GetAnalyticsReports(ctx, "req-1", WithAnalyticsReportsNextURL(next))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReports() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "report-1" {
+					t.Fatalf("expected decoded analytics report, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name: "GetAnalyticsReportInstances",
-			next: "https://api.appstoreconnect.apple.com/v1/analyticsReports/report-1/instances?cursor=abc",
-			call: func(c *Client, next string) error {
-				_, err := c.GetAnalyticsReportInstances(ctx, "report-1", WithAnalyticsReportInstancesNextURL(next))
-				return err
+			name:     "GetAnalyticsReportInstances",
+			next:     "https://api.appstoreconnect.apple.com/v1/analyticsReports/report-1/instances?cursor=abc",
+			response: `{"data":[{"type":"analyticsReportInstances","id":"inst-1"}]}`,
+			call: func(t *testing.T, c *Client, next string) {
+				resp, err := c.GetAnalyticsReportInstances(ctx, "report-1", WithAnalyticsReportInstancesNextURL(next))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReportInstances() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "inst-1" {
+					t.Fatalf("expected decoded analytics report instance, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name: "GetAnalyticsReportSegments",
-			next: "https://api.appstoreconnect.apple.com/v1/analyticsReportInstances/inst-1/segments?cursor=abc",
-			call: func(c *Client, next string) error {
-				_, err := c.GetAnalyticsReportSegments(ctx, "inst-1", WithAnalyticsReportSegmentsNextURL(next))
-				return err
+			name:     "GetAnalyticsReportSegments",
+			next:     "https://api.appstoreconnect.apple.com/v1/analyticsReportInstances/inst-1/segments?cursor=abc",
+			response: `{"data":[{"type":"analyticsReportSegments","id":"seg-1"}]}`,
+			call: func(t *testing.T, c *Client, next string) {
+				resp, err := c.GetAnalyticsReportSegments(ctx, "inst-1", WithAnalyticsReportSegmentsNextURL(next))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReportSegments() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "seg-1" {
+					t.Fatalf("expected decoded analytics report segment, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name: "GetAnalyticsReportInstancesRelationships",
-			next: "https://api.appstoreconnect.apple.com/v1/analyticsReports/report-1/relationships/instances?cursor=abc",
-			call: func(c *Client, next string) error {
-				_, err := c.GetAnalyticsReportInstancesRelationships(ctx, "report-1", WithLinkagesNextURL(next))
-				return err
+			name:     "GetAnalyticsReportInstancesRelationships",
+			next:     "https://api.appstoreconnect.apple.com/v1/analyticsReports/report-1/relationships/instances?cursor=abc",
+			response: `{"data":[{"type":"analyticsReportInstances","id":"inst-1"}]}`,
+			call: func(t *testing.T, c *Client, next string) {
+				resp, err := c.GetAnalyticsReportInstancesRelationships(ctx, "report-1", WithLinkagesNextURL(next))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReportInstancesRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "inst-1" {
+					t.Fatalf("expected decoded analytics report instance relationship, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name: "GetAnalyticsReportInstanceSegmentsRelationships",
-			next: "https://api.appstoreconnect.apple.com/v1/analyticsReportInstances/inst-1/relationships/segments?cursor=abc",
-			call: func(c *Client, next string) error {
-				_, err := c.GetAnalyticsReportInstanceSegmentsRelationships(ctx, "inst-1", WithLinkagesNextURL(next))
-				return err
+			name:     "GetAnalyticsReportInstanceSegmentsRelationships",
+			next:     "https://api.appstoreconnect.apple.com/v1/analyticsReportInstances/inst-1/relationships/segments?cursor=abc",
+			response: `{"data":[{"type":"analyticsReportSegments","id":"seg-1"}]}`,
+			call: func(t *testing.T, c *Client, next string) {
+				resp, err := c.GetAnalyticsReportInstanceSegmentsRelationships(ctx, "inst-1", WithLinkagesNextURL(next))
+				if err != nil {
+					t.Fatalf("GetAnalyticsReportInstanceSegmentsRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "seg-1" {
+					t.Fatalf("expected decoded analytics report segment relationship, got %+v", resp.Data)
+				}
 			},
 		},
 	}
@@ -313,11 +361,9 @@ func TestAnalyticsListEndpoints_UseNextURL(t *testing.T) {
 					t.Fatalf("expected next URL %q, got %q", tt.next, req.URL.String())
 				}
 				assertAuthorized(t, req)
-			}, jsonResponse(http.StatusOK, `{"data":[]}`))
+			}, jsonResponse(http.StatusOK, tt.response))
 
-			if err := tt.call(client, tt.next); err != nil {
-				t.Fatalf("%s() error: %v", tt.name, err)
-			}
+			tt.call(t, client, tt.next)
 		})
 	}
 }

@@ -11,36 +11,55 @@ import (
 func TestAppCustomProductPageListEndpoints_WithLimit(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
-		name  string
-		path  string
-		limit string
-		call  func(*Client) error
+		name     string
+		path     string
+		limit    string
+		response string
+		call     func(*testing.T, *Client)
 	}{
 		{
-			name:  "GetAppCustomProductPages",
-			path:  "/v1/apps/app-1/appCustomProductPages",
-			limit: "10",
-			call: func(c *Client) error {
-				_, err := c.GetAppCustomProductPages(ctx, "app-1", WithAppCustomProductPagesLimit(10))
-				return err
+			name:     "GetAppCustomProductPages",
+			path:     "/v1/apps/app-1/appCustomProductPages",
+			limit:    "10",
+			response: `{"data":[{"type":"appCustomProductPages","id":"page-1","attributes":{"name":"Summer"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppCustomProductPages(ctx, "app-1", WithAppCustomProductPagesLimit(10))
+				if err != nil {
+					t.Fatalf("GetAppCustomProductPages() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Name != "Summer" {
+					t.Fatalf("expected decoded custom product page, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAppCustomProductPageVersions",
-			path:  "/v1/appCustomProductPages/page-1/appCustomProductPageVersions",
-			limit: "5",
-			call: func(c *Client) error {
-				_, err := c.GetAppCustomProductPageVersions(ctx, "page-1", WithAppCustomProductPageVersionsLimit(5))
-				return err
+			name:     "GetAppCustomProductPageVersions",
+			path:     "/v1/appCustomProductPages/page-1/appCustomProductPageVersions",
+			limit:    "5",
+			response: `{"data":[{"type":"appCustomProductPageVersions","id":"version-1","attributes":{"deepLink":"https://example.com/deeplink"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppCustomProductPageVersions(ctx, "page-1", WithAppCustomProductPageVersionsLimit(5))
+				if err != nil {
+					t.Fatalf("GetAppCustomProductPageVersions() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "version-1" {
+					t.Fatalf("expected decoded custom product page version, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAppCustomProductPageLocalizations",
-			path:  "/v1/appCustomProductPageVersions/version-1/appCustomProductPageLocalizations",
-			limit: "20",
-			call: func(c *Client) error {
-				_, err := c.GetAppCustomProductPageLocalizations(ctx, "version-1", WithAppCustomProductPageLocalizationsLimit(20))
-				return err
+			name:     "GetAppCustomProductPageLocalizations",
+			path:     "/v1/appCustomProductPageVersions/version-1/appCustomProductPageLocalizations",
+			limit:    "20",
+			response: `{"data":[{"type":"appCustomProductPageLocalizations","id":"loc-1","attributes":{"locale":"en-US"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppCustomProductPageLocalizations(ctx, "version-1", WithAppCustomProductPageLocalizationsLimit(20))
+				if err != nil {
+					t.Fatalf("GetAppCustomProductPageLocalizations() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Locale != "en-US" {
+					t.Fatalf("expected decoded custom product page localization, got %+v", resp.Data)
+				}
 			},
 		},
 	}
@@ -59,11 +78,9 @@ func TestAppCustomProductPageListEndpoints_WithLimit(t *testing.T) {
 					t.Fatalf("expected limit=%s, got %q", tt.limit, req.URL.Query().Get("limit"))
 				}
 				assertAuthorized(t, req)
-			}, jsonResponse(http.StatusOK, `{"data":[]}`))
+			}, jsonResponse(http.StatusOK, tt.response))
 
-			if err := tt.call(client); err != nil {
-				t.Fatalf("%s() error: %v", tt.name, err)
-			}
+			tt.call(t, client)
 		})
 	}
 }
@@ -904,54 +921,85 @@ func TestDeleteAppStoreVersionExperimentV2_SendsRequest(t *testing.T) {
 func TestAppStoreVersionExperimentTreatmentListEndpoints_WithLimit(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
-		name  string
-		path  string
-		limit string
-		call  func(*Client) error
+		name     string
+		path     string
+		limit    string
+		response string
+		call     func(*testing.T, *Client)
 	}{
 		{
-			name:  "GetAppStoreVersionExperimentTreatments",
-			path:  "/v1/appStoreVersionExperiments/exp-1/appStoreVersionExperimentTreatments",
-			limit: "15",
-			call: func(c *Client) error {
-				_, err := c.GetAppStoreVersionExperimentTreatments(ctx, "exp-1", WithAppStoreVersionExperimentTreatmentsLimit(15))
-				return err
+			name:     "GetAppStoreVersionExperimentTreatments",
+			path:     "/v1/appStoreVersionExperiments/exp-1/appStoreVersionExperimentTreatments",
+			limit:    "15",
+			response: `{"data":[{"type":"appStoreVersionExperimentTreatments","id":"treat-1","attributes":{"name":"Variant A"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionExperimentTreatments(ctx, "exp-1", WithAppStoreVersionExperimentTreatmentsLimit(15))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionExperimentTreatments() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Name != "Variant A" {
+					t.Fatalf("expected decoded experiment treatment, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAppStoreVersionExperimentTreatmentsV2",
-			path:  "/v2/appStoreVersionExperiments/exp-1/appStoreVersionExperimentTreatments",
-			limit: "10",
-			call: func(c *Client) error {
-				_, err := c.GetAppStoreVersionExperimentTreatmentsV2(ctx, "exp-1", WithAppStoreVersionExperimentTreatmentsLimit(10))
-				return err
+			name:     "GetAppStoreVersionExperimentTreatmentsV2",
+			path:     "/v2/appStoreVersionExperiments/exp-1/appStoreVersionExperimentTreatments",
+			limit:    "10",
+			response: `{"data":[{"type":"appStoreVersionExperimentTreatments","id":"treat-1","attributes":{"name":"Variant A"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionExperimentTreatmentsV2(ctx, "exp-1", WithAppStoreVersionExperimentTreatmentsLimit(10))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionExperimentTreatmentsV2() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Name != "Variant A" {
+					t.Fatalf("expected decoded v2 experiment treatment, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAppStoreVersionExperimentTreatmentLocalizations",
-			path:  "/v1/appStoreVersionExperimentTreatments/treat-1/appStoreVersionExperimentTreatmentLocalizations",
-			limit: "8",
-			call: func(c *Client) error {
-				_, err := c.GetAppStoreVersionExperimentTreatmentLocalizations(ctx, "treat-1", WithAppStoreVersionExperimentTreatmentLocalizationsLimit(8))
-				return err
+			name:     "GetAppStoreVersionExperimentTreatmentLocalizations",
+			path:     "/v1/appStoreVersionExperimentTreatments/treat-1/appStoreVersionExperimentTreatmentLocalizations",
+			limit:    "8",
+			response: `{"data":[{"type":"appStoreVersionExperimentTreatmentLocalizations","id":"tloc-1","attributes":{"locale":"en-US"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionExperimentTreatmentLocalizations(ctx, "treat-1", WithAppStoreVersionExperimentTreatmentLocalizationsLimit(8))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionExperimentTreatmentLocalizations() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Locale != "en-US" {
+					t.Fatalf("expected decoded treatment localization, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAppStoreVersionExperimentTreatmentLocalizationPreviewSets",
-			path:  "/v1/appStoreVersionExperimentTreatmentLocalizations/tloc-1/appPreviewSets",
-			limit: "6",
-			call: func(c *Client) error {
-				_, err := c.GetAppStoreVersionExperimentTreatmentLocalizationPreviewSets(ctx, "tloc-1", WithAppStoreVersionExperimentTreatmentLocalizationPreviewSetsLimit(6))
-				return err
+			name:     "GetAppStoreVersionExperimentTreatmentLocalizationPreviewSets",
+			path:     "/v1/appStoreVersionExperimentTreatmentLocalizations/tloc-1/appPreviewSets",
+			limit:    "6",
+			response: `{"data":[{"type":"appPreviewSets","id":"preview-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionExperimentTreatmentLocalizationPreviewSets(ctx, "tloc-1", WithAppStoreVersionExperimentTreatmentLocalizationPreviewSetsLimit(6))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionExperimentTreatmentLocalizationPreviewSets() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "preview-1" {
+					t.Fatalf("expected decoded preview set, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAppStoreVersionExperimentTreatmentLocalizationScreenshotSets",
-			path:  "/v1/appStoreVersionExperimentTreatmentLocalizations/tloc-1/appScreenshotSets",
-			limit: "4",
-			call: func(c *Client) error {
-				_, err := c.GetAppStoreVersionExperimentTreatmentLocalizationScreenshotSets(ctx, "tloc-1", WithAppStoreVersionExperimentTreatmentLocalizationScreenshotSetsLimit(4))
-				return err
+			name:     "GetAppStoreVersionExperimentTreatmentLocalizationScreenshotSets",
+			path:     "/v1/appStoreVersionExperimentTreatmentLocalizations/tloc-1/appScreenshotSets",
+			limit:    "4",
+			response: `{"data":[{"type":"appScreenshotSets","id":"shot-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionExperimentTreatmentLocalizationScreenshotSets(ctx, "tloc-1", WithAppStoreVersionExperimentTreatmentLocalizationScreenshotSetsLimit(4))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionExperimentTreatmentLocalizationScreenshotSets() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "shot-1" {
+					t.Fatalf("expected decoded screenshot set, got %+v", resp.Data)
+				}
 			},
 		},
 	}
@@ -970,11 +1018,9 @@ func TestAppStoreVersionExperimentTreatmentListEndpoints_WithLimit(t *testing.T)
 					t.Fatalf("expected limit=%s, got %q", tt.limit, req.URL.Query().Get("limit"))
 				}
 				assertAuthorized(t, req)
-			}, jsonResponse(http.StatusOK, `{"data":[]}`))
+			}, jsonResponse(http.StatusOK, tt.response))
 
-			if err := tt.call(client); err != nil {
-				t.Fatalf("%s() error: %v", tt.name, err)
-			}
+			tt.call(t, client)
 		})
 	}
 }

@@ -131,81 +131,130 @@ func TestAlternativeDistributionReadEndpoints_SendsRequest(t *testing.T) {
 func TestAlternativeDistributionListEndpoints_WithLimit(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
-		name  string
-		path  string
-		limit string
-		call  func(*Client) error
+		name     string
+		path     string
+		limit    string
+		response string
+		call     func(*testing.T, *Client)
 	}{
 		{
-			name:  "GetAlternativeDistributionDomains",
-			path:  "/v1/alternativeDistributionDomains",
-			limit: "5",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionDomains(ctx, WithAlternativeDistributionDomainsLimit(5))
-				return err
+			name:     "GetAlternativeDistributionDomains",
+			path:     "/v1/alternativeDistributionDomains",
+			limit:    "5",
+			response: `{"data":[{"type":"alternativeDistributionDomains","id":"domain-1","attributes":{"domain":"example.com","referenceName":"Example"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionDomains(ctx, WithAlternativeDistributionDomainsLimit(5))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionDomains() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Domain != "example.com" {
+					t.Fatalf("expected decoded domain response, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAlternativeDistributionKeys",
-			path:  "/v1/alternativeDistributionKeys",
-			limit: "10",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionKeys(ctx, WithAlternativeDistributionKeysLimit(10))
-				return err
+			name:     "GetAlternativeDistributionKeys",
+			path:     "/v1/alternativeDistributionKeys",
+			limit:    "10",
+			response: `{"data":[{"type":"alternativeDistributionKeys","id":"key-1","attributes":{"publicKey":"KEY"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionKeys(ctx, WithAlternativeDistributionKeysLimit(10))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionKeys() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.PublicKey != "KEY" {
+					t.Fatalf("expected decoded key response, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAlternativeDistributionPackageVersions",
-			path:  "/v1/alternativeDistributionPackages/pkg-1/versions",
-			limit: "2",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionPackageVersions(ctx, "pkg-1", WithAlternativeDistributionPackageVersionsLimit(2))
-				return err
+			name:     "GetAlternativeDistributionPackageVersions",
+			path:     "/v1/alternativeDistributionPackages/pkg-1/versions",
+			limit:    "2",
+			response: `{"data":[{"type":"alternativeDistributionPackageVersions","id":"ver-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionPackageVersions(ctx, "pkg-1", WithAlternativeDistributionPackageVersionsLimit(2))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionPackageVersions() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "ver-1" {
+					t.Fatalf("expected decoded package version response, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAlternativeDistributionPackageVersionsRelationships",
-			path:  "/v1/alternativeDistributionPackages/pkg-1/relationships/versions",
-			limit: "3",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionPackageVersionsRelationships(ctx, "pkg-1", WithLinkagesLimit(3))
-				return err
+			name:     "GetAlternativeDistributionPackageVersionsRelationships",
+			path:     "/v1/alternativeDistributionPackages/pkg-1/relationships/versions",
+			limit:    "3",
+			response: `{"data":[{"type":"alternativeDistributionPackageVersions","id":"ver-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionPackageVersionsRelationships(ctx, "pkg-1", WithLinkagesLimit(3))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionPackageVersionsRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "ver-1" {
+					t.Fatalf("expected decoded package version relationship response, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAlternativeDistributionPackageVersionDeltas",
-			path:  "/v1/alternativeDistributionPackageVersions/ver-1/deltas",
-			limit: "4",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionPackageVersionDeltas(ctx, "ver-1", WithAlternativeDistributionPackageDeltasLimit(4))
-				return err
+			name:     "GetAlternativeDistributionPackageVersionDeltas",
+			path:     "/v1/alternativeDistributionPackageVersions/ver-1/deltas",
+			limit:    "4",
+			response: `{"data":[{"type":"alternativeDistributionPackageDeltas","id":"delta-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionPackageVersionDeltas(ctx, "ver-1", WithAlternativeDistributionPackageDeltasLimit(4))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionPackageVersionDeltas() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "delta-1" {
+					t.Fatalf("expected decoded package delta response, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAlternativeDistributionPackageVersionDeltasRelationships",
-			path:  "/v1/alternativeDistributionPackageVersions/ver-1/relationships/deltas",
-			limit: "4",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionPackageVersionDeltasRelationships(ctx, "ver-1", WithLinkagesLimit(4))
-				return err
+			name:     "GetAlternativeDistributionPackageVersionDeltasRelationships",
+			path:     "/v1/alternativeDistributionPackageVersions/ver-1/relationships/deltas",
+			limit:    "4",
+			response: `{"data":[{"type":"alternativeDistributionPackageDeltas","id":"delta-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionPackageVersionDeltasRelationships(ctx, "ver-1", WithLinkagesLimit(4))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionPackageVersionDeltasRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "delta-1" {
+					t.Fatalf("expected decoded package delta relationship response, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAlternativeDistributionPackageVersionVariants",
-			path:  "/v1/alternativeDistributionPackageVersions/ver-1/variants",
-			limit: "6",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionPackageVersionVariants(ctx, "ver-1", WithAlternativeDistributionPackageVariantsLimit(6))
-				return err
+			name:     "GetAlternativeDistributionPackageVersionVariants",
+			path:     "/v1/alternativeDistributionPackageVersions/ver-1/variants",
+			limit:    "6",
+			response: `{"data":[{"type":"alternativeDistributionPackageVariants","id":"variant-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionPackageVersionVariants(ctx, "ver-1", WithAlternativeDistributionPackageVariantsLimit(6))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionPackageVersionVariants() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "variant-1" {
+					t.Fatalf("expected decoded package variant response, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAlternativeDistributionPackageVersionVariantsRelationships",
-			path:  "/v1/alternativeDistributionPackageVersions/ver-1/relationships/variants",
-			limit: "6",
-			call: func(c *Client) error {
-				_, err := c.GetAlternativeDistributionPackageVersionVariantsRelationships(ctx, "ver-1", WithLinkagesLimit(6))
-				return err
+			name:     "GetAlternativeDistributionPackageVersionVariantsRelationships",
+			path:     "/v1/alternativeDistributionPackageVersions/ver-1/relationships/variants",
+			limit:    "6",
+			response: `{"data":[{"type":"alternativeDistributionPackageVariants","id":"variant-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAlternativeDistributionPackageVersionVariantsRelationships(ctx, "ver-1", WithLinkagesLimit(6))
+				if err != nil {
+					t.Fatalf("GetAlternativeDistributionPackageVersionVariantsRelationships() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "variant-1" {
+					t.Fatalf("expected decoded package variant relationship response, got %+v", resp.Data)
+				}
 			},
 		},
 	}
@@ -224,11 +273,9 @@ func TestAlternativeDistributionListEndpoints_WithLimit(t *testing.T) {
 					t.Fatalf("expected limit=%s, got %q", tt.limit, req.URL.Query().Get("limit"))
 				}
 				assertAuthorized(t, req)
-			}, jsonResponse(http.StatusOK, `{"data":[]}`))
+			}, jsonResponse(http.StatusOK, tt.response))
 
-			if err := tt.call(client); err != nil {
-				t.Fatalf("%s() error: %v", tt.name, err)
-			}
+			tt.call(t, client)
 		})
 	}
 }

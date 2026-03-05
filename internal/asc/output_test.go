@@ -88,7 +88,7 @@ func TestPrintTableAndMarkdown_RepresentativeResponses(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"tester@example.com", "https://example.com/shot.png"},
+			want: []string{"Created", "Email", "Screenshots", "tester@example.com", "https://example.com/shot.png"},
 		},
 		{
 			name: "apps",
@@ -104,7 +104,7 @@ func TestPrintTableAndMarkdown_RepresentativeResponses(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"Demo App", "com.example.demo"},
+			want: []string{"ID", "Bundle ID", "SKU", "Demo App", "com.example.demo"},
 		},
 		{
 			name: "builds",
@@ -120,7 +120,7 @@ func TestPrintTableAndMarkdown_RepresentativeResponses(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"1.2.3", "PROCESSING"},
+			want: []string{"ID", "Processing", "1.2.3", "PROCESSING"},
 		},
 		{
 			name: "app events",
@@ -135,7 +135,7 @@ func TestPrintTableAndMarkdown_RepresentativeResponses(t *testing.T) {
 					},
 				},
 			},
-			want: []string{"Holiday Event", "LIVE"},
+			want: []string{"ID", "Reference Name", "Holiday Event", "LIVE"},
 		},
 	}
 

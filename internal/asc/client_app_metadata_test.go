@@ -438,27 +438,40 @@ func TestGetAppStoreVersionAppClipDefaultExperience_SendsRequest(t *testing.T) {
 func TestAppStoreVersionListEndpoints_WithLimit(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
-		name  string
-		path  string
-		limit string
-		call  func(*Client) error
+		name     string
+		path     string
+		limit    string
+		response string
+		call     func(*testing.T, *Client)
 	}{
 		{
-			name:  "GetAppStoreVersionExperimentsV2ForVersion",
-			path:  "/v1/appStoreVersions/version-1/appStoreVersionExperimentsV2",
-			limit: "12",
-			call: func(c *Client) error {
-				_, err := c.GetAppStoreVersionExperimentsV2ForVersion(ctx, "version-1", WithAppStoreVersionExperimentsV2Limit(12))
-				return err
+			name:     "GetAppStoreVersionExperimentsV2ForVersion",
+			path:     "/v1/appStoreVersions/version-1/appStoreVersionExperimentsV2",
+			limit:    "12",
+			response: `{"data":[{"type":"appStoreVersionExperiments","id":"exp-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionExperimentsV2ForVersion(ctx, "version-1", WithAppStoreVersionExperimentsV2Limit(12))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionExperimentsV2ForVersion() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "exp-1" {
+					t.Fatalf("expected decoded app store version experiment, got %+v", resp.Data)
+				}
 			},
 		},
 		{
-			name:  "GetAppStoreVersionCustomerReviews",
-			path:  "/v1/appStoreVersions/version-1/customerReviews",
-			limit: "5",
-			call: func(c *Client) error {
-				_, err := c.GetAppStoreVersionCustomerReviews(ctx, "version-1", WithLimit(5))
-				return err
+			name:     "GetAppStoreVersionCustomerReviews",
+			path:     "/v1/appStoreVersions/version-1/customerReviews",
+			limit:    "5",
+			response: `{"data":[{"type":"customerReviews","id":"review-1","attributes":{"rating":5,"title":"Great"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionCustomerReviews(ctx, "version-1", WithLimit(5))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionCustomerReviews() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Rating != 5 {
+					t.Fatalf("expected decoded customer review, got %+v", resp.Data)
+				}
 			},
 		},
 	}
@@ -477,11 +490,9 @@ func TestAppStoreVersionListEndpoints_WithLimit(t *testing.T) {
 					t.Fatalf("expected limit=%s, got %q", tt.limit, req.URL.Query().Get("limit"))
 				}
 				assertAuthorized(t, req)
-			}, jsonResponse(http.StatusOK, `{"data":[]}`))
+			}, jsonResponse(http.StatusOK, tt.response))
 
-			if err := tt.call(client); err != nil {
-				t.Fatalf("%s() error: %v", tt.name, err)
-			}
+			tt.call(t, client)
 		})
 	}
 }
