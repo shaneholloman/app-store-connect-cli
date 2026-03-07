@@ -73,7 +73,7 @@ Example workflow file (.asc/workflow.json):
       ]
     },
     "release": {
-      "description": "Submit a version for App Store review",
+      "description": "Run the full App Store release pipeline (validate, attach, submit)",
       "steps": [
         {
           "workflow": "preflight",
@@ -82,8 +82,8 @@ Example workflow file (.asc/workflow.json):
           }
         },
         {
-          "name": "submit",
-          "run": "asc submit create --app $APP_ID --version $VERSION --build $BUILD_ID --confirm"
+          "name": "release",
+          "run": "asc release run --app $APP_ID --version $VERSION --build $BUILD_ID --metadata-dir ./metadata/version/$VERSION --confirm"
         }
       ]
     },

@@ -115,11 +115,24 @@ asc builds upload --app "123456789" --ipa "/path/to/MyApp.ipa"
 asc testflight builds list --app "123456789" --output table
 ```
 
-### Validate and submit
+### Release (high-level: validate + attach + submit)
+
+```bash
+# Dry-run first to preview steps
+asc release run --app "123456789" --version "1.2.3" --build "BUILD_ID" --metadata-dir "./metadata/version/1.2.3" --dry-run
+
+# Run the full pipeline: ensure version, apply metadata, attach build, validate, submit
+asc release run --app "123456789" --version "1.2.3" --build "BUILD_ID" --metadata-dir "./metadata/version/1.2.3" --confirm
+
+# Monitor status after submission
+asc status --app "123456789"
+```
+
+Lower-level alternatives (for scripting or partial workflows):
 
 ```bash
 asc validate --app "123456789" --version "1.2.3"
-asc submit --app "123456789" --version "1.2.3"
+asc submit create --app "123456789" --version "1.2.3" --build "BUILD_ID" --confirm
 ```
 
 ### Metadata and localization

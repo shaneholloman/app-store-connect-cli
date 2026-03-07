@@ -97,12 +97,12 @@ asc <subcommand> [flags]
 
 ### Review and Release
 
+- `release` - Run high-level App Store release workflows.
 - `review` - Manage App Store review details, attachments, and submissions.
 - `reviews` - List and manage App Store customer reviews.
 - `submit` - Submit builds for App Store review.
 - `validate` - Validate App Store version readiness before submission.
 - `publish` - End-to-end publish workflows for TestFlight and App Store.
-- `release` - Run high-level App Store release workflows.
 
 ### Monetization
 
