@@ -2,7 +2,9 @@ package shared
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -58,6 +60,7 @@ func (e missingAuthError) Is(target error) bool {
 var (
 	privateKeyTempMu    sync.Mutex
 	privateKeyTempPath  string
+	privateKeyTempKey   string
 	privateKeyTempPaths []string
 	selectedProfile     string
 	strictAuth          bool
@@ -270,12 +273,13 @@ type resolvedCredentials struct {
 	keyID    string
 	issuerID string
 	keyPath  string
+	keyPEM   string
 }
 
 type credentialSource struct {
-	keyID    string
-	issuerID string
-	keyPath  string
+	keyID       string
+	issuerID    string
+	keyMaterial string
 }
 
 func resolveEnvCredentials() (envCredentials, error) {
@@ -304,7 +308,7 @@ func resolveEnvCredentials() (envCredentials, error) {
 }
 
 func resolveCredentials() (resolvedCredentials, error) {
-	var actualKeyID, actualIssuerID, actualKeyPath string
+	var actualKeyID, actualIssuerID, actualKeyPath, actualKeyPEM string
 	profile := resolveProfileName()
 	var envCreds envCredentials
 	envResolved := false
@@ -320,7 +324,7 @@ func resolveCredentials() (resolvedCredentials, error) {
 		if envCreds.complete {
 			sources.keyID = "env"
 			sources.issuerID = "env"
-			sources.keyPath = "env"
+			sources.keyMaterial = "env"
 			return resolvedCredentials{
 				keyID:    envCreds.keyID,
 				issuerID: envCreds.issuerID,
@@ -344,13 +348,16 @@ func resolveCredentials() (resolvedCredentials, error) {
 		actualKeyID = cfg.KeyID
 		actualIssuerID = cfg.IssuerID
 		actualKeyPath = cfg.PrivateKeyPath
+		actualKeyPEM = strings.TrimSpace(cfg.PrivateKeyPEM)
 		sources.keyID = storedSource
 		sources.issuerID = storedSource
-		sources.keyPath = storedSource
+		if actualKeyPath != "" || actualKeyPEM != "" {
+			sources.keyMaterial = storedSource
+		}
 	}
 
 	// Priority 2: Environment variables (fallback for CI/CD or when keychain unavailable)
-	if actualKeyID == "" || actualIssuerID == "" || actualKeyPath == "" {
+	if actualKeyID == "" || actualIssuerID == "" || (actualKeyPath == "" && actualKeyPEM == "") {
 		if !envResolved {
 			resolved, err := resolveEnvCredentials()
 			if err != nil {
@@ -366,13 +373,13 @@ func resolveCredentials() (resolvedCredentials, error) {
 			actualIssuerID = envCreds.issuerID
 			sources.issuerID = "env"
 		}
-		if actualKeyPath == "" && envCreds.keyPath != "" {
+		if actualKeyPath == "" && actualKeyPEM == "" && envCreds.keyPath != "" {
 			actualKeyPath = envCreds.keyPath
-			sources.keyPath = "env"
+			sources.keyMaterial = "env"
 		}
 	}
 
-	if actualKeyID == "" || actualIssuerID == "" || actualKeyPath == "" {
+	if actualKeyID == "" || actualIssuerID == "" || (actualKeyPath == "" && actualKeyPEM == "") {
 		if path, err := config.Path(); err == nil {
 			return resolvedCredentials{}, missingAuthError{msg: fmt.Sprintf("missing authentication. Run 'asc auth login' or create %s (see 'asc auth init')", path)}
 		}
@@ -386,6 +393,7 @@ func resolveCredentials() (resolvedCredentials, error) {
 		keyID:    actualKeyID,
 		issuerID: actualIssuerID,
 		keyPath:  actualKeyPath,
+		keyPEM:   actualKeyPEM,
 	}, nil
 }
 
@@ -394,6 +402,16 @@ func getASCClient() (*asc.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	ApplyRootLoggingOverrides()
+	if strings.TrimSpace(resolved.keyPEM) != "" {
+		return asc.NewClientFromPEM(resolved.keyID, resolved.issuerID, resolved.keyPEM)
+	}
+	return asc.NewClient(resolved.keyID, resolved.issuerID, resolved.keyPath)
+}
+
+// ApplyRootLoggingOverrides applies root-level logging flag overrides
+// (--retry-log, --debug, --api-debug) into the shared ASC runtime.
+func ApplyRootLoggingOverrides() {
 	if retryLog.IsSet() {
 		value := retryLog.Value()
 		asc.SetRetryLogOverride(&value)
@@ -412,17 +430,16 @@ func getASCClient() (*asc.Client, error) {
 	} else {
 		asc.SetDebugHTTPOverride(nil)
 	}
-	return asc.NewClient(resolved.keyID, resolved.issuerID, resolved.keyPath)
 }
 
 func checkMixedCredentialSources(sources credentialSource) error {
 	keyIDSource := strings.TrimSpace(sources.keyID)
 	issuerSource := strings.TrimSpace(sources.issuerID)
-	keyPathSource := strings.TrimSpace(sources.keyPath)
-	if keyIDSource == "" || issuerSource == "" || keyPathSource == "" {
+	keyMaterialSource := strings.TrimSpace(sources.keyMaterial)
+	if keyIDSource == "" || issuerSource == "" || keyMaterialSource == "" {
 		return nil
 	}
-	if keyIDSource == issuerSource && issuerSource == keyPathSource {
+	if keyIDSource == issuerSource && issuerSource == keyMaterialSource {
 		return nil
 	}
 
@@ -430,10 +447,10 @@ func checkMixedCredentialSources(sources credentialSource) error {
 		"Warning: credentials loaded from multiple sources:\n  Key ID: %s\n  Issuer ID: %s\n  Private Key: %s\n",
 		keyIDSource,
 		issuerSource,
-		keyPathSource,
+		keyMaterialSource,
 	)
 	if strictAuthEnabled() {
-		return fmt.Errorf("mixed authentication sources detected:\n  Key ID: %s\n  Issuer ID: %s\n  Private Key: %s", keyIDSource, issuerSource, keyPathSource)
+		return fmt.Errorf("mixed authentication sources detected:\n  Key ID: %s\n  Issuer ID: %s\n  Private Key: %s", keyIDSource, issuerSource, keyMaterialSource)
 	}
 	fmt.Fprint(os.Stderr, message)
 	return nil
@@ -443,20 +460,41 @@ func resolvePrivateKeyPath() (string, error) {
 	if path := strings.TrimSpace(os.Getenv("ASC_PRIVATE_KEY_PATH")); path != "" {
 		return path, nil
 	}
-	if privateKeyTempPath != "" {
-		return privateKeyTempPath, nil
-	}
 	if value := strings.TrimSpace(os.Getenv(privateKeyBase64EnvVar)); value != "" {
+		compact := strings.Join(strings.Fields(value), "")
+		cacheKey := tempPrivateKeyCacheKey("b64", compact)
+		if path := cachedTempPrivateKeyPath(cacheKey); path != "" {
+			return path, nil
+		}
 		decoded, err := decodeBase64Secret(value)
 		if err != nil {
 			return "", fmt.Errorf("%s: %w", privateKeyBase64EnvVar, err)
 		}
-		return writeTempPrivateKey(decoded)
+		return writeTempPrivateKey(decoded, cacheKey)
 	}
 	if value := strings.TrimSpace(os.Getenv(privateKeyEnvVar)); value != "" {
-		return writeTempPrivateKey([]byte(normalizePrivateKeyValue(value)))
+		normalized := normalizePrivateKeyValue(value)
+		cacheKey := tempPrivateKeyCacheKey("raw", normalized)
+		if path := cachedTempPrivateKeyPath(cacheKey); path != "" {
+			return path, nil
+		}
+		return writeTempPrivateKey([]byte(normalized), cacheKey)
 	}
 	return "", nil
+}
+
+func tempPrivateKeyCacheKey(kind, value string) string {
+	sum := sha256.Sum256([]byte(kind + "\x00" + value))
+	return kind + ":" + hex.EncodeToString(sum[:])
+}
+
+func cachedTempPrivateKeyPath(cacheKey string) string {
+	privateKeyTempMu.Lock()
+	defer privateKeyTempMu.Unlock()
+	if privateKeyTempPath == "" || privateKeyTempKey != cacheKey {
+		return ""
+	}
+	return privateKeyTempPath
 }
 
 func decodeBase64Secret(value string) ([]byte, error) {
@@ -481,7 +519,7 @@ func normalizePrivateKeyValue(value string) string {
 	return value
 }
 
-func writeTempPrivateKey(data []byte) (string, error) {
+func writeTempPrivateKey(data []byte, cacheKey string) (string, error) {
 	file, err := os.CreateTemp("", "asc-key-*.p8")
 	if err != nil {
 		return "", err
@@ -497,14 +535,15 @@ func writeTempPrivateKey(data []byte) (string, error) {
 	if err := file.Close(); err != nil {
 		return "", err
 	}
-	registerTempPrivateKey(file.Name())
+	registerTempPrivateKey(file.Name(), cacheKey)
 	return file.Name(), nil
 }
 
-func registerTempPrivateKey(path string) {
+func registerTempPrivateKey(path, cacheKey string) {
 	privateKeyTempMu.Lock()
 	defer privateKeyTempMu.Unlock()
 	privateKeyTempPath = path
+	privateKeyTempKey = cacheKey
 	privateKeyTempPaths = append(privateKeyTempPaths, path)
 }
 
@@ -514,6 +553,7 @@ func CleanupTempPrivateKeys() {
 	paths := privateKeyTempPaths
 	privateKeyTempPaths = nil
 	privateKeyTempPath = ""
+	privateKeyTempKey = ""
 	privateKeyTempMu.Unlock()
 
 	for _, path := range paths {
@@ -693,8 +733,9 @@ var (
 )
 
 // DefaultOutputFormat returns the default output format for CLI commands.
-// It checks the ASC_DEFAULT_OUTPUT environment variable first, falling back to "json".
-// Valid values are "json", "table", "markdown", and "md".
+// It checks ASC_DEFAULT_OUTPUT first. When unset, interactive terminals default
+// to table output and non-interactive contexts default to JSON.
+// Valid ASC_DEFAULT_OUTPUT values are "json", "table", "markdown", and "md".
 func DefaultOutputFormat() string {
 	defaultOutputOnce.Do(func() {
 		defaultOutputValue = resolveDefaultOutput()
@@ -705,6 +746,9 @@ func DefaultOutputFormat() string {
 func resolveDefaultOutput() string {
 	env := strings.TrimSpace(os.Getenv(defaultOutputEnvVar))
 	if env == "" {
+		if isTerminal(int(os.Stdout.Fd())) {
+			return "table"
+		}
 		return "json"
 	}
 	normalized := strings.ToLower(env)
@@ -736,7 +780,7 @@ func BindPrettyJSONFlag(fs *flag.FlagSet) *bool {
 
 // BindOutputFlags registers --output and --pretty flags on the provided flagset.
 func BindOutputFlags(fs *flag.FlagSet) OutputFlags {
-	return BindOutputFlagsWith(fs, "output", DefaultOutputFormat(), "Output format: json (default), table, markdown")
+	return BindOutputFlagsWith(fs, "output", DefaultOutputFormat(), "Output format: json, table, markdown")
 }
 
 // BindMetadataOutputFlags registers --output-format and --pretty flags on the provided flagset.
@@ -790,6 +834,24 @@ func splitCSV(value string) []string {
 		cleaned = append(cleaned, part)
 	}
 	return cleaned
+}
+
+func splitUniqueCSV(value string) []string {
+	values := splitCSV(value)
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, item := range values {
+		if _, exists := seen[item]; exists {
+			continue
+		}
+		seen[item] = struct{}{}
+		unique = append(unique, item)
+	}
+	return unique
 }
 
 func splitCSVUpper(value string) []string {
@@ -848,10 +910,6 @@ func ResolveProfileName() string {
 	return resolveProfileName()
 }
 
-func ResolvePrivateKeyPath() (string, error) {
-	return resolvePrivateKeyPath()
-}
-
 func PrintOutput(data any, format string, pretty bool) error {
 	return printOutput(data, format, pretty)
 }
@@ -890,6 +948,10 @@ func ContextWithUploadTimeout(ctx context.Context) (context.Context, context.Can
 
 func SplitCSV(value string) []string {
 	return splitCSV(value)
+}
+
+func SplitUniqueCSV(value string) []string {
+	return splitUniqueCSV(value)
 }
 
 func SplitCSVUpper(value string) []string {

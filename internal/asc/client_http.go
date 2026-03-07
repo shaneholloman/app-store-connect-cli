@@ -15,10 +15,15 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/urlsanitize"
 )
 
 // newRequest creates a new HTTP request with JWT authentication
 func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	if err := validateAPIPath(path); err != nil {
+		return nil, err
+	}
+
 	// Generate JWT token
 	token, err := c.generateJWT()
 	if err != nil {
@@ -186,31 +191,7 @@ func sanitizeAuthHeader(value string) string {
 }
 
 func sanitizeURLForLog(rawURL string) string {
-	if rawURL == "" {
-		return ""
-	}
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return rawURL
-	}
-	if parsedURL.User != nil {
-		parsedURL.User = url.User("[REDACTED]")
-	}
-	values := parsedURL.Query()
-	if len(values) == 0 {
-		return parsedURL.String()
-	}
-	redactAll := hasSignedQuery(values)
-	for key, vals := range values {
-		if redactAll || isSensitiveQueryKey(key) {
-			for i := range vals {
-				vals[i] = "[REDACTED]"
-			}
-			values[key] = vals
-		}
-	}
-	parsedURL.RawQuery = values.Encode()
-	return parsedURL.String()
+	return urlsanitize.SanitizeURLForLog(rawURL, signedQueryKeys, sensitiveQueryKeys)
 }
 
 func shouldRetryMethod(method string) bool {
@@ -331,32 +312,9 @@ var allowedAnalyticsCDNHosts = []string{
 	"azureedge.net",    // Azure CDN
 }
 
-var signedQueryKeys = map[string]struct{}{
-	"x-amz-signature":     {},
-	"x-amz-credential":    {},
-	"x-amz-algorithm":     {},
-	"x-amz-signedheaders": {},
-	"signature":           {},
-	"key-pair-id":         {},
-	"policy":              {},
-	"sig":                 {},
-}
+var signedQueryKeys = urlsanitize.CopyKeySet(urlsanitize.DefaultSignedQueryKeys)
 
-var sensitiveQueryKeys = map[string]struct{}{
-	"x-amz-signature":      {},
-	"x-amz-credential":     {},
-	"x-amz-algorithm":      {},
-	"x-amz-signedheaders":  {},
-	"x-amz-security-token": {},
-	"signature":            {},
-	"key-pair-id":          {},
-	"policy":               {},
-	"sig":                  {},
-	"token":                {},
-	"access_token":         {},
-	"id_token":             {},
-	"refresh_token":        {},
-}
+var sensitiveQueryKeys = urlsanitize.CopyKeySet(urlsanitize.DefaultSensitiveQueryKeys)
 
 // isAllowedAnalyticsHost checks if the host matches any allowed host suffix.
 func isAllowedAnalyticsHost(host string) bool {
@@ -385,26 +343,7 @@ func hasSignedAnalyticsQuery(values url.Values) bool {
 }
 
 func hasSignedQuery(values url.Values) bool {
-	for key, vals := range values {
-		if _, ok := signedQueryKeys[strings.ToLower(key)]; ok && hasNonEmptyValue(vals) {
-			return true
-		}
-	}
-	return false
-}
-
-func isSensitiveQueryKey(key string) bool {
-	_, ok := sensitiveQueryKeys[strings.ToLower(key)]
-	return ok
-}
-
-func hasNonEmptyValue(values []string) bool {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return true
-		}
-	}
-	return false
+	return urlsanitize.HasSignedQuery(values, signedQueryKeys)
 }
 
 // validateAnalyticsDownloadURL validates that an analytics download URL is safe.
@@ -646,6 +585,52 @@ func sanitizeTerminal(input string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// validateAPIPath checks a relative API path for dangerous characters that
+// could indicate a hallucinated or malicious resource ID. Full URLs (pagination
+// cursors) are skipped — they are validated separately by validateNextURL.
+//
+// The check operates on path segments only (before any query string) and rejects:
+//   - control characters (< 0x20, DEL)
+//   - pre-encoded percent sequences (%) that would cause double-encoding
+//   - fragment markers (#) that truncate the URL
+//   - backslashes that may be misinterpreted across platforms
+//   - path traversal segments (.. or empty segments //)
+func validateAPIPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return nil
+	}
+
+	pathOnly := path
+	if idx := strings.IndexByte(path, '?'); idx >= 0 {
+		pathOnly = path[:idx]
+	}
+
+	for _, r := range pathOnly {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("API path contains control character: %q", path)
+		}
+	}
+
+	if strings.ContainsAny(pathOnly, "#%\\") {
+		return fmt.Errorf("API path contains unsafe character (#, %%, or \\): %q", path)
+	}
+
+	if strings.Contains(pathOnly, "//") {
+		return fmt.Errorf("API path contains empty segment (//): %q", path)
+	}
+
+	for _, segment := range strings.Split(pathOnly, "/") {
+		if segment == ".." {
+			return fmt.Errorf("API path contains traversal segment: %q", path)
+		}
+	}
+
+	return nil
 }
 
 // IsNotFound checks if the error is a "not found" error

@@ -653,27 +653,6 @@ func WithWebhookDeliveriesCreatedBefore(values []string) WebhookDeliveriesOption
 	}
 }
 
-// WithWebhookDeliveriesFields sets fields[webhookDeliveries] for delivery responses.
-func WithWebhookDeliveriesFields(fields []string) WebhookDeliveriesOption {
-	return func(q *webhookDeliveriesQuery) {
-		q.fields = normalizeList(fields)
-	}
-}
-
-// WithWebhookDeliveriesEventFields sets fields[webhookEvents] for delivery responses.
-func WithWebhookDeliveriesEventFields(fields []string) WebhookDeliveriesOption {
-	return func(q *webhookDeliveriesQuery) {
-		q.eventFields = normalizeList(fields)
-	}
-}
-
-// WithWebhookDeliveriesInclude sets include for delivery responses.
-func WithWebhookDeliveriesInclude(include []string) WebhookDeliveriesOption {
-	return func(q *webhookDeliveriesQuery) {
-		q.include = normalizeList(include)
-	}
-}
-
 // WithBackgroundAssetsLimit sets the max number of background assets to return.
 func WithBackgroundAssetsLimit(limit int) BackgroundAssetsOption {
 	return func(q *backgroundAssetsQuery) {
@@ -1178,13 +1157,6 @@ func WithAppClipDefaultExperiencesNextURL(next string) AppClipDefaultExperiences
 	}
 }
 
-// WithAppClipDefaultExperiencesReleaseWithVersionExists filters by releaseWithAppStoreVersion existence.
-func WithAppClipDefaultExperiencesReleaseWithVersionExists(value bool) AppClipDefaultExperiencesOption {
-	return func(q *appClipDefaultExperiencesQuery) {
-		q.releaseWithVersionExists = &value
-	}
-}
-
 // WithAppClipDefaultExperienceInclude sets include for default experience detail.
 func WithAppClipDefaultExperienceInclude(include []string) AppClipDefaultExperienceOption {
 	return func(q *appClipDefaultExperienceQuery) {
@@ -1458,6 +1430,16 @@ func WithBuildsVersion(version string) BuildsOption {
 	return func(q *buildsQuery) {
 		if strings.TrimSpace(version) != "" {
 			q.version = strings.TrimSpace(version)
+		}
+	}
+}
+
+// WithBuildsPreReleaseVersionVersion filters builds by marketing version
+// (CFBundleShortVersionString) via filter[preReleaseVersion.version].
+func WithBuildsPreReleaseVersionVersion(version string) BuildsOption {
+	return func(q *buildsQuery) {
+		if strings.TrimSpace(version) != "" {
+			q.preReleaseVersion = strings.TrimSpace(version)
 		}
 	}
 }
@@ -2371,15 +2353,6 @@ func WithPassTypeIDCertificatesInclude(include []string) PassTypeIDCertificatesO
 	}
 }
 
-// WithBundleIDCapabilitiesLimit sets the max number of capabilities to return.
-func WithBundleIDCapabilitiesLimit(limit int) BundleIDCapabilitiesOption {
-	return func(q *bundleIDCapabilitiesQuery) {
-		if limit > 0 {
-			q.limit = limit
-		}
-	}
-}
-
 // WithBundleIDCapabilitiesNextURL uses a next page URL directly.
 func WithBundleIDCapabilitiesNextURL(next string) BundleIDCapabilitiesOption {
 	return func(q *bundleIDCapabilitiesQuery) {
@@ -2461,15 +2434,6 @@ func WithProfilesTypes(types []string) ProfilesOption {
 func WithProfilesInclude(include []string) ProfilesOption {
 	return func(q *profilesQuery) {
 		q.include = normalizeList(include)
-	}
-}
-
-// WithProfilesFilterBundleID filters profiles by bundle ID.
-func WithProfilesFilterBundleID(bundleID string) ProfilesOption {
-	return func(q *profilesQuery) {
-		if strings.TrimSpace(bundleID) != "" {
-			q.bundleID = strings.TrimSpace(bundleID)
-		}
 	}
 }
 

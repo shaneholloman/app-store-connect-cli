@@ -20,10 +20,16 @@ import (
 const webPasswordEnv = "ASC_WEB_PASSWORD"
 
 var (
-	promptTwoFactorCodeFn = promptTwoFactorCodeInteractive
-	webLoginFn            = webcore.Login
-	submitTwoFactorCodeFn = webcore.SubmitTwoFactorCode
-	termReadPasswordFn    = term.ReadPassword
+	promptTwoFactorCodeFn           = promptTwoFactorCodeInteractive
+	promptPasswordFn                = promptPasswordInteractive
+	webLoginFn                      = webcore.Login
+	submitTwoFactorCodeFn           = webcore.SubmitTwoFactorCode
+	termReadPasswordFn              = term.ReadPassword
+	termIsTerminalFn                = term.IsTerminal
+	tryResumeSessionFn              = webcore.TryResumeSession
+	tryResumeLastFn                 = webcore.TryResumeLastSession
+	resolveSessionFn                = resolveSession
+	sessionExpiredWriter  io.Writer = os.Stderr
 )
 
 type webAuthStatus struct {
@@ -34,15 +40,42 @@ type webAuthStatus struct {
 	ProviderID    int64  `json:"providerId,omitempty"`
 }
 
-func readPasswordFromInput(useStdin bool) (string, error) {
-	if useStdin {
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return "", fmt.Errorf("failed to read stdin: %w", err)
-		}
-		return strings.TrimSpace(string(data)), nil
+func readPasswordFromInput() (string, error) {
+	password := strings.TrimSpace(os.Getenv(webPasswordEnv))
+	if password != "" {
+		return password, nil
 	}
-	return strings.TrimSpace(os.Getenv(webPasswordEnv)), nil
+	password, err := promptPasswordFn()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(password), nil
+}
+
+func readPasswordFromTerminalFD(fd int, writer io.Writer) (string, error) {
+	if writer == nil {
+		return "", fmt.Errorf("password prompt unavailable")
+	}
+	if _, err := fmt.Fprint(writer, "Apple Account password: "); err != nil {
+		return "", fmt.Errorf("password prompt unavailable")
+	}
+	passwordBytes, err := termReadPasswordFn(fd)
+	_, _ = fmt.Fprintln(writer)
+	if err != nil {
+		return "", fmt.Errorf("failed to read password")
+	}
+	return strings.TrimSpace(string(passwordBytes)), nil
+}
+
+func promptPasswordInteractive() (string, error) {
+	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+		defer func() { _ = tty.Close() }()
+		return readPasswordFromTerminalFD(int(tty.Fd()), tty)
+	}
+	if termIsTerminalFn(int(os.Stdin.Fd())) {
+		return readPasswordFromTerminalFD(int(os.Stdin.Fd()), os.Stderr)
+	}
+	return "", nil
 }
 
 func readTwoFactorCodeFrom(reader io.Reader, writer io.Writer) (string, error) {
@@ -87,16 +120,25 @@ func promptTwoFactorCodeInteractive() (string, error) {
 		defer func() { _ = tty.Close() }()
 		return readTwoFactorCodeFromTerminalFD(int(tty.Fd()), tty)
 	}
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if termIsTerminalFn(int(os.Stdin.Fd())) {
 		return readTwoFactorCodeFromTerminalFD(int(os.Stdin.Fd()), os.Stderr)
 	}
 	return "", fmt.Errorf("2fa required: re-run with --two-factor-code")
 }
 
+func printExpiredSessionNotice(writer io.Writer) {
+	if writer == nil {
+		return
+	}
+	_, _ = fmt.Fprintln(writer, "Session expired.")
+}
+
 func loginWithOptionalTwoFactor(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, error) {
-	session, err := webLoginFn(ctx, webcore.LoginCredentials{
-		Username: appleID,
-		Password: password,
+	session, err := withWebSpinnerValue("Signing in to Apple web session", func() (*webcore.AuthSession, error) {
+		return webLoginFn(ctx, webcore.LoginCredentials{
+			Username: appleID,
+			Password: password,
+		})
 	})
 	if err == nil {
 		return session, nil
@@ -112,7 +154,9 @@ func loginWithOptionalTwoFactor(ctx context.Context, appleID, password, twoFacto
 				return nil, promptErr
 			}
 		}
-		if err := submitTwoFactorCodeFn(ctx, session, code); err != nil {
+		if err := withWebSpinner("Verifying two-factor code", func() error {
+			return submitTwoFactorCodeFn(ctx, session, code)
+		}); err != nil {
 			return nil, fmt.Errorf("2fa verification failed: %w", err)
 		}
 		return session, nil
@@ -120,30 +164,70 @@ func loginWithOptionalTwoFactor(ctx context.Context, appleID, password, twoFacto
 	return nil, err
 }
 
-func resolveSession(ctx context.Context, appleID, password, twoFactorCode string, usePasswordStdin bool) (*webcore.AuthSession, string, error) {
+func tryResumeWebSession(ctx context.Context, appleID string) (*webcore.AuthSession, bool, error) {
+	var (
+		session *webcore.AuthSession
+		ok      bool
+	)
+	err := withWebSpinner("Checking cached web session", func() error {
+		var err error
+		session, ok, err = tryResumeSessionFn(ctx, appleID)
+		return err
+	})
+	return session, ok, err
+}
+
+func tryResumeLastWebSession(ctx context.Context) (*webcore.AuthSession, bool, error) {
+	var (
+		session *webcore.AuthSession
+		ok      bool
+	)
+	err := withWebSpinner("Checking cached web session", func() error {
+		var err error
+		session, ok, err = tryResumeLastFn(ctx)
+		return err
+	})
+	return session, ok, err
+}
+
+func resolveSession(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
+	shared.ApplyRootLoggingOverrides()
+
 	appleID = strings.TrimSpace(appleID)
 	twoFactorCode = strings.TrimSpace(twoFactorCode)
+	cacheExpired := false
 
 	if appleID != "" {
-		if resumed, ok, err := webcore.TryResumeSession(ctx, appleID); err == nil && ok {
+		if resumed, ok, err := tryResumeWebSession(ctx, appleID); err == nil && ok {
 			return resumed, "cache", nil
+		} else if errors.Is(err, webcore.ErrCachedSessionExpired) {
+			cacheExpired = true
 		}
+	} else {
+		if resumed, ok, err := tryResumeLastWebSession(ctx); err == nil && ok {
+			return resumed, "cache", nil
+		} else if errors.Is(err, webcore.ErrCachedSessionExpired) {
+			cacheExpired = true
+		}
+	}
+	if cacheExpired {
+		printExpiredSessionNotice(sessionExpiredWriter)
 	}
 
 	if appleID == "" {
-		return nil, "", shared.UsageError("--apple-id is required")
+		return nil, "", shared.UsageError("--apple-id is required when no cached web session is available")
 	}
 
 	password = strings.TrimSpace(password)
 	if password == "" {
 		var err error
-		password, err = readPasswordFromInput(usePasswordStdin)
+		password, err = readPasswordFromInput()
 		if err != nil {
 			return nil, "", err
 		}
 	}
 	if password == "" {
-		return nil, "", shared.UsageError("password is required: provide --password-stdin or set ASC_WEB_PASSWORD")
+		return nil, "", shared.UsageError("password is required: run in a terminal for an interactive prompt or set ASC_WEB_PASSWORD")
 	}
 
 	session, err := loginWithOptionalTwoFactor(ctx, appleID, password, twoFactorCode)
@@ -187,40 +271,35 @@ This is not the official App Store Connect API-key auth flow.
 func WebAuthLoginCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("web auth login", flag.ExitOnError)
 
-	appleID := fs.String("apple-id", "", "Apple ID email")
-	passwordStdin := fs.Bool("password-stdin", false, "Read Apple ID password from stdin")
+	appleID := fs.String("apple-id", "", "Apple Account email")
 	twoFactorCode := fs.String("two-factor-code", "", "2FA code for accounts requiring verification")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "login",
-		ShortUsage: "asc web auth login --apple-id EMAIL [--password-stdin] [--two-factor-code CODE]",
+		ShortUsage: "asc web auth login --apple-id EMAIL [--two-factor-code CODE]",
 		ShortHelp:  "EXPERIMENTAL: Authenticate unofficial Apple web session.",
 		LongHelp: `EXPERIMENTAL / UNOFFICIAL / DISCOURAGED
 
 Authenticate using Apple web-session behavior for detached "asc web" workflows.
 
 Password input options:
-  - --password-stdin (recommended)
+  - secure interactive prompt (default and recommended for local use)
   - ASC_WEB_PASSWORD environment variable
 
 ` + webWarningText + `
 
 Examples:
-  asc web auth login --apple-id "user@example.com" --password-stdin
+  asc web auth login --apple-id "user@example.com"
   ASC_WEB_PASSWORD="..." asc web auth login --apple-id "user@example.com"
-  asc web auth login --apple-id "user@example.com" --password-stdin --two-factor-code 123456`,
+  asc web auth login --apple-id "user@example.com" --two-factor-code 123456`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			password, err := readPasswordFromInput(*passwordStdin)
-			if err != nil {
-				return err
-			}
-			session, source, err := resolveSession(requestCtx, *appleID, password, *twoFactorCode, *passwordStdin)
+			session, source, err := resolveSessionFn(requestCtx, *appleID, "", *twoFactorCode)
 			if err != nil {
 				return err
 			}
@@ -241,7 +320,7 @@ Examples:
 func WebAuthStatusCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("web auth status", flag.ExitOnError)
 
-	appleID := fs.String("apple-id", "", "Apple ID email (checks this account cache; default checks last cached session)")
+	appleID := fs.String("apple-id", "", "Apple Account email (checks this account cache; default checks last cached session)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -267,11 +346,14 @@ If --apple-id is not provided, this checks the last cached session.
 				err     error
 			)
 			if trimmedAppleID != "" {
-				session, ok, err = webcore.TryResumeSession(requestCtx, trimmedAppleID)
+				session, ok, err = tryResumeWebSession(requestCtx, trimmedAppleID)
 			} else {
-				session, ok, err = webcore.TryResumeLastSession(requestCtx)
+				session, ok, err = tryResumeLastWebSession(requestCtx)
 			}
 			if err != nil {
+				if errors.Is(err, webcore.ErrCachedSessionExpired) {
+					return shared.PrintOutput(webAuthStatus{Authenticated: false}, *output.Output, *output.Pretty)
+				}
 				return fmt.Errorf("web auth status failed: %w", err)
 			}
 
@@ -293,7 +375,7 @@ If --apple-id is not provided, this checks the last cached session.
 func WebAuthLogoutCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("web auth logout", flag.ExitOnError)
 
-	appleID := fs.String("apple-id", "", "Apple ID email to remove from cache")
+	appleID := fs.String("apple-id", "", "Apple Account email to remove from cache")
 	all := fs.Bool("all", false, "Remove all cached web sessions")
 
 	return &ffcli.Command{

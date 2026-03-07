@@ -5,35 +5,29 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strings"
 
 	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
 
 type webSessionFlags struct {
 	appleID       *string
-	passwordStdin *bool
 	twoFactorCode *string
 }
 
 func bindWebSessionFlags(fs *flag.FlagSet) webSessionFlags {
 	return webSessionFlags{
-		appleID:       fs.String("apple-id", "", "Apple ID email used to scope a user-owned session cache"),
-		passwordStdin: fs.Bool("password-stdin", false, "Read Apple ID password from stdin"),
+		appleID:       fs.String("apple-id", "", "Apple Account email used to scope a user-owned session cache (optional when a cached session exists)"),
 		twoFactorCode: fs.String("two-factor-code", "", "2FA code if your account requires verification"),
 	}
 }
 
 func resolveWebSessionForCommand(ctx context.Context, flags webSessionFlags) (*webcore.AuthSession, error) {
-	password, err := readPasswordFromInput(*flags.passwordStdin)
-	if err != nil {
-		return nil, err
-	}
-	session, _, err := resolveSession(
+	session, _, err := resolveSessionFn(
 		ctx,
 		*flags.appleID,
-		password,
+		"",
 		*flags.twoFactorCode,
-		*flags.passwordStdin,
 	)
 	if err != nil {
 		return nil, err
@@ -44,6 +38,9 @@ func resolveWebSessionForCommand(ctx context.Context, flags webSessionFlags) (*w
 func withWebAuthHint(err error, operation string) error {
 	if err == nil {
 		return nil
+	}
+	if strings.HasPrefix(err.Error(), operation+" failed:") {
+		return err
 	}
 	var apiErr *webcore.APIError
 	if errors.As(err, &apiErr) && (apiErr.Status == 401 || apiErr.Status == 403) {

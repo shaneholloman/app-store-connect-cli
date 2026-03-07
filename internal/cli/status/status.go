@@ -131,7 +131,7 @@ var allowedIncludes = []string{
 func StatusCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("status", flag.ExitOnError)
 
-	appID := fs.String("app", "", "App Store Connect app ID (required, or ASC_APP_ID env)")
+	appID := fs.String("app", "", "App Store Connect app ID, bundle ID, or exact app name (required, or ASC_APP_ID env)")
 	include := fs.String("include", "", "Comma-separated sections: app,builds,testflight,appstore,submission,review,phased-release,links")
 	output := shared.BindOutputFlags(fs)
 
@@ -146,6 +146,8 @@ agents, and human review.
 
 Examples:
   asc status --app "123456789"
+  asc status --app "com.example.app"
+  asc status --app "My App"
   asc status --app "123456789" --include builds,testflight,submission
   asc status --app "123456789" --output table`,
 		FlagSet:   fs,
@@ -174,6 +176,11 @@ Examples:
 
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
+
+			resolvedAppID, err = shared.ResolveAppIDWithLookup(requestCtx, client, resolvedAppID)
+			if err != nil {
+				return fmt.Errorf("status: %w", err)
+			}
 
 			resp, err := collectDashboard(requestCtx, client, resolvedAppID, includes)
 			if err != nil {
@@ -791,25 +798,7 @@ func phasedReleaseProgressBar(phased *phasedReleaseSection) string {
 	if !phased.Configured {
 		return "not configured"
 	}
-
-	day := phased.CurrentDayNumber
-	if day < 0 {
-		day = 0
-	}
-	if day > 7 {
-		day = 7
-	}
-
-	const barWidth = 10
-	filled := (day * barWidth) / 7
-	if day > 0 && filled == 0 {
-		filled = 1
-	}
-	if filled > barWidth {
-		filled = barWidth
-	}
-
-	return fmt.Sprintf("[%s%s] %d/7", strings.Repeat("#", filled), strings.Repeat("-", barWidth-filled), day)
+	return asc.FormatPhasedReleaseProgressBar(phased.CurrentDayNumber)
 }
 
 func renderTable(resp *dashboardResponse) {

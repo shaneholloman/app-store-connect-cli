@@ -4,11 +4,94 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"strings"
 	"testing"
 
 	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
+
+func TestReadPasswordFromInput(t *testing.T) {
+	origPromptPassword := promptPasswordFn
+	t.Cleanup(func() {
+		promptPasswordFn = origPromptPassword
+	})
+
+	t.Run("uses environment variable before prompt fallback", func(t *testing.T) {
+		t.Setenv(webPasswordEnv, " env-password ")
+		promptPasswordFn = func() (string, error) {
+			t.Fatal("did not expect prompt fallback when env password is set")
+			return "", nil
+		}
+
+		password, err := readPasswordFromInput()
+		if err != nil {
+			t.Fatalf("readPasswordFromInput returned error: %v", err)
+		}
+		if password != "env-password" {
+			t.Fatalf("expected env password %q, got %q", "env-password", password)
+		}
+	})
+
+	t.Run("falls back to interactive prompt when env is not provided", func(t *testing.T) {
+		t.Setenv(webPasswordEnv, "")
+		called := false
+		promptPasswordFn = func() (string, error) {
+			called = true
+			return " prompted-password ", nil
+		}
+
+		password, err := readPasswordFromInput()
+		if err != nil {
+			t.Fatalf("readPasswordFromInput returned error: %v", err)
+		}
+		if !called {
+			t.Fatal("expected interactive prompt fallback to be used")
+		}
+		if password != "prompted-password" {
+			t.Fatalf("expected prompted password %q, got %q", "prompted-password", password)
+		}
+	})
+}
+
+func TestReadPasswordFromTerminalFD(t *testing.T) {
+	origReadPassword := termReadPasswordFn
+	t.Cleanup(func() {
+		termReadPasswordFn = origReadPassword
+	})
+
+	t.Run("trims interactive password and writes prompt", func(t *testing.T) {
+		termReadPasswordFn = func(fd int) ([]byte, error) {
+			return []byte("  secret-pass  "), nil
+		}
+		var prompt bytes.Buffer
+
+		password, err := readPasswordFromTerminalFD(0, &prompt)
+		if err != nil {
+			t.Fatalf("readPasswordFromTerminalFD returned error: %v", err)
+		}
+		if password != "secret-pass" {
+			t.Fatalf("expected password %q, got %q", "secret-pass", password)
+		}
+		if !strings.Contains(prompt.String(), "Apple Account password:") {
+			t.Fatalf("expected password prompt text, got %q", prompt.String())
+		}
+	})
+
+	t.Run("propagates terminal read failure", func(t *testing.T) {
+		termReadPasswordFn = func(fd int) ([]byte, error) {
+			return nil, errors.New("terminal read failed")
+		}
+
+		_, err := readPasswordFromTerminalFD(0, &bytes.Buffer{})
+		if err == nil {
+			t.Fatal("expected read failure")
+		}
+		if !strings.Contains(err.Error(), "failed to read password") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
 
 func TestReadTwoFactorCodeFrom(t *testing.T) {
 	t.Run("trims input", func(t *testing.T) {
@@ -161,5 +244,118 @@ func TestLoginWithOptionalTwoFactorReturnsPromptError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "re-run with --two-factor-code") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveSessionUsesLastCachedSessionWhenAppleIDMissing(t *testing.T) {
+	origTryResume := tryResumeSessionFn
+	origTryResumeLast := tryResumeLastFn
+	origPromptPassword := promptPasswordFn
+	t.Cleanup(func() {
+		tryResumeSessionFn = origTryResume
+		tryResumeLastFn = origTryResumeLast
+		promptPasswordFn = origPromptPassword
+	})
+
+	expected := &webcore.AuthSession{UserEmail: "cached@example.com"}
+	tryResumeSessionFn = func(ctx context.Context, username string) (*webcore.AuthSession, bool, error) {
+		t.Fatal("did not expect user-scoped cache lookup when apple-id is omitted")
+		return nil, false, nil
+	}
+	tryResumeLastFn = func(ctx context.Context) (*webcore.AuthSession, bool, error) {
+		return expected, true, nil
+	}
+	promptPasswordFn = func() (string, error) {
+		t.Fatal("did not expect password prompt when cache hit")
+		return "", nil
+	}
+
+	session, source, err := resolveSession(context.Background(), "", "", "")
+	if err != nil {
+		t.Fatalf("resolveSession returned error: %v", err)
+	}
+	if source != "cache" {
+		t.Fatalf("expected source %q, got %q", "cache", source)
+	}
+	if session != expected {
+		t.Fatalf("expected cached session pointer to be returned")
+	}
+}
+
+func TestResolveSessionRequiresAppleIDWhenNoCachedSessionExists(t *testing.T) {
+	origTryResumeLast := tryResumeLastFn
+	t.Cleanup(func() {
+		tryResumeLastFn = origTryResumeLast
+	})
+
+	tryResumeLastFn = func(ctx context.Context) (*webcore.AuthSession, bool, error) {
+		return nil, false, nil
+	}
+
+	_, _, err := resolveSession(context.Background(), "", "", "")
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected ErrHelp, got %v", err)
+	}
+}
+
+func TestResolveSessionPrintsExpiredNoticeBeforePrompt(t *testing.T) {
+	origTryResume := tryResumeSessionFn
+	origTryResumeLast := tryResumeLastFn
+	origPromptPassword := promptPasswordFn
+	origWebLogin := webLoginFn
+	origExpiredWriter := sessionExpiredWriter
+	t.Cleanup(func() {
+		tryResumeSessionFn = origTryResume
+		tryResumeLastFn = origTryResumeLast
+		promptPasswordFn = origPromptPassword
+		webLoginFn = origWebLogin
+		sessionExpiredWriter = origExpiredWriter
+	})
+
+	t.Setenv("ASC_WEB_SESSION_CACHE", "0")
+	t.Setenv(webPasswordEnv, "")
+
+	expected := &webcore.AuthSession{UserEmail: "user@example.com"}
+	var notice bytes.Buffer
+	sessionExpiredWriter = &notice
+
+	tryResumeSessionFn = func(ctx context.Context, username string) (*webcore.AuthSession, bool, error) {
+		if username != "user@example.com" {
+			t.Fatalf("expected username user@example.com, got %q", username)
+		}
+		return nil, false, webcore.ErrCachedSessionExpired
+	}
+	tryResumeLastFn = func(ctx context.Context) (*webcore.AuthSession, bool, error) {
+		t.Fatal("did not expect last-session cache lookup when apple-id is provided")
+		return nil, false, nil
+	}
+	promptPasswordFn = func() (string, error) {
+		if got := notice.String(); got != "Session expired.\n" {
+			t.Fatalf("expected expired notice before password prompt, got %q", got)
+		}
+		return "secret", nil
+	}
+	webLoginFn = func(ctx context.Context, creds webcore.LoginCredentials) (*webcore.AuthSession, error) {
+		if creds.Username != "user@example.com" {
+			t.Fatalf("expected login username user@example.com, got %q", creds.Username)
+		}
+		if creds.Password != "secret" {
+			t.Fatalf("expected prompted password to be used, got %q", creds.Password)
+		}
+		return expected, nil
+	}
+
+	session, source, err := resolveSession(context.Background(), "user@example.com", "", "")
+	if err != nil {
+		t.Fatalf("resolveSession returned error: %v", err)
+	}
+	if source != "fresh" {
+		t.Fatalf("expected source %q, got %q", "fresh", source)
+	}
+	if session != expected {
+		t.Fatal("expected fresh login session to be returned")
+	}
+	if got := notice.String(); got != "Session expired.\n" {
+		t.Fatalf("expected expired notice output, got %q", got)
 	}
 }

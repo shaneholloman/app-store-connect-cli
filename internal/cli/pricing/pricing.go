@@ -27,6 +27,7 @@ Examples:
   asc pricing price-points --app "123456789" --territory "USA"
   asc pricing price-points get --price-point "PRICE_POINT_ID"
   asc pricing price-points equalizations --price-point "PRICE_POINT_ID"
+  asc pricing tiers --app "123456789" --territory "USA"
   asc pricing schedule get --app "123456789"
   asc pricing schedule get --id "SCHEDULE_ID"
   asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --base-territory "USA" --start-date "2024-03-01"
@@ -34,12 +35,13 @@ Examples:
   asc pricing schedule automatic-prices --schedule "SCHEDULE_ID"
   asc pricing availability get --app "123456789"
   asc pricing availability get --id "AVAILABILITY_ID"
-  asc pricing availability set --app "123456789" --territory "USA,GBR,DEU" --available true
+  asc pricing availability set --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true
   asc pricing availability territory-availabilities --availability "AVAILABILITY_ID"`,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			PricingTerritoriesCommand(),
 			PricingPricePointsCommand(),
+			PricingTiersCommand(),
 			PricingScheduleCommand(),
 			PricingAvailabilityCommand(),
 		},
@@ -501,7 +503,7 @@ func PricingAvailabilityCommand() *ffcli.Command {
 Examples:
   asc pricing availability get --app "123456789"
   asc pricing availability get --id "AVAILABILITY_ID"
-  asc pricing availability set --app "123456789" --territory "USA,GBR,DEU" --available true
+  asc pricing availability set --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true
   asc pricing availability territory-availabilities --availability "AVAILABILITY_ID"`,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -627,7 +629,8 @@ func PricingAvailabilitySetCommand() *ffcli.Command {
 		LongHelp: `Set app availability for territories.
 
 Examples:
-  asc pricing availability set --app "123456789" --territory "USA,GBR,DEU" --available true`,
-		ErrorPrefix: "pricing availability set",
+  asc pricing availability set --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true`,
+		ErrorPrefix:                      "pricing availability set",
+		IncludeAvailableInNewTerritories: true,
 	})
 }

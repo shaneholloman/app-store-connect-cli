@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -10,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,95 @@ import (
 	"testing"
 	"time"
 )
+
+func TestLogWebAuthHTTPRedactsSensitiveQueryValues(t *testing.T) {
+	origLogger := webDebugLogger
+	origDebugEnabled := webDebugEnabledFn
+	t.Cleanup(func() {
+		webDebugLogger = origLogger
+		webDebugEnabledFn = origDebugEnabled
+	})
+
+	var logs bytes.Buffer
+	webDebugLogger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return attr
+		},
+	}))
+	webDebugEnabledFn = func() bool { return true }
+
+	req, err := http.NewRequest(http.MethodPost, "https://idmsa.apple.com/appleauth/auth/signin?widgetKey=super-secret-widget-key&flow=login", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusUnauthorized,
+		Header: http.Header{
+			"X-Apple-Request-Uuid":           []string{"req-123"},
+			"X-Apple-Jingle-Correlation-Key": []string{"corr-456"},
+		},
+	}
+
+	logWebAuthHTTP("signin_complete", req, resp, []byte(`{"serviceErrors":[{"code":"AUTH-401"}]}`), nil)
+
+	output := logs.String()
+	if !strings.Contains(output, "stage=signin_complete") {
+		t.Fatalf("expected stage in debug output, got %q", output)
+	}
+	if !strings.Contains(output, "status=401") {
+		t.Fatalf("expected status in debug output, got %q", output)
+	}
+	if !strings.Contains(output, "request_id=req-123") {
+		t.Fatalf("expected request id in debug output, got %q", output)
+	}
+	if !strings.Contains(output, "correlation_key=corr-456") {
+		t.Fatalf("expected correlation key in debug output, got %q", output)
+	}
+	if !strings.Contains(output, "codes=AUTH-401") {
+		t.Fatalf("expected service error code in debug output, got %q", output)
+	}
+	if strings.Contains(output, "super-secret-widget-key") {
+		t.Fatalf("expected sensitive widget key to be redacted, got %q", output)
+	}
+	if !strings.Contains(output, "%5BREDACTED%5D") {
+		t.Fatalf("expected redacted marker in debug output, got %q", output)
+	}
+}
+
+func TestLogWebAuthHTTPNoopWhenDebugDisabled(t *testing.T) {
+	origLogger := webDebugLogger
+	origDebugEnabled := webDebugEnabledFn
+	t.Cleanup(func() {
+		webDebugLogger = origLogger
+		webDebugEnabledFn = origDebugEnabled
+	})
+
+	var logs bytes.Buffer
+	webDebugLogger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return attr
+		},
+	}))
+	webDebugEnabledFn = func() bool { return false }
+
+	req, err := http.NewRequest(http.MethodGet, "https://idmsa.apple.com/appleauth/auth", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	logWebAuthHTTP("session_info", req, &http.Response{StatusCode: http.StatusOK, Header: make(http.Header)}, nil, nil)
+
+	if logs.Len() != 0 {
+		t.Fatalf("expected no debug output when disabled, got %q", logs.String())
+	}
+}
 
 func TestPreparePasswordForProtocol(t *testing.T) {
 	t.Run("s2k", func(t *testing.T) {

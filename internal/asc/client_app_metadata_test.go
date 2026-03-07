@@ -42,18 +42,78 @@ func TestGetAppSearchKeywords_SendsRequestWithFilters(t *testing.T) {
 	}
 }
 
-func TestGetAppSearchKeywords_UsesNextURL(t *testing.T) {
-	next := "https://api.appstoreconnect.apple.com/v1/apps/app-1/searchKeywords?cursor=abc"
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.URL.String() != next {
-			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
-		}
-		assertAuthorized(t, req)
-	}, response)
+func TestAppMetadataListEndpoints_UseNextURL(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name string
+		next string
+		call func(*Client, string) error
+	}{
+		{
+			name: "GetAppSearchKeywords",
+			next: "https://api.appstoreconnect.apple.com/v1/apps/app-1/searchKeywords?cursor=abc",
+			call: func(c *Client, next string) error {
+				_, err := c.GetAppSearchKeywords(ctx, "", WithAppSearchKeywordsNextURL(next))
+				return err
+			},
+		},
+		{
+			name: "GetAppStoreVersionLocalizationPreviewSetsRelationships",
+			next: "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/loc-1/relationships/appPreviewSets?cursor=abc",
+			call: func(c *Client, next string) error {
+				_, err := c.GetAppStoreVersionLocalizationPreviewSetsRelationships(ctx, "", WithLinkagesNextURL(next))
+				return err
+			},
+		},
+		{
+			name: "GetAppStoreVersionLocalizationScreenshotSetsRelationships",
+			next: "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/loc-1/relationships/appScreenshotSets?cursor=abc",
+			call: func(c *Client, next string) error {
+				_, err := c.GetAppStoreVersionLocalizationScreenshotSetsRelationships(ctx, "", WithLinkagesNextURL(next))
+				return err
+			},
+		},
+		{
+			name: "GetAppCategorySubcategories",
+			next: "https://api.appstoreconnect.apple.com/v1/appCategories/GAMES/subcategories?cursor=abc",
+			call: func(c *Client, next string) error {
+				_, err := c.GetAppCategorySubcategories(ctx, "", WithAppCategoriesNextURL(next))
+				return err
+			},
+		},
+		{
+			name: "GetAppInfoTerritoryAgeRatingsRelationships",
+			next: "https://api.appstoreconnect.apple.com/v1/appInfos/info-1/relationships/territoryAgeRatings?cursor=abc",
+			call: func(c *Client, next string) error {
+				_, err := c.GetAppInfoTerritoryAgeRatingsRelationships(ctx, "", WithLinkagesNextURL(next))
+				return err
+			},
+		},
+		{
+			name: "GetAppInfoTerritoryAgeRatings",
+			next: "https://api.appstoreconnect.apple.com/v1/appInfos/info-1/territoryAgeRatings?cursor=abc",
+			call: func(c *Client, next string) error {
+				_, err := c.GetAppInfoTerritoryAgeRatings(ctx, "", WithTerritoryAgeRatingsNextURL(next))
+				return err
+			},
+		},
+	}
 
-	if _, err := client.GetAppSearchKeywords(context.Background(), "", WithAppSearchKeywordsNextURL(next)); err != nil {
-		t.Fatalf("GetAppSearchKeywords() error: %v", err)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			response := jsonResponse(http.StatusOK, `{"data":[]}`)
+			client := newTestClient(t, func(req *http.Request) {
+				if req.URL.String() != tt.next {
+					t.Fatalf("expected next URL %q, got %q", tt.next, req.URL.String())
+				}
+				assertAuthorized(t, req)
+			}, response)
+
+			if err := tt.call(client, tt.next); err != nil {
+				t.Fatalf("%s() error: %v", tt.name, err)
+			}
+		})
 	}
 }
 
@@ -199,21 +259,6 @@ func TestGetAppStoreVersionLocalizationPreviewSets_SendsRequestWithLimit(t *test
 	}
 }
 
-func TestGetAppStoreVersionLocalizationPreviewSetsRelationships_UsesNextURL(t *testing.T) {
-	next := "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/loc-1/relationships/appPreviewSets?cursor=abc"
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.URL.String() != next {
-			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
-		}
-		assertAuthorized(t, req)
-	}, response)
-
-	if _, err := client.GetAppStoreVersionLocalizationPreviewSetsRelationships(context.Background(), "", WithLinkagesNextURL(next)); err != nil {
-		t.Fatalf("GetAppStoreVersionLocalizationPreviewSetsRelationships() error: %v", err)
-	}
-}
-
 func TestGetAppStoreVersionLocalizationScreenshotSets_SendsRequestWithLimit(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[]}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -231,21 +276,6 @@ func TestGetAppStoreVersionLocalizationScreenshotSets_SendsRequestWithLimit(t *t
 
 	if _, err := client.GetAppStoreVersionLocalizationScreenshotSets(context.Background(), "loc-1", WithAppStoreVersionLocalizationScreenshotSetsLimit(5)); err != nil {
 		t.Fatalf("GetAppStoreVersionLocalizationScreenshotSets() error: %v", err)
-	}
-}
-
-func TestGetAppStoreVersionLocalizationScreenshotSetsRelationships_UsesNextURL(t *testing.T) {
-	next := "https://api.appstoreconnect.apple.com/v1/appStoreVersionLocalizations/loc-1/relationships/appScreenshotSets?cursor=abc"
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.URL.String() != next {
-			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
-		}
-		assertAuthorized(t, req)
-	}, response)
-
-	if _, err := client.GetAppStoreVersionLocalizationScreenshotSetsRelationships(context.Background(), "", WithLinkagesNextURL(next)); err != nil {
-		t.Fatalf("GetAppStoreVersionLocalizationScreenshotSetsRelationships() error: %v", err)
 	}
 }
 
@@ -405,43 +435,65 @@ func TestGetAppStoreVersionAppClipDefaultExperience_SendsRequest(t *testing.T) {
 	}
 }
 
-func TestGetAppStoreVersionExperimentsV2ForVersion_WithLimit(t *testing.T) {
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.Method != http.MethodGet {
-			t.Fatalf("expected GET, got %s", req.Method)
-		}
-		if req.URL.Path != "/v1/appStoreVersions/version-1/appStoreVersionExperimentsV2" {
-			t.Fatalf("expected path /v1/appStoreVersions/version-1/appStoreVersionExperimentsV2, got %s", req.URL.Path)
-		}
-		if req.URL.Query().Get("limit") != "12" {
-			t.Fatalf("expected limit=12, got %q", req.URL.Query().Get("limit"))
-		}
-		assertAuthorized(t, req)
-	}, response)
-
-	if _, err := client.GetAppStoreVersionExperimentsV2ForVersion(context.Background(), "version-1", WithAppStoreVersionExperimentsV2Limit(12)); err != nil {
-		t.Fatalf("GetAppStoreVersionExperimentsV2ForVersion() error: %v", err)
+func TestAppStoreVersionListEndpoints_WithLimit(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name     string
+		path     string
+		limit    string
+		response string
+		call     func(*testing.T, *Client)
+	}{
+		{
+			name:     "GetAppStoreVersionExperimentsV2ForVersion",
+			path:     "/v1/appStoreVersions/version-1/appStoreVersionExperimentsV2",
+			limit:    "12",
+			response: `{"data":[{"type":"appStoreVersionExperiments","id":"exp-1"}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionExperimentsV2ForVersion(ctx, "version-1", WithAppStoreVersionExperimentsV2Limit(12))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionExperimentsV2ForVersion() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].ID != "exp-1" {
+					t.Fatalf("expected decoded app store version experiment, got %+v", resp.Data)
+				}
+			},
+		},
+		{
+			name:     "GetAppStoreVersionCustomerReviews",
+			path:     "/v1/appStoreVersions/version-1/customerReviews",
+			limit:    "5",
+			response: `{"data":[{"type":"customerReviews","id":"review-1","attributes":{"rating":5,"title":"Great"}}]}`,
+			call: func(t *testing.T, c *Client) {
+				resp, err := c.GetAppStoreVersionCustomerReviews(ctx, "version-1", WithLimit(5))
+				if err != nil {
+					t.Fatalf("GetAppStoreVersionCustomerReviews() error: %v", err)
+				}
+				if len(resp.Data) != 1 || resp.Data[0].Attributes.Rating != 5 {
+					t.Fatalf("expected decoded customer review, got %+v", resp.Data)
+				}
+			},
+		},
 	}
-}
 
-func TestGetAppStoreVersionCustomerReviews_WithLimit(t *testing.T) {
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.Method != http.MethodGet {
-			t.Fatalf("expected GET, got %s", req.Method)
-		}
-		if req.URL.Path != "/v1/appStoreVersions/version-1/customerReviews" {
-			t.Fatalf("expected path /v1/appStoreVersions/version-1/customerReviews, got %s", req.URL.Path)
-		}
-		if req.URL.Query().Get("limit") != "5" {
-			t.Fatalf("expected limit=5, got %q", req.URL.Query().Get("limit"))
-		}
-		assertAuthorized(t, req)
-	}, response)
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			client := newTestClient(t, func(req *http.Request) {
+				if req.Method != http.MethodGet {
+					t.Fatalf("expected GET, got %s", req.Method)
+				}
+				if req.URL.Path != tt.path {
+					t.Fatalf("expected path %s, got %s", tt.path, req.URL.Path)
+				}
+				if req.URL.Query().Get("limit") != tt.limit {
+					t.Fatalf("expected limit=%s, got %q", tt.limit, req.URL.Query().Get("limit"))
+				}
+				assertAuthorized(t, req)
+			}, jsonResponse(http.StatusOK, tt.response))
 
-	if _, err := client.GetAppStoreVersionCustomerReviews(context.Background(), "version-1", WithLimit(5)); err != nil {
-		t.Fatalf("GetAppStoreVersionCustomerReviews() error: %v", err)
+			tt.call(t, client)
+		})
 	}
 }
 
@@ -499,21 +551,6 @@ func TestGetAppCategorySubcategories_SendsRequestWithLimit(t *testing.T) {
 	}
 }
 
-func TestGetAppCategorySubcategories_UsesNextURL(t *testing.T) {
-	next := "https://api.appstoreconnect.apple.com/v1/appCategories/GAMES/subcategories?cursor=abc"
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.URL.String() != next {
-			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
-		}
-		assertAuthorized(t, req)
-	}, response)
-
-	if _, err := client.GetAppCategorySubcategories(context.Background(), "", WithAppCategoriesNextURL(next)); err != nil {
-		t.Fatalf("GetAppCategorySubcategories() error: %v", err)
-	}
-}
-
 func TestGetAlternativeDistributionPackageForVersion_SendsRequest(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":{"type":"alternativeDistributionPackages","id":"pkg-1"}}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -548,6 +585,74 @@ func TestGetAppInfo_SendsRequestWithInclude(t *testing.T) {
 
 	if _, err := client.GetAppInfo(context.Background(), "info-1", WithAppInfoInclude([]string{"ageRatingDeclaration"})); err != nil {
 		t.Fatalf("GetAppInfo() error: %v", err)
+	}
+}
+
+func TestUpdateAppInfoCategories_SendsSubcategoryRelationships(t *testing.T) {
+	response := jsonResponse(http.StatusOK, `{"data":{"type":"appInfos","id":"info-1","attributes":{"state":"READY"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appInfos/info-1" {
+			t.Fatalf("expected path /v1/appInfos/info-1, got %s", req.URL.Path)
+		}
+
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+
+		var payload AppInfoUpdateCategoriesRequest
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+
+		if payload.Data.Type != ResourceTypeAppInfos {
+			t.Fatalf("expected type appInfos, got %q", payload.Data.Type)
+		}
+		if payload.Data.ID != "info-1" {
+			t.Fatalf("expected id info-1, got %q", payload.Data.ID)
+		}
+		if payload.Data.Relationships == nil {
+			t.Fatal("expected relationships payload")
+		}
+
+		rels := payload.Data.Relationships
+		if rels.PrimaryCategory == nil || rels.PrimaryCategory.Data.ID != "GAMES" {
+			t.Fatalf("expected primaryCategory GAMES, got %+v", rels.PrimaryCategory)
+		}
+		if rels.SecondaryCategory == nil || rels.SecondaryCategory.Data.ID != "ENTERTAINMENT" {
+			t.Fatalf("expected secondaryCategory ENTERTAINMENT, got %+v", rels.SecondaryCategory)
+		}
+		if rels.PrimarySubcategoryOne == nil || rels.PrimarySubcategoryOne.Data.ID != "GAMES_ACTION" {
+			t.Fatalf("expected primarySubcategoryOne GAMES_ACTION, got %+v", rels.PrimarySubcategoryOne)
+		}
+		if rels.PrimarySubcategoryTwo == nil || rels.PrimarySubcategoryTwo.Data.ID != "GAMES_SIMULATION" {
+			t.Fatalf("expected primarySubcategoryTwo GAMES_SIMULATION, got %+v", rels.PrimarySubcategoryTwo)
+		}
+		if rels.SecondarySubcategoryOne == nil || rels.SecondarySubcategoryOne.Data.ID != "ENTERTAINMENT_KIDS" {
+			t.Fatalf("expected secondarySubcategoryOne ENTERTAINMENT_KIDS, got %+v", rels.SecondarySubcategoryOne)
+		}
+		if rels.SecondarySubcategoryTwo == nil || rels.SecondarySubcategoryTwo.Data.ID != "ENTERTAINMENT_MUSIC" {
+			t.Fatalf("expected secondarySubcategoryTwo ENTERTAINMENT_MUSIC, got %+v", rels.SecondarySubcategoryTwo)
+		}
+
+		assertAuthorized(t, req)
+	}, response)
+
+	_, err := client.UpdateAppInfoCategories(
+		context.Background(),
+		"info-1",
+		"GAMES",
+		"ENTERTAINMENT",
+		"GAMES_ACTION",
+		"GAMES_SIMULATION",
+		"ENTERTAINMENT_KIDS",
+		"ENTERTAINMENT_MUSIC",
+	)
+	if err != nil {
+		t.Fatalf("UpdateAppInfoCategories() error: %v", err)
 	}
 }
 
@@ -679,21 +784,6 @@ func TestGetAppInfoCategoryRelatedResources_SendsRequest(t *testing.T) {
 	}
 }
 
-func TestGetAppInfoTerritoryAgeRatingsRelationships_UsesNextURL(t *testing.T) {
-	next := "https://api.appstoreconnect.apple.com/v1/appInfos/info-1/relationships/territoryAgeRatings?cursor=abc"
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.URL.String() != next {
-			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
-		}
-		assertAuthorized(t, req)
-	}, response)
-
-	if _, err := client.GetAppInfoTerritoryAgeRatingsRelationships(context.Background(), "", WithLinkagesNextURL(next)); err != nil {
-		t.Fatalf("GetAppInfoTerritoryAgeRatingsRelationships() error: %v", err)
-	}
-}
-
 func TestGetAppInfoTerritoryAgeRatings_SendsRequest(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[]}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -726,21 +816,6 @@ func TestGetAppInfoTerritoryAgeRatings_SendsRequest(t *testing.T) {
 		WithTerritoryAgeRatingsLimit(10),
 	)
 	if err != nil {
-		t.Fatalf("GetAppInfoTerritoryAgeRatings() error: %v", err)
-	}
-}
-
-func TestGetAppInfoTerritoryAgeRatings_UsesNextURL(t *testing.T) {
-	next := "https://api.appstoreconnect.apple.com/v1/appInfos/info-1/territoryAgeRatings?cursor=abc"
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
-	client := newTestClient(t, func(req *http.Request) {
-		if req.URL.String() != next {
-			t.Fatalf("expected next URL %q, got %q", next, req.URL.String())
-		}
-		assertAuthorized(t, req)
-	}, response)
-
-	if _, err := client.GetAppInfoTerritoryAgeRatings(context.Background(), "", WithTerritoryAgeRatingsNextURL(next)); err != nil {
 		t.Fatalf("GetAppInfoTerritoryAgeRatings() error: %v", err)
 	}
 }

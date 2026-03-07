@@ -9,7 +9,7 @@ Agent Skills for automating `asc` workflows including builds, TestFlight, metada
 ## Core Principles
 
 - **Explicit flags**: Use long-form flags in docs/tests/examples (`--app`, `--output`) for clarity
-- **JSON-first**: Minified JSON by default (saves tokens), `--output table/markdown` for humans
+- **TTY-aware output defaults**: `table` in interactive terminals, `json` for pipes/CI; use `--output` for explicit formats
 - **No interactive prompts**: Use `--confirm` flags for destructive operations
 - **Pagination**: `--paginate` fetches all pages automatically
 
@@ -54,10 +54,26 @@ Canonical test rule: all test runs must use `ASC_BYPASS_KEYCHAIN=1` to avoid hos
 
 ## PR Guardrails
 
-- Before opening or merging a PR, run `make format`, `make lint`, and `ASC_BYPASS_KEYCHAIN=1 make test`.
+- Before opening or merging a PR, run `make format`, `make check-command-docs`, `make lint`, and `ASC_BYPASS_KEYCHAIN=1 make test`.
+- If command/help text changed, run `make generate-command-docs` and commit `docs/COMMANDS.md` before running checks.
 - Use `make install-hooks` once per clone to enforce local pre-commit checks.
 - CI must enforce formatting + lint + tests on both PR and `main` workflows.
 - Remove unused shared wrappers/helpers when commands are refactored.
+
+## Issue Triage & Labeling
+
+- When creating or triaging a GitHub issue, ensure it ends the task with exactly one label
+  from each of these buckets:
+  - type: `bug`, `enhancement`, or `question`
+  - priority: `p0`, `p1`, `p2`, or `p3`
+  - difficulty: `easy`, `medium`, or `hard`
+- If an issue is created without labels, add the missing labels immediately as part of the
+  same task.
+- Use priority for urgency and user impact, not implementation size.
+- Use difficulty for implementation scope/risk, not urgency.
+- Do not leave newly created issues without a type, priority, and difficulty label.
+- If the exact label is ambiguous, prefer the lower priority/difficulty and note the
+  assumption in the handoff.
 
 ## Testing Discipline
 
@@ -110,6 +126,7 @@ Canonical test rule: all test runs must use `ASC_BYPASS_KEYCHAIN=1` to avoid hos
     - Prefer read-only commands first; for write operations, use a throwaway app/resource and clean up (create-then-delete).
 - Before opening/updating a PR, always run:
   - `make format`
+  - `make check-command-docs`
   - `make lint`
   - `ASC_BYPASS_KEYCHAIN=1 make test`
 - In the PR description or handoff, include:
@@ -180,7 +197,8 @@ API keys are generated at https://appstoreconnect.apple.com/access/integrations/
 | `ASC_DEBUG` | Enable debug logging (set to `api` for HTTP requests/responses) |
 | `ASC_DEFAULT_OUTPUT` | Default output format: `json`, `table`, `markdown`, or `md` |
 
-Explicit `--output` flags always override `ASC_DEFAULT_OUTPUT`.
+When `ASC_DEFAULT_OUTPUT` is unset, defaults are TTY-aware (`table` in terminals, `json` for non-interactive output).
+Explicit `--output` flags always override `ASC_DEFAULT_OUTPUT` and TTY-aware defaults.
 
 ## References
 

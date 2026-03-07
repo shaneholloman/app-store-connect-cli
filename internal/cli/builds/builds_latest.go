@@ -2,6 +2,7 @@ package builds
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -23,6 +24,7 @@ func BuildsLatestCommand() *ffcli.Command {
 	appID := fs.String("app", "", "App Store Connect app ID, bundle ID, or exact app name (required, or ASC_APP_ID env)")
 	version := fs.String("version", "", "Filter by version string (e.g., 1.2.3); requires --platform for deterministic results")
 	platform := fs.String("platform", "", "Filter by platform: IOS, MAC_OS, TV_OS, VISION_OS")
+	processingState := fs.String("processing-state", "", "Filter by processing state: VALID, PROCESSING, FAILED, INVALID, or all")
 	output := shared.BindOutputFlags(fs)
 	next := fs.Bool("next", false, "Return next build number using processed builds and in-flight uploads")
 	initialBuildNumber := fs.Int("initial-build-number", 1, "Initial build number when none exist (used with --next)")
@@ -46,6 +48,10 @@ Platform and version filtering:
   --version alone     Returns latest build for that version (may be any platform)
   --platform + --version  Returns latest build matching both (recommended)
 
+Processing state filtering:
+  --processing-state  Filter by build processing states (VALID, PROCESSING,
+                      FAILED, INVALID) or use "all"
+
 Next build number mode:
   --next              Returns the next build number (latest + 1) using
                       processed builds and in-flight uploads
@@ -65,6 +71,9 @@ Examples:
 
   # Get latest build for a version (any platform - nondeterministic if multi-platform)
   asc builds latest --app "123456789" --version "1.2.3"
+
+  # Get latest build constrained to processing states
+  asc builds latest --app "123456789" --processing-state "PROCESSING,VALID"
 
   # Human-readable output
   asc builds latest --app "123456789" --output table
@@ -97,6 +106,10 @@ Examples:
 			}
 
 			normalizedVersion := strings.TrimSpace(*version)
+			processingStateValues, err := normalizeBuildProcessingStateFilter(*processingState)
+			if err != nil {
+				return err
+			}
 			if *initialBuildNumber < 1 {
 				fmt.Fprintf(os.Stderr, "Error: --initial-build-number must be >= 1\n\n")
 				return flag.ErrHelp
@@ -145,27 +158,25 @@ Examples:
 			var latestBuild *asc.BuildResponse
 
 			if !hasPreReleaseFilters {
-				// No filters - just get the latest build for the app
+				// No filters: favor the first page (server sorted by uploadedDate), while
+				// probing additional pages only when ordering looks inconsistent.
 				opts := []asc.BuildsOption{
 					asc.WithBuildsSort("-uploadedDate"),
-					asc.WithBuildsLimit(1),
+					asc.WithBuildsLimit(200),
+				}
+				if len(processingStateValues) > 0 {
+					opts = append(opts, asc.WithBuildsProcessingStates(processingStateValues))
 				}
 				if excludeExpiredValue {
 					opts = append(opts, asc.WithBuildsExpired(false))
 				}
-				builds, err := client.GetBuilds(requestCtx, resolvedAppID, opts...)
+
+				latestBuild, err = findMostRecentlyUploadedBuild(requestCtx, client, resolvedAppID, opts...)
 				if err != nil {
-					return fmt.Errorf("builds latest: failed to fetch: %w", err)
+					return fmt.Errorf("builds latest: %w", err)
 				}
-				if len(builds.Data) == 0 {
-					if !*next {
-						return fmt.Errorf("builds latest: no builds found for app %s", resolvedAppID)
-					}
-				} else {
-					latestBuild = &asc.BuildResponse{
-						Data:  builds.Data[0],
-						Links: builds.Links,
-					}
+				if latestBuild == nil && !*next {
+					return fmt.Errorf("builds latest: no builds found for app %s", resolvedAppID)
 				}
 			} else if len(preReleaseVersionIDs) == 1 {
 				// Single preReleaseVersion - straightforward query
@@ -173,6 +184,9 @@ Examples:
 					asc.WithBuildsSort("-uploadedDate"),
 					asc.WithBuildsLimit(1),
 					asc.WithBuildsPreReleaseVersion(preReleaseVersionIDs[0]),
+				}
+				if len(processingStateValues) > 0 {
+					opts = append(opts, asc.WithBuildsProcessingStates(processingStateValues))
 				}
 				if excludeExpiredValue {
 					opts = append(opts, asc.WithBuildsExpired(false))
@@ -195,13 +209,15 @@ Examples:
 				// Multiple preReleaseVersions (platform filter without version filter)
 				// Query each and find the one with the most recent uploadedDate
 				var newestBuild *asc.Resource[asc.BuildAttributes]
-				var newestDate string
 
 				for _, prvID := range preReleaseVersionIDs {
 					opts := []asc.BuildsOption{
 						asc.WithBuildsSort("-uploadedDate"),
 						asc.WithBuildsLimit(1),
 						asc.WithBuildsPreReleaseVersion(prvID),
+					}
+					if len(processingStateValues) > 0 {
+						opts = append(opts, asc.WithBuildsProcessingStates(processingStateValues))
 					}
 					if excludeExpiredValue {
 						opts = append(opts, asc.WithBuildsExpired(false))
@@ -211,9 +227,10 @@ Examples:
 						return fmt.Errorf("builds latest: failed to fetch: %w", err)
 					}
 					if len(builds.Data) > 0 {
-						if newestBuild == nil || builds.Data[0].Attributes.UploadedDate > newestDate {
-							newestBuild = &builds.Data[0]
-							newestDate = builds.Data[0].Attributes.UploadedDate
+						candidate := builds.Data[0]
+						if newestBuild == nil || isMoreRecentUploadedBuild(candidate, *newestBuild) {
+							selected := candidate
+							newestBuild = &selected
 						}
 					}
 				}
@@ -357,6 +374,153 @@ func findPreReleaseVersionIDs(ctx context.Context, client *asc.Client, appID, ve
 	}
 
 	return ids, nil
+}
+
+func findMostRecentlyUploadedBuild(
+	ctx context.Context,
+	client *asc.Client,
+	appID string,
+	opts ...asc.BuildsOption,
+) (*asc.BuildResponse, error) {
+	const buildsLatestScanPageLimit = 10
+
+	firstPage, err := client.GetBuilds(ctx, appID, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch builds: %w", err)
+	}
+
+	var latest *asc.Resource[asc.BuildAttributes]
+	latestLinks := asc.Links{}
+	consumePage := func(page *asc.BuildsResponse) bool {
+		pageHadStrictlyNewer := false
+		pageLinks := page.GetLinks()
+		for i := range page.Data {
+			candidate := page.Data[i]
+			if latest != nil && isStrictlyMoreRecentUploadedBuild(candidate, *latest) {
+				pageHadStrictlyNewer = true
+			}
+			if latest == nil || isMoreRecentUploadedBuild(candidate, *latest) {
+				selected := candidate
+				latest = &selected
+				if pageLinks != nil {
+					latestLinks = *pageLinks
+				} else {
+					latestLinks = asc.Links{}
+				}
+			}
+		}
+		return pageHadStrictlyNewer
+	}
+	consumePage(firstPage)
+
+	if latest == nil {
+		return nil, nil
+	}
+
+	links := firstPage.GetLinks()
+	if links == nil || links.Next == "" {
+		return &asc.BuildResponse{
+			Data:  *latest,
+			Links: latestLinks,
+		}, nil
+	}
+
+	nextURL := links.Next
+	pagesScanned := 1
+	anomalyDetected := false
+	seenProbeURLs := map[string]struct{}{}
+	for nextURL != "" && pagesScanned < buildsLatestScanPageLimit {
+		if _, seen := seenProbeURLs[nextURL]; seen {
+			return nil, fmt.Errorf("failed to paginate builds: %w: %s", asc.ErrRepeatedPaginationURL, nextURL)
+		}
+		seenProbeURLs[nextURL] = struct{}{}
+
+		nextPage, err := client.GetBuilds(ctx, appID, asc.WithBuildsNextURL(nextURL))
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("failed to paginate builds: page %d: %w", pagesScanned+1, err)
+			}
+			if ctxErr := ctx.Err(); errors.Is(ctxErr, context.Canceled) || errors.Is(ctxErr, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("failed to paginate builds: page %d: %w", pagesScanned+1, ctxErr)
+			}
+			// Probing additional pages is best-effort. If a probe page fails, keep
+			// the best candidate gathered so far instead of failing the command.
+			break
+		}
+		pagesScanned++
+
+		pageHadNewer := consumePage(nextPage)
+		pageLinks := nextPage.GetLinks()
+		if pageLinks != nil && pageLinks.Next != "" {
+			if _, seen := seenProbeURLs[pageLinks.Next]; seen {
+				return nil, fmt.Errorf("failed to paginate builds: %w: %s", asc.ErrRepeatedPaginationURL, pageLinks.Next)
+			}
+		}
+
+		if !anomalyDetected {
+			// Normal case: page 1 already contains the latest item.
+			// Stop immediately once a later page fails to produce a newer build.
+			if !pageHadNewer {
+				break
+			}
+			// If a later page is newer than page 1, ordering is inconsistent.
+			// Continue scanning remaining pages until pagination exhausts or
+			// we hit the safety cap so non-monotonic sequences are handled.
+			anomalyDetected = true
+		}
+
+		if pageLinks == nil || pageLinks.Next == "" {
+			nextURL = ""
+			break
+		}
+		nextURL = pageLinks.Next
+	}
+	if nextURL != "" && pagesScanned >= buildsLatestScanPageLimit {
+		return nil, fmt.Errorf("failed to paginate builds: reached scan cap of %d pages with additional pages remaining", buildsLatestScanPageLimit)
+	}
+
+	return &asc.BuildResponse{
+		Data:  *latest,
+		Links: latestLinks,
+	}, nil
+}
+
+func isStrictlyMoreRecentUploadedBuild(candidate, current asc.Resource[asc.BuildAttributes]) bool {
+	comparison := compareUploadedDate(candidate.Attributes.UploadedDate, current.Attributes.UploadedDate)
+	return comparison > 0
+}
+
+func isMoreRecentUploadedBuild(candidate, current asc.Resource[asc.BuildAttributes]) bool {
+	comparison := compareUploadedDate(candidate.Attributes.UploadedDate, current.Attributes.UploadedDate)
+	if comparison != 0 {
+		return comparison > 0
+	}
+
+	// Break ties deterministically to avoid unstable output for identical timestamps.
+	return candidate.ID > current.ID
+}
+
+func compareUploadedDate(left, right string) int {
+	leftParsed, leftErr := parseBuildTimestamp(left)
+	rightParsed, rightErr := parseBuildTimestamp(right)
+
+	switch {
+	case leftErr == nil && rightErr == nil:
+		if leftParsed.After(rightParsed) {
+			return 1
+		}
+		if leftParsed.Before(rightParsed) {
+			return -1
+		}
+		return 0
+	case leftErr == nil && rightErr != nil:
+		return 1
+	case leftErr != nil && rightErr == nil:
+		return -1
+	default:
+		// Fallback for unexpected timestamp formats.
+		return strings.Compare(strings.TrimSpace(left), strings.TrimSpace(right))
+	}
 }
 
 func findLatestBuildUploadNumber(

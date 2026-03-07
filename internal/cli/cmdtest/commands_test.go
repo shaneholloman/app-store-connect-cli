@@ -453,6 +453,8 @@ func TestBuildsGroupValidationErrors(t *testing.T) {
 }
 
 func TestBuildsWaitValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+
 	tests := []struct {
 		name    string
 		args    []string
@@ -461,12 +463,17 @@ func TestBuildsWaitValidationErrors(t *testing.T) {
 		{
 			name:    "builds wait missing selectors",
 			args:    []string{"builds", "wait"},
-			wantErr: "Error: --build is required, or provide --app and --build-number",
+			wantErr: "Error: --app is required when --build is not provided",
+		},
+		{
+			name:    "builds wait app missing selector hints",
+			args:    []string{"builds", "wait", "--app", "APP_123"},
+			wantErr: "provide at least one app-scoped selector",
 		},
 		{
 			name:    "builds wait selectors mutually exclusive",
 			args:    []string{"builds", "wait", "--build", "BUILD_123", "--app", "APP_123", "--build-number", "42"},
-			wantErr: "--build is mutually exclusive with --app/--build-number",
+			wantErr: "--build is mutually exclusive with app-scoped selectors",
 		},
 		{
 			name:    "builds wait invalid poll interval",
@@ -477,6 +484,11 @@ func TestBuildsWaitValidationErrors(t *testing.T) {
 			name:    "builds wait invalid timeout",
 			args:    []string{"builds", "wait", "--build", "BUILD_123", "--timeout", "0s"},
 			wantErr: "--timeout must be greater than 0",
+		},
+		{
+			name:    "builds wait invalid since timestamp",
+			args:    []string{"builds", "wait", "--app", "APP_123", "--newest", "--since", "nope"},
+			wantErr: "--since must be an RFC3339 timestamp",
 		},
 	}
 
@@ -1092,7 +1104,7 @@ func TestIAPValidationErrors(t *testing.T) {
 		{
 			name:    "iap price-schedules create missing prices",
 			args:    []string{"iap", "price-schedules", "create", "--iap-id", "IAP_ID", "--base-territory", "USA"},
-			wantErr: "--prices is required",
+			wantErr: "--prices (or --tier/--price) is required",
 		},
 		{
 			name:    "iap price-schedules manual-prices missing schedule-id",
@@ -1346,6 +1358,11 @@ func TestPricingValidationErrors(t *testing.T) {
 			args:    []string{"pricing", "availability", "get", "--app", "APP_ID", "--id", "AVAILABILITY_ID"},
 			wantErr: "Error: --id and --app are mutually exclusive",
 		},
+		{
+			name:    "pricing availability set missing available in new territories",
+			args:    []string{"pricing", "availability", "set", "--app", "APP_ID", "--territory", "USA", "--available", "true"},
+			wantErr: "Error: --available-in-new-territories is required",
+		},
 	}
 
 	for _, test := range tests {
@@ -1474,7 +1491,7 @@ func TestSubscriptionsValidationErrors(t *testing.T) {
 		{
 			name:    "subscriptions prices add missing price-point",
 			args:    []string{"subscriptions", "prices", "add", "--id", "SUB_ID"},
-			wantErr: "--price-point is required",
+			wantErr: "one of --price-point, --tier, or --price is required",
 		},
 		{
 			name:    "subscriptions prices import missing id",
@@ -4488,7 +4505,7 @@ func TestAuthStatusShowsEnvPreference(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"auth", "status"}); err != nil {
+		if err := root.Parse([]string{"auth", "status", "--output", "table"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -4528,7 +4545,7 @@ func TestAuthStatusEnvIncomplete(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"auth", "status"}); err != nil {
+		if err := root.Parse([]string{"auth", "status", "--output", "table"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -4562,7 +4579,7 @@ func TestAuthStatusProfileOverridesEnvNote(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"auth", "status"}); err != nil {
+		if err := root.Parse([]string{"auth", "status", "--output", "table"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -4613,7 +4630,7 @@ func TestAuthStatusShowsStorageLocation(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"auth", "status"}); err != nil {
+		if err := root.Parse([]string{"auth", "status", "--output", "table"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -4689,7 +4706,7 @@ func TestAuthStatusValidateSuccess(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"auth", "status", "--validate"}); err != nil {
+		if err := root.Parse([]string{"auth", "status", "--output", "table", "--validate"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -4745,7 +4762,7 @@ func TestAuthStatusValidateForbiddenReportsWorks(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"auth", "status", "--validate"}); err != nil {
+		if err := root.Parse([]string{"auth", "status", "--output", "table", "--validate"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -4801,7 +4818,7 @@ func TestAuthStatusValidateFailureReturnsReportedError(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"auth", "status", "--validate"}); err != nil {
+		if err := root.Parse([]string{"auth", "status", "--output", "table", "--validate"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err == nil {
@@ -4970,7 +4987,7 @@ func TestXcodeCloudValidationErrors(t *testing.T) {
 		{
 			name:    "xcode-cloud run missing branch",
 			args:    []string{"xcode-cloud", "run", "--workflow-id", "WF_ID"},
-			wantErr: "--branch or --git-reference-id is required",
+			wantErr: "--branch, --git-reference-id, or --pull-request-id is required",
 		},
 		{
 			name:    "xcode-cloud run workflow by name without app",
@@ -5031,6 +5048,11 @@ func TestXcodeCloudValidationErrors(t *testing.T) {
 			name:    "xcode-cloud build-runs missing workflow-id",
 			args:    []string{"xcode-cloud", "build-runs"},
 			wantErr: "--workflow-id is required",
+		},
+		{
+			name:    "xcode-cloud build-runs get missing id",
+			args:    []string{"xcode-cloud", "build-runs", "get"},
+			wantErr: "--id is required",
 		},
 		{
 			name:    "xcode-cloud build-runs builds missing run-id",
@@ -5194,6 +5216,16 @@ func TestXcodeCloudMutualExclusiveFlags(t *testing.T) {
 			name:    "xcode-cloud run branch and git-reference-id are mutually exclusive",
 			args:    []string{"xcode-cloud", "run", "--workflow-id", "WF_ID", "--branch", "main", "--git-reference-id", "REF_ID"},
 			wantErr: "--branch and --git-reference-id are mutually exclusive",
+		},
+		{
+			name:    "xcode-cloud run branch and pull-request-id are mutually exclusive",
+			args:    []string{"xcode-cloud", "run", "--workflow-id", "WF_ID", "--branch", "main", "--pull-request-id", "PR_ID"},
+			wantErr: "--branch, --git-reference-id, and --pull-request-id are mutually exclusive",
+		},
+		{
+			name:    "xcode-cloud run source-run-id conflicts with workflow",
+			args:    []string{"xcode-cloud", "run", "--source-run-id", "RUN_ID", "--workflow-id", "WF_ID"},
+			wantErr: "--source-run-id is mutually exclusive with --workflow and --workflow-id",
 		},
 		{
 			name:    "xcode-cloud run invalid poll-interval",

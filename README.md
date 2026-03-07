@@ -59,42 +59,35 @@ asc auth login \
 Generate API keys at:
 https://appstoreconnect.apple.com/access/integrations/api
 
-### Experimental web-session auth (unofficial, discouraged)
-
-```bash
-# Check web-session cache
-asc web auth status
-
-# Login with Apple ID for detached experimental workflows
-asc web auth login --apple-id "user@example.com" --password-stdin
-
-# List review submissions for an app (internal web/iris)
-asc web review list --app "123456789" --apple-id "user@example.com"
-
-# Show latest unresolved review context and auto-download screenshots
-asc web review show \
-  --app "123456789" \
-  --apple-id "user@example.com"
-```
-
-`asc web` is **experimental**, **unofficial**, and **discouraged** for production-critical automation.
-It is intentionally detached from official API-key-based `asc` workflows and may break without notice.
-Safety guardrails in `asc web`:
-- Low-rate request pacing for unofficial web/iris calls.
-- User-owned auth: commands scope cache by `--apple-id` to avoid accidental cross-account reuse.
-- Signed URLs/tokens are redacted from default output and error messages.
-- `asc web review show` auto-downloads available screenshots without printing signed download URLs.
-
 ### First command
 
 ```bash
-asc apps list --output table
+asc apps list
+```
+
+### Output defaults (TTY-aware)
+
+`asc` chooses a default `--output` based on where stdout is connected:
+
+- Interactive terminal (TTY): `table`
+- Non-interactive output (pipes/files/CI): `json`
+
+You can still set a global preference:
+
+```bash
+export ASC_DEFAULT_OUTPUT=markdown
+```
+
+And explicit flags always win:
+
+```bash
+asc apps list --output json
 ```
 
 <!-- WALL-OF-APPS:START -->
 ## Wall of Apps
 
-**39 apps ship with asc.** [See the Wall of Apps →](https://asccli.sh/#wall-of-apps)
+**73 apps ship with asc.** [See the Wall of Apps →](https://asccli.sh/#wall-of-apps)
 
 Want to add yours? [Open a PR](https://github.com/rudrankriyam/App-Store-Connect-CLI/pulls).
 <!-- WALL-OF-APPS:END -->
@@ -118,7 +111,7 @@ asc crashes --app "123456789" --sort -createdDate --limit 10
 ### Builds and distribution
 
 ```bash
-asc builds upload --app "123456789" --file "/path/to/MyApp.ipa"
+asc builds upload --app "123456789" --ipa "/path/to/MyApp.ipa"
 asc testflight builds list --app "123456789" --output table
 ```
 
@@ -154,7 +147,20 @@ asc bundle-ids list
 ### Workflow automation
 
 ```bash
-asc workflow run --file .asc/workflow.json --workflow release
+asc workflow run release
+```
+
+### Xcode Cloud workflows and build runs
+
+```bash
+# Trigger from a pull request
+asc xcode-cloud run --workflow-id "WORKFLOW_ID" --pull-request-id "PR_ID"
+
+# Rerun from an existing build run with a clean build
+asc xcode-cloud run --source-run-id "BUILD_RUN_ID" --clean
+
+# Fetch a single build run by ID
+asc xcode-cloud build-runs get --id "BUILD_RUN_ID"
 ```
 
 ## Commands and Reference
@@ -182,7 +188,7 @@ For full command families, flags, and discovery patterns, see:
 
 ## Acknowledgements
 
-Local screenshot framing uses Koubou (pinned to `0.13.0`) for deterministic device-frame rendering.
+Local screenshot framing uses Koubou (pinned to `0.14.0`) for deterministic device-frame rendering.
 GitHub: https://github.com/bitomule/koubou
 
 Simulator UI automation for screenshot capture and interactions uses AXe CLI.

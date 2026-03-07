@@ -112,6 +112,7 @@ func MetadataPushCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("metadata push", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
+	appInfoID := fs.String("app-info", "", "App Info ID (optional override)")
 	version := fs.String("version", "", "App version string (for example 1.2.3)")
 	platform := fs.String("platform", "", "Optional platform: IOS, MAC_OS, TV_OS, or VISION_OS")
 	dir := fs.String("dir", "", "Metadata root directory (required)")
@@ -123,13 +124,14 @@ func MetadataPushCommand() *ffcli.Command {
 
 	return &ffcli.Command{
 		Name:       "push",
-		ShortUsage: "asc metadata push --app \"APP_ID\" --version \"1.2.3\" --dir \"./metadata\" [--dry-run]",
+		ShortUsage: "asc metadata push --app \"APP_ID\" --version \"1.2.3\" --dir \"./metadata\" [--app-info \"APP_INFO_ID\"] [--dry-run]",
 		ShortHelp:  "Push metadata changes from canonical files.",
 		LongHelp: `Push metadata changes from canonical files.
 
 Examples:
   asc metadata push --app "APP_ID" --version "1.2.3" --dir "./metadata" --dry-run
   asc metadata push --app "APP_ID" --version "1.2.3" --platform IOS --dir "./metadata" --dry-run
+  asc metadata push --app "APP_ID" --app-info "APP_INFO_ID" --version "1.2.3" --platform IOS --dir "./metadata" --dry-run
   asc metadata push --app "APP_ID" --version "1.2.3" --dir "./metadata"
   asc metadata push --app "APP_ID" --version "1.2.3" --dir "./metadata" --allow-deletes --confirm
 
@@ -143,168 +145,20 @@ Notes:
 			if len(args) > 0 {
 				return shared.UsageError("metadata push does not accept positional arguments")
 			}
-			resolvedAppID := shared.ResolveAppID(*appID)
-			if resolvedAppID == "" {
-				return shared.UsageError("--app is required (or set ASC_APP_ID)")
-			}
-			versionValue := strings.TrimSpace(*version)
-			if versionValue == "" {
-				return shared.UsageError("--version is required")
-			}
-			dirValue := strings.TrimSpace(*dir)
-			if dirValue == "" {
-				return shared.UsageError("--dir is required")
-			}
-
-			platformValue := strings.TrimSpace(*platform)
-			if platformValue != "" {
-				normalizedPlatform, err := shared.NormalizeAppStoreVersionPlatform(platformValue)
-				if err != nil {
-					return shared.UsageError(err.Error())
-				}
-				platformValue = normalizedPlatform
-			}
-
-			includes, err := parseIncludes(*include)
-			if err != nil {
-				return shared.UsageError(err.Error())
-			}
-
-			localBundle, err := loadLocalMetadata(dirValue, versionValue)
+			result, err := ExecutePush(ctx, PushExecutionOptions{
+				AppID:        *appID,
+				AppInfoID:    *appInfoID,
+				Version:      *version,
+				Platform:     *platform,
+				Dir:          *dir,
+				Include:      *include,
+				DryRun:       *dryRun,
+				AllowDeletes: *allowDeletes,
+				Confirm:      *confirm,
+			})
 			if err != nil {
 				return err
 			}
-
-			client, err := shared.GetASCClient()
-			if err != nil {
-				return fmt.Errorf("metadata push: %w", err)
-			}
-
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			appInfoIDValue, err := shared.ResolveAppInfoID(requestCtx, client, resolvedAppID, "")
-			if err != nil {
-				return fmt.Errorf("metadata push: %w", err)
-			}
-			versionIDValue, err := resolveVersionID(requestCtx, client, resolvedAppID, versionValue, platformValue)
-			if err != nil {
-				if errors.Is(err, flag.ErrHelp) {
-					return err
-				}
-				return fmt.Errorf("metadata push: %w", err)
-			}
-
-			remoteAppInfoItems, err := fetchAppInfoLocalizations(requestCtx, client, appInfoIDValue)
-			if err != nil {
-				return fmt.Errorf("metadata push: %w", err)
-			}
-			remoteVersionItems, err := fetchVersionLocalizations(requestCtx, client, versionIDValue)
-			if err != nil {
-				return fmt.Errorf("metadata push: %w", err)
-			}
-
-			remoteAppInfo := make(map[string]AppInfoLocalization, len(remoteAppInfoItems))
-			for _, item := range remoteAppInfoItems {
-				locale := strings.TrimSpace(item.Attributes.Locale)
-				if locale == "" {
-					continue
-				}
-				remoteAppInfo[locale] = NormalizeAppInfoLocalization(AppInfoLocalization{
-					Name:              item.Attributes.Name,
-					Subtitle:          item.Attributes.Subtitle,
-					PrivacyPolicyURL:  item.Attributes.PrivacyPolicyURL,
-					PrivacyChoicesURL: item.Attributes.PrivacyChoicesURL,
-					PrivacyPolicyText: item.Attributes.PrivacyPolicyText,
-				})
-			}
-
-			remoteVersion := make(map[string]VersionLocalization, len(remoteVersionItems))
-			for _, item := range remoteVersionItems {
-				locale := strings.TrimSpace(item.Attributes.Locale)
-				if locale == "" {
-					continue
-				}
-				remoteVersion[locale] = NormalizeVersionLocalization(VersionLocalization{
-					Description:     item.Attributes.Description,
-					Keywords:        item.Attributes.Keywords,
-					MarketingURL:    item.Attributes.MarketingURL,
-					PromotionalText: item.Attributes.PromotionalText,
-					SupportURL:      item.Attributes.SupportURL,
-					WhatsNew:        item.Attributes.WhatsNew,
-				})
-			}
-
-			localAppInfo := applyDefaultAppInfoFallback(localBundle.appInfo, localBundle.defaultAppInfo, remoteAppInfo, *allowDeletes)
-			localVersion := applyDefaultVersionFallback(localBundle.version, localBundle.defaultVersion, remoteVersion, *allowDeletes)
-
-			adds, updates, deletes, appInfoCalls := buildScopePlan(
-				appInfoDirName,
-				"",
-				appInfoPlanFields,
-				appInfoToPlanFields(localAppInfo),
-				appInfoToFieldMap(remoteAppInfo),
-			)
-			versionAdds, versionUpdates, versionDeletes, versionCalls := buildScopePlan(
-				versionDirName,
-				versionValue,
-				versionPlanFields,
-				versionToPlanFields(localVersion),
-				versionToFieldMap(remoteVersion),
-			)
-			adds = append(adds, versionAdds...)
-			updates = append(updates, versionUpdates...)
-			deletes = append(deletes, versionDeletes...)
-
-			sortPlanItems(adds)
-			sortPlanItems(updates)
-			sortPlanItems(deletes)
-
-			apiCalls := buildAPICallSummary(appInfoCalls, versionCalls)
-
-			result := PushPlanResult{
-				AppID:     resolvedAppID,
-				AppInfoID: appInfoIDValue,
-				Version:   versionValue,
-				VersionID: versionIDValue,
-				Dir:       dirValue,
-				DryRun:    *dryRun,
-				Includes:  includes,
-				Adds:      adds,
-				Updates:   updates,
-				Deletes:   deletes,
-				APICalls:  apiCalls,
-			}
-
-			if !*dryRun {
-				if len(result.Deletes) > 0 {
-					if !*allowDeletes {
-						return shared.UsageError("--allow-deletes is required to apply delete operations")
-					}
-					if !*confirm {
-						return shared.UsageError("--confirm is required when applying delete operations")
-					}
-				}
-
-				actions, applyErr := applyMetadataPlan(
-					requestCtx,
-					client,
-					appInfoIDValue,
-					versionIDValue,
-					versionValue,
-					localAppInfo,
-					localVersion,
-					remoteAppInfoItems,
-					remoteVersionItems,
-					*allowDeletes,
-				)
-				if applyErr != nil {
-					return fmt.Errorf("metadata push: %w", applyErr)
-				}
-				result.Applied = true
-				result.Actions = actions
-			}
-
 			return shared.PrintOutputWithRenderers(
 				result,
 				*output.Output,
@@ -398,6 +252,142 @@ func loadLocalMetadata(dir, version string) (localMetadataBundle, error) {
 		defaultAppInfo: defaultAppInfo,
 		defaultVersion: defaultVersion,
 	}, nil
+}
+
+type appInfoCandidate struct {
+	id    string
+	state string
+}
+
+func resolveMetadataPushAppInfoID(
+	ctx context.Context,
+	client *asc.Client,
+	appID string,
+	appInfoID string,
+	version string,
+	platform string,
+	dir string,
+	versionState string,
+) (string, error) {
+	if appInfoID != "" {
+		return appInfoID, nil
+	}
+
+	resp, err := client.GetAppInfos(ctx, appID)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Data) == 0 {
+		return "", fmt.Errorf("no app info found for app %q", appID)
+	}
+	if len(resp.Data) == 1 {
+		return strings.TrimSpace(resp.Data[0].ID), nil
+	}
+
+	candidates := make([]appInfoCandidate, 0, len(resp.Data))
+	for _, item := range resp.Data {
+		candidates = append(candidates, appInfoCandidate{
+			id:    strings.TrimSpace(item.ID),
+			state: appInfoState(item.Attributes),
+		})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].id < candidates[j].id
+	})
+
+	if resolvedID, ok := autoResolveAppInfoIDByVersionState(candidates, versionState); ok {
+		return resolvedID, nil
+	}
+
+	exampleAppInfoID := "<APP_INFO_ID>"
+	for _, candidate := range candidates {
+		if candidate.id != "" {
+			exampleAppInfoID = candidate.id
+			break
+		}
+	}
+	exampleCommand := buildMetadataPushAppInfoExample(appID, version, platform, dir, exampleAppInfoID)
+	return "", shared.UsageErrorf(
+		"multiple app infos found for app %q (%s). Re-run with --app-info. Example: %s",
+		appID,
+		formatAppInfoCandidates(candidates),
+		exampleCommand,
+	)
+}
+
+func autoResolveAppInfoIDByVersionState(candidates []appInfoCandidate, versionState string) (string, bool) {
+	resolvedVersionState := strings.TrimSpace(versionState)
+	if resolvedVersionState == "" {
+		return "", false
+	}
+
+	matches := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.id == "" || !strings.EqualFold(candidate.state, resolvedVersionState) {
+			continue
+		}
+		matches = append(matches, candidate.id)
+	}
+	if len(matches) != 1 {
+		return "", false
+	}
+	return matches[0], true
+}
+
+func appInfoState(attributes asc.AppInfoAttributes) string {
+	for _, key := range []string{"state", "appStoreState"} {
+		rawValue, exists := attributes[key]
+		if !exists || rawValue == nil {
+			continue
+		}
+		value, ok := rawValue.(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func formatAppInfoCandidates(candidates []appInfoCandidate) string {
+	if len(candidates) == 0 {
+		return "none"
+	}
+
+	parts := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		state := candidate.state
+		if state == "" {
+			state = "unknown"
+		}
+		parts = append(parts, fmt.Sprintf("%s[state=%s]", candidate.id, state))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func buildMetadataPushAppInfoExample(appID, version, platform, dir, appInfoID string) string {
+	parts := []string{
+		"asc metadata push",
+		fmt.Sprintf(`--app %q`, appID),
+		fmt.Sprintf(`--version %q`, version),
+	}
+	if strings.TrimSpace(platform) != "" {
+		parts = append(parts, fmt.Sprintf("--platform %s", strings.TrimSpace(platform)))
+	}
+
+	dirValue := strings.TrimSpace(dir)
+	if dirValue == "" {
+		dirValue = "./metadata"
+	}
+	parts = append(parts,
+		fmt.Sprintf(`--dir %q`, dirValue),
+		fmt.Sprintf(`--app-info %q`, appInfoID),
+		"--dry-run",
+	)
+	return strings.Join(parts, " ")
 }
 
 func readAppInfoLocalizationPatchFromFile(path string) (appInfoLocalPatch, error) {

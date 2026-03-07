@@ -3,6 +3,7 @@ package asc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -235,6 +236,79 @@ func (c *Client) UpdateSubscription(ctx context.Context, subID string, attrs Sub
 	return &response, nil
 }
 
+// SetSubscriptionInitialPrice sets the initial base price on a subscription that
+// has no existing prices. This uses PATCH /v1/subscriptions/{id} with inline
+// SubscriptionPriceInlineCreate resources, which is the only supported method
+// for setting the first price on a new subscription. POST /v1/subscriptionPrices
+// only works for price *changes* on subscriptions that already have a price.
+func (c *Client) SetSubscriptionInitialPrice(ctx context.Context, subID, pricePointID, territoryID string, attrs SubscriptionPriceCreateAttributes) (*SubscriptionResponse, error) {
+	subID = strings.TrimSpace(subID)
+	pricePointID = strings.TrimSpace(pricePointID)
+	territoryID = strings.ToUpper(strings.TrimSpace(territoryID))
+	if subID == "" || pricePointID == "" {
+		return nil, fmt.Errorf("subscription ID and price point ID are required")
+	}
+
+	var attributes *SubscriptionPriceCreateAttributes
+	if attrs.StartDate != "" || attrs.Preserved != nil {
+		attributes = &attrs
+	}
+
+	relationships := SubscriptionPriceInlineRelationships{
+		Subscription:           Relationship{Data: ResourceData{Type: ResourceTypeSubscriptions, ID: subID}},
+		SubscriptionPricePoint: Relationship{Data: ResourceData{Type: ResourceTypeSubscriptionPricePoints, ID: pricePointID}},
+	}
+	if territoryID != "" {
+		relationships.Territory = &Relationship{
+			Data: ResourceData{
+				Type: ResourceTypeTerritories,
+				ID:   territoryID,
+			},
+		}
+	}
+
+	inlinePriceID := "${price-1}"
+	payload := SubscriptionUpdateRequest{
+		Data: SubscriptionUpdateData{
+			Type: ResourceTypeSubscriptions,
+			ID:   subID,
+			Relationships: &SubscriptionUpdateRelationships{
+				Prices: &RelationshipList{
+					Data: []ResourceData{
+						{Type: ResourceTypeSubscriptionPrices, ID: inlinePriceID},
+					},
+				},
+			},
+		},
+		Included: []SubscriptionPriceInlineCreate{
+			{
+				Type:          ResourceTypeSubscriptionPrices,
+				ID:            inlinePriceID,
+				Attributes:    attributes,
+				Relationships: relationships,
+			},
+		},
+	}
+
+	body, err := BuildRequestBody(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("/v1/subscriptions/%s", subID)
+	data, err := c.do(ctx, http.MethodPatch, path, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var response SubscriptionResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &response, nil
+}
+
 // DeleteSubscription deletes a subscription.
 func (c *Client) DeleteSubscription(ctx context.Context, subID string) error {
 	path := fmt.Sprintf("/v1/subscriptions/%s", strings.TrimSpace(subID))
@@ -287,12 +361,25 @@ func (c *Client) CreateSubscriptionPrice(ctx context.Context, subID, pricePointI
 		},
 	}
 
-	body, err := BuildRequestBody(payload)
-	if err != nil {
-		return nil, err
-	}
+	retryOpts := ResolveRetryOptions()
+	data, err := WithRetry(ctx, func() ([]byte, error) {
+		body, err := BuildRequestBody(payload)
+		if err != nil {
+			return nil, err
+		}
 
-	data, err := c.do(ctx, http.MethodPost, "/v1/subscriptionPrices", body)
+		data, err := c.do(ctx, http.MethodPost, "/v1/subscriptionPrices", body)
+		if err != nil {
+			if IsRetryable(err) {
+				return nil, err
+			}
+			if isRetryableSubscriptionPriceCreateError(err) {
+				return nil, &RetryableError{Err: err}
+			}
+			return nil, err
+		}
+		return data, nil
+	}, retryOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +390,23 @@ func (c *Client) CreateSubscriptionPrice(ctx context.Context, subID, pricePointI
 	}
 
 	return &response, nil
+}
+
+func isRetryableSubscriptionPriceCreateError(err error) bool {
+	apiErr, ok := errors.AsType[*APIError](err)
+	if !ok || apiErr == nil {
+		return false
+	}
+
+	switch apiErr.StatusCode {
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusGatewayTimeout:
+		// App Store Connect intermittently returns UNEXPECTED_ERROR on this endpoint.
+		// Retry these transient server-side failures.
+		code := strings.ToUpper(strings.TrimSpace(apiErr.Code))
+		return code == "" || code == "UNEXPECTED_ERROR"
+	default:
+		return false
+	}
 }
 
 // DeleteSubscriptionPrice deletes a subscription price.

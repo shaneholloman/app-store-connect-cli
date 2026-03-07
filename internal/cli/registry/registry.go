@@ -59,10 +59,12 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/profiles"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/promotedpurchases"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/publish"
+	releasecmd "github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/release"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/releasenotes"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/reviews"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/routingcoverage"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/sandbox"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/schema"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/screenshots"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/signing"
@@ -139,6 +141,7 @@ func Subcommands(version string) []*ffcli.Command {
 		builds.BuildsCommand(),
 		buildbundles.BuildBundlesCommand(),
 		publish.PublishCommand(),
+		releasecmd.ReleaseCommand(),
 		workflow.WorkflowCommand(),
 		versions.VersionsCommand(),
 		productpages.ProductPagesCommand(),
@@ -175,6 +178,7 @@ func Subcommands(version string) []*ffcli.Command {
 		migrate.MigrateCommand(),
 		notify.NotifyCommand(),
 		gamecenter.GameCenterCommand(),
+		schema.SchemaCommand(),
 		VersionCommand(version),
 	}
 
