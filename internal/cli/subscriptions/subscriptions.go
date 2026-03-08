@@ -691,9 +691,9 @@ func SubscriptionsPricesCommand() *ffcli.Command {
 		LongHelp: `Manage subscription pricing.
 
 Examples:
-  asc subscriptions prices list --id "SUB_ID"
-  asc subscriptions prices add --id "SUB_ID" --price-point "PRICE_POINT_ID"
-  asc subscriptions prices import --id "SUB_ID" --input "./prices.csv"
+  asc subscriptions prices list --subscription-id "SUB_ID"
+  asc subscriptions prices add --subscription-id "SUB_ID" --price-point "PRICE_POINT_ID"
+  asc subscriptions prices import --subscription-id "SUB_ID" --input "./prices.csv"
   asc subscriptions prices delete --price-id "PRICE_ID" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -971,9 +971,9 @@ func SubscriptionsAvailabilityCommand() *ffcli.Command {
 		LongHelp: `Manage subscription availability.
 
 Examples:
-  asc subscriptions availability get --id "AVAILABILITY_ID"
-  asc subscriptions availability set --id "SUB_ID" --territory "USA,CAN"
-  asc subscriptions availability available-territories --id "AVAILABILITY_ID"`,
+  asc subscriptions availability get --availability-id "AVAILABILITY_ID"
+  asc subscriptions availability set --subscription-id "SUB_ID" --territories "USA,CAN"
+  asc subscriptions availability available-territories --availability-id "AVAILABILITY_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{

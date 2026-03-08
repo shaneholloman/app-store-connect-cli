@@ -58,6 +58,33 @@ func TestSubscriptionsHelpShowsCanonicalCommerceSubcommands(t *testing.T) {
 		}
 	}
 
+	pricesCmd := findSubcommand(root, "subscriptions", "pricing", "prices")
+	if pricesCmd == nil {
+		t.Fatal("expected subscriptions pricing prices command")
+	}
+	pricesUsage := pricesCmd.UsageFunc(pricesCmd)
+	if !strings.Contains(pricesUsage, `asc subscriptions pricing prices list --subscription-id "SUB_ID"`) {
+		t.Fatalf("expected subscriptions pricing prices help to show canonical subscription selector, got %q", pricesUsage)
+	}
+	if strings.Contains(pricesUsage, `asc subscriptions pricing prices list --id "SUB_ID"`) {
+		t.Fatalf("expected subscriptions pricing prices help to drop legacy --id example, got %q", pricesUsage)
+	}
+
+	availabilityCmd := findSubcommand(root, "subscriptions", "pricing", "availability")
+	if availabilityCmd == nil {
+		t.Fatal("expected subscriptions pricing availability command")
+	}
+	availabilityUsage := availabilityCmd.UsageFunc(availabilityCmd)
+	if !strings.Contains(availabilityUsage, `asc subscriptions pricing availability get --availability-id "AVAILABILITY_ID"`) {
+		t.Fatalf("expected subscriptions pricing availability help to show canonical availability selector, got %q", availabilityUsage)
+	}
+	if !strings.Contains(availabilityUsage, `asc subscriptions pricing availability set --subscription-id "SUB_ID" --territories "USA,CAN"`) {
+		t.Fatalf("expected subscriptions pricing availability help to show canonical territory flags, got %q", availabilityUsage)
+	}
+	if strings.Contains(availabilityUsage, `asc subscriptions pricing availability set --id "SUB_ID" --territory "USA,CAN"`) {
+		t.Fatalf("expected subscriptions pricing availability help to drop legacy set example, got %q", availabilityUsage)
+	}
+
 	offersCmd := findSubcommand(root, "subscriptions", "offers")
 	if offersCmd == nil {
 		t.Fatal("expected subscriptions offers command")
