@@ -117,6 +117,16 @@ type communityWallGitHubUser struct {
 	Login string `json:"login"`
 }
 
+type communityWallGitHubRepo struct {
+	FullName string                        `json:"full_name"`
+	Fork     bool                          `json:"fork"`
+	Parent   *communityWallGitHubRepoBrief `json:"parent,omitempty"`
+}
+
+type communityWallGitHubRepoBrief struct {
+	FullName string `json:"full_name"`
+}
+
 type communityWallGitHubRef struct {
 	Object struct {
 		SHA string `json:"sha"`
@@ -539,11 +549,19 @@ func submitCommunityWallEntry(ctx context.Context, req communityWallSubmitReques
 		Warnings:         warnings,
 	}
 
-	forkExists, err := client.repoExists(ctx, req.GitHubLogin, communityWallUpstreamRepo)
+	forkRepoInfo, err := client.repo(ctx, req.GitHubLogin, communityWallUpstreamRepo)
 	if err != nil {
 		return nil, err
 	}
+	forkExists := forkRepoInfo != nil
 	result.WillCreateFork = !forkExists
+	if forkRepoInfo != nil && !forkRepoInfo.isForkOf(upstreamRepo) {
+		return nil, fmt.Errorf(
+			"existing repo %s is not a fork of %s; rename or remove it before using apps wall submit",
+			forkRepoInfo.displayName(req.GitHubLogin, communityWallUpstreamRepo),
+			upstreamRepo,
+		)
+	}
 
 	baseRefSHA, err := client.refSHA(ctx, communityWallUpstreamOwner, communityWallUpstreamRepo, "heads/"+communityWallUpstreamBranch)
 	if err != nil {
@@ -578,6 +596,13 @@ func submitCommunityWallEntry(ctx context.Context, req communityWallSubmitReques
 		}
 		if err := client.waitForRepo(ctx, req.GitHubLogin, communityWallUpstreamRepo); err != nil {
 			return nil, err
+		}
+		forkRepoInfo, err = client.repo(ctx, req.GitHubLogin, communityWallUpstreamRepo)
+		if err != nil {
+			return nil, err
+		}
+		if forkRepoInfo == nil || !forkRepoInfo.isForkOf(upstreamRepo) {
+			return nil, fmt.Errorf("created repo %s/%s is not recognized as a fork of %s", req.GitHubLogin, communityWallUpstreamRepo, upstreamRepo)
 		}
 		result.CreatedFork = true
 	}
@@ -986,18 +1011,22 @@ func (client communityWallGitHubClientAPI) currentUserLogin(ctx context.Context)
 	return strings.TrimSpace(user.Login), nil
 }
 
-func (client communityWallGitHubClientAPI) repoExists(ctx context.Context, owner, repo string) (bool, error) {
+func (client communityWallGitHubClientAPI) repo(ctx context.Context, owner, repo string) (*communityWallGitHubRepo, error) {
 	body, status, err := client.request(ctx, http.MethodGet, fmt.Sprintf("/repos/%s/%s", owner, repo), nil)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	switch status {
 	case http.StatusOK:
-		return true, nil
+		var payload communityWallGitHubRepo
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return nil, fmt.Errorf("decode GitHub repo response: %w", err)
+		}
+		return &payload, nil
 	case http.StatusNotFound:
-		return false, nil
+		return nil, nil
 	default:
-		return false, fmt.Errorf("failed to inspect fork %s/%s: %s", owner, repo, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("failed to inspect fork %s/%s: %s", owner, repo, strings.TrimSpace(string(body)))
 	}
 }
 
@@ -1018,14 +1047,14 @@ func (client communityWallGitHubClientAPI) waitForRepo(ctx context.Context, owne
 			return fmt.Errorf("timed out waiting for fork %s/%s: %w", owner, repo, err)
 		}
 
-		exists, err := client.repoExists(ctx, owner, repo)
+		repoInfo, err := client.repo(ctx, owner, repo)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return fmt.Errorf("timed out waiting for fork %s/%s: %w", owner, repo, ctxErr)
 			}
 			return err
 		}
-		if exists {
+		if repoInfo != nil {
 			return nil
 		}
 
@@ -1036,6 +1065,23 @@ func (client communityWallGitHubClientAPI) waitForRepo(ctx context.Context, owne
 			communityWallSleep(time.Second)
 		}
 	}
+}
+
+func (repo *communityWallGitHubRepo) isForkOf(upstreamFullName string) bool {
+	if repo == nil || !repo.Fork || repo.Parent == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(repo.Parent.FullName), strings.TrimSpace(upstreamFullName))
+}
+
+func (repo *communityWallGitHubRepo) displayName(owner, name string) string {
+	if repo == nil {
+		return strings.TrimSpace(owner) + "/" + strings.TrimSpace(name)
+	}
+	if strings.TrimSpace(repo.FullName) != "" {
+		return strings.TrimSpace(repo.FullName)
+	}
+	return strings.TrimSpace(owner) + "/" + strings.TrimSpace(name)
 }
 
 func (client communityWallGitHubClientAPI) refSHA(ctx context.Context, owner, repo, ref string) (string, error) {

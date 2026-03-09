@@ -150,7 +150,7 @@ func TestSubmitCommunityWallEntryRejectsDuplicateAppID(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/tester/App-Store-Connect-CLI":
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"full_name":"tester/App-Store-Connect-CLI"}`))
+			_, _ = w.Write([]byte(`{"full_name":"tester/App-Store-Connect-CLI","fork":true,"parent":{"full_name":"rudrankriyam/App-Store-Connect-CLI"}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/repos/rudrankriyam/App-Store-Connect-CLI/git/ref/heads/main":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"object": map[string]any{
@@ -206,6 +206,52 @@ func TestSubmitCommunityWallEntryRejectsDuplicateAppID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `app ID "1234567890" already exists`) {
 		t.Fatalf("expected duplicate app ID message, got %v", err)
+	}
+}
+
+func TestSubmitCommunityWallEntryRejectsExistingNonForkRepo(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/repos/tester/App-Store-Connect-CLI" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{"full_name":"tester/App-Store-Connect-CLI","fork":false}`))
+	}))
+	defer server.Close()
+
+	previousAPIBase := communityWallGitHubAPIBase
+	previousHTTPClient := communityWallGitHubClient
+	previousLookupDetails := communityWallLookupAppDetails
+	communityWallGitHubAPIBase = server.URL
+	communityWallGitHubClient = func() *http.Client { return server.Client() }
+	communityWallLookupAppDetails = func(ctx context.Context, ids []string) (map[string]communityWallAppDetails, error) {
+		return map[string]communityWallAppDetails{
+			"1234567890": {
+				Name: "Beta",
+				Link: "https://apps.apple.com/us/app/beta/id1234567890",
+			},
+		}, nil
+	}
+	t.Cleanup(func() {
+		communityWallGitHubAPIBase = previousAPIBase
+		communityWallGitHubClient = previousHTTPClient
+		communityWallLookupAppDetails = previousLookupDetails
+	})
+
+	_, err := submitCommunityWallEntry(context.Background(), communityWallSubmitRequest{
+		Input: communityWallSubmitInput{
+			AppID:    "1234567890",
+			Creator:  "tester",
+			Platform: []string{"iOS"},
+		},
+		GitHubToken: "token",
+		GitHubLogin: "tester",
+		DryRun:      true,
+	})
+	if err == nil {
+		t.Fatal("expected non-fork repo error")
+	}
+	if !strings.Contains(err.Error(), "is not a fork of rudrankriyam/App-Store-Connect-CLI") {
+		t.Fatalf("expected non-fork repo error, got %v", err)
 	}
 }
 
