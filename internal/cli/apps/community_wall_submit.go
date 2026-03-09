@@ -32,14 +32,14 @@ const (
 	communityWallUpstreamRepo         = "App-Store-Connect-CLI"
 	communityWallUpstreamBranch       = "main"
 	communityWallGitHubMaxBodyBytes   = 8192
-	communityWallAppStoreLookupURL    = "https://itunes.apple.com/lookup"
 	defaultCommunityWallSubmitOutput  = "json"
 	defaultCommunityWallSubmitMessage = "Create the fork, branch, commit, and pull request"
 )
 
 var (
-	communityWallGitHubAPIBase = "https://api.github.com"
-	communityWallGitHubClient  = func() *http.Client {
+	communityWallGitHubAPIBase     = "https://api.github.com"
+	communityWallAppStoreLookupURL = "https://itunes.apple.com/lookup"
+	communityWallGitHubClient      = func() *http.Client {
 		return &http.Client{Timeout: asc.ResolveTimeout()}
 	}
 	communityWallGHCommandRunner = defaultCommunityWallGHCommandRunner
@@ -923,7 +923,6 @@ func extractCommunityWallAppStoreID(link string) string {
 func fetchCommunityWallAppDetails(ctx context.Context, ids []string) (map[string]communityWallAppDetails, error) {
 	query := url.Values{}
 	query.Set("id", strings.Join(ids, ","))
-	query.Set("country", "us")
 
 	requestURL := communityWallAppStoreLookupURL + "?" + query.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)

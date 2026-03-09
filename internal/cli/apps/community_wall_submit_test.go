@@ -289,3 +289,30 @@ func TestWaitForRepoReturnsFriendlyTimeoutAfterSleepCancellation(t *testing.T) {
 		t.Fatalf("expected friendly timeout error, got %v", err)
 	}
 }
+
+func TestFetchCommunityWallAppDetailsOmitsCountryFilter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("id"); got != "1234567890" {
+			t.Fatalf("expected id query, got %q", got)
+		}
+		if got := r.URL.Query().Get("country"); got != "" {
+			t.Fatalf("expected no country query filter, got %q", got)
+		}
+		_, _ = w.Write([]byte(`{"results":[{"trackId":1234567890,"trackName":"Beta","trackViewUrl":"https://apps.apple.com/app/id1234567890","artworkUrl100":"https://example.com/icon.png"}]}`))
+	}))
+	defer server.Close()
+
+	previousLookupURL := communityWallAppStoreLookupURL
+	communityWallAppStoreLookupURL = server.URL
+	t.Cleanup(func() {
+		communityWallAppStoreLookupURL = previousLookupURL
+	})
+
+	details, err := fetchCommunityWallAppDetails(context.Background(), []string{"1234567890"})
+	if err != nil {
+		t.Fatalf("fetch app details: %v", err)
+	}
+	if got := details["1234567890"].Name; got != "Beta" {
+		t.Fatalf("expected app details for requested ID, got %+v", details)
+	}
+}
