@@ -41,6 +41,13 @@
     "platform": ["iOS", "macOS", "tvOS", "visionOS"]
   },
   {
+    "app": "BitLocal: BTC-Friendly Shops",
+    "link": "https://apps.apple.com/us/app/bitlocal-btc-friendly-shops/id6447485666?uo=4",
+    "creator": "joeycast",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/71/18/13/71181314-64e0-ab1a-4e44-9f6134f12f01/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
     "app": "Bloom",
     "link": "https://apps.apple.com/app/id6739955926",
     "creator": "mpdifran",
@@ -360,6 +367,13 @@
     "platform": ["iOS", "watchOS"]
   },
   {
+    "app": "Ripple News - AI Personal News",
+    "link": "https://apps.apple.com/us/app/ripple-news-ai-personal-news/id6758356024?uo=4",
+    "creator": "jimripple",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/19/33/17/193317c5-5112-6151-9fd9-5b98ac41b52d/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
     "app": "Ryform Golf",
     "link": "https://apps.apple.com/us/app/id6746525972",
     "creator": "ajxbit",
@@ -371,6 +385,13 @@
     "link": "https://apps.apple.com/app/id6759178047",
     "creator": "SwifAI",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/9c/1d/75/9c1d7502-e0d7-0db1-bb9e-e9f9edd2c6da/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
+    "app": "Smart Music Stations: Wavyy",
+    "link": "https://apps.apple.com/us/app/smart-music-stations-wavyy/id6458877273?uo=4",
+    "creator": "rudrankriyam",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5a/c6/8d/5ac68df8-3d3f-4bf4-984c-06554678468d/AppIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg",
     "platform": ["iOS"]
   },
   {
