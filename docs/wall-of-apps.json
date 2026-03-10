@@ -276,6 +276,13 @@
     "platform": ["iOS"]
   },
   {
+    "app": "Pets Check-in - PeekaPaw",
+    "link": "https://apps.apple.com/us/app/pets-check-in-peekapaw/id6759892136?uo=4",
+    "creator": "Hiep Le",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/c9/57/6e/c9576e6d-948b-2e9f-fded-18261f597999/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
     "app": "Pickle Rite",
     "link": "https://apps.apple.com/us/app/pickle-rite/id6754095362",
     "creator": "Badarinath Venkatnarayansetty",
@@ -441,6 +448,12 @@
     "link": "https://apps.apple.com/app/id6756911679",
     "creator": "OscarGorog",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/32/ed/56/32ed5661-a8ff-7f13-47bb-08a87a15fd00/Icon-0-1x_U007epad-0-1-sRGB-85-220-0.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
+    "app": "Sunbreak: Nightly App Blocker",
+    "link": "https://apps.apple.com/us/app/sunbreak-nightly-app-blocker/id6752121964",
+    "creator": "WilsonLimSet",
     "platform": ["iOS"]
   },
   {
