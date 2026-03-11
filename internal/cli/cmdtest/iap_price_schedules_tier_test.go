@@ -16,7 +16,7 @@ func TestIAPPriceSchedulesCreate_TierAndPricesMutualExclusion(t *testing.T) {
 
 	_, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"iap", "price-schedules", "create",
+			"iap", "pricing", "schedules", "create",
 			"--iap-id", "IAP_ID",
 			"--base-territory", "USA",
 			"--tier", "5",
@@ -41,7 +41,7 @@ func TestIAPPriceSchedulesCreate_TierAndPriceMutualExclusion(t *testing.T) {
 
 	_, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"iap", "price-schedules", "create",
+			"iap", "pricing", "schedules", "create",
 			"--iap-id", "IAP_ID",
 			"--base-territory", "USA",
 			"--tier", "5",
@@ -109,7 +109,7 @@ func TestIAPPriceSchedulesCreate_TierUsesIAPPricePoints(t *testing.T) {
 
 	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"iap", "price-schedules", "create",
+			"iap", "pricing", "schedules", "create",
 			"--iap-id", "IAP_ID",
 			"--base-territory", "USA",
 			"--tier", "2",
@@ -140,7 +140,7 @@ func TestIAPPriceSchedulesCreate_InvalidPriceValue(t *testing.T) {
 
 	_, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"iap", "price-schedules", "create",
+			"iap", "pricing", "schedules", "create",
 			"--iap-id", "IAP_ID",
 			"--base-territory", "USA",
 			"--price", "abc",
@@ -164,7 +164,7 @@ func TestIAPPriceSchedulesCreate_InvalidTierStartDate(t *testing.T) {
 
 	_, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"iap", "price-schedules", "create",
+			"iap", "pricing", "schedules", "create",
 			"--iap-id", "IAP_ID",
 			"--base-territory", "USA",
 			"--tier", "1",

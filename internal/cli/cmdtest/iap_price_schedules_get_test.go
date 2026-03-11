@@ -16,7 +16,7 @@ func TestIAPPriceSchedulesGetRejectsInvalidInclude(t *testing.T) {
 
 	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"iap", "price-schedules", "get",
+			"iap", "pricing", "schedules", "get",
 			"--schedule-id", "schedule-1",
 			"--include", "unknown",
 		}); err != nil {
@@ -85,7 +85,7 @@ func TestIAPPriceSchedulesGetByIDWithIncludeOptions(t *testing.T) {
 
 	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"iap", "price-schedules", "get",
+			"iap", "pricing", "schedules", "get",
 			"--schedule-id", "schedule-1",
 			"--include", "baseTerritory,manualPrices,automaticPrices",
 			"--schedule-fields", "baseTerritory,manualPrices,automaticPrices",
