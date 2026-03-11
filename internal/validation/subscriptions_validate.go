@@ -12,9 +12,34 @@ type Subscription struct {
 	ProductID            string
 	State                string
 	GroupID              string
+	GroupName            string
 	HasImage             bool
 	ImageCheckSkipped    bool
 	ImageCheckSkipReason string
+
+	// Deep diagnostics (populated when State is MISSING_METADATA).
+	Localizations                 []SubscriptionLocalizationInfo
+	LocalizationCheckSkipped      bool
+	LocalizationCheckSkipReason   string
+	GroupLocalizations            []SubscriptionGroupLocalizationInfo
+	GroupLocalizationCheckSkipped bool
+	GroupLocalizationCheckReason  string
+	PriceCount                    int
+	PriceCheckSkipped             bool
+	PriceCheckSkipReason          string
+}
+
+// SubscriptionLocalizationInfo holds per-locale metadata for a subscription.
+type SubscriptionLocalizationInfo struct {
+	Locale      string
+	Name        string
+	Description string
+}
+
+// SubscriptionGroupLocalizationInfo holds per-locale metadata for a subscription group.
+type SubscriptionGroupLocalizationInfo struct {
+	Locale string
+	Name   string
 }
 
 // SubscriptionsInput collects subscription validation inputs.
@@ -37,6 +62,7 @@ func ValidateSubscriptions(input SubscriptionsInput, strict bool) SubscriptionsR
 	checks := make([]CheckResult, 0)
 	checks = append(checks, subscriptionImageChecks(input.Subscriptions)...)
 	checks = append(checks, subscriptionReviewReadinessChecks(input.Subscriptions)...)
+	checks = append(checks, subscriptionMetadataDiagnostics(input.Subscriptions)...)
 	summary := summarize(checks, strict)
 
 	return SubscriptionsReport{
@@ -169,9 +195,9 @@ func formatSubscriptionLabel(sub Subscription) string {
 func remediationForSubscriptionState(state string) string {
 	switch strings.ToUpper(strings.TrimSpace(state)) {
 	case "MISSING_METADATA":
-		return "Complete required metadata for this subscription, including its image, in App Store Connect"
+		return "See diagnostic checks below for specific missing items (group localizations, subscription localizations, pricing); fix all issues then re-validate"
 	case "READY_TO_SUBMIT":
-		return "Submit this subscription for review in App Store Connect so it is attached to the next app review submission"
+		return "Submit this subscription for review in App Store Connect so it is attached to the next app review submission; note: first-time subscriptions must be submitted via the app version page in App Store Connect (not the API)"
 	case "DEVELOPER_ACTION_NEEDED":
 		return "Resolve developer action required issues for this subscription in App Store Connect"
 	case "REJECTED":
@@ -179,4 +205,158 @@ func remediationForSubscriptionState(state string) string {
 	default:
 		return "Review this subscription in App Store Connect and submit it for review if needed"
 	}
+}
+
+// subscriptionMetadataDiagnostics produces specific diagnostic checks for subscriptions
+// in MISSING_METADATA state, identifying exactly what's missing.
+func subscriptionMetadataDiagnostics(subs []Subscription) []CheckResult {
+	var checks []CheckResult
+
+	// Track groups we've already checked to avoid duplicate group localization warnings.
+	checkedGroups := make(map[string]bool)
+
+	for _, sub := range subs {
+		state := strings.ToUpper(strings.TrimSpace(sub.State))
+		if state != "MISSING_METADATA" {
+			continue
+		}
+
+		label := formatSubscriptionLabel(sub)
+
+		// Check group localizations (only once per group).
+		groupID := strings.TrimSpace(sub.GroupID)
+		if groupID != "" && !checkedGroups[groupID] {
+			checkedGroups[groupID] = true
+			groupLabel := groupID
+			if strings.TrimSpace(sub.GroupName) != "" {
+				groupLabel = fmt.Sprintf("%q (%s)", sub.GroupName, groupID)
+			}
+			if sub.GroupLocalizationCheckSkipped {
+				remediation := strings.TrimSpace(sub.GroupLocalizationCheckReason)
+				if remediation == "" {
+					remediation = "Review this subscription group's localizations in App Store Connect; validation could not verify them automatically"
+				}
+				checks = append(checks, CheckResult{
+					ID:           "subscriptions.diagnostics.group_localization_unverified",
+					Severity:     SeverityInfo,
+					Field:        "groupLocalizations",
+					ResourceType: "subscriptionGroup",
+					ResourceID:   groupID,
+					Message:      fmt.Sprintf("Could not verify whether subscription group %s has localizations", groupLabel),
+					Remediation:  remediation,
+				})
+			} else if len(sub.GroupLocalizations) == 0 {
+				checks = append(checks, CheckResult{
+					ID:           "subscriptions.diagnostics.group_localization_missing",
+					Severity:     SeverityWarning,
+					Field:        "groupLocalizations",
+					ResourceType: "subscriptionGroup",
+					ResourceID:   groupID,
+					Message:      fmt.Sprintf("Subscription group %s has no localizations", groupLabel),
+					Remediation:  "Create at least one subscription group localization (with group display name) via App Store Connect or `asc subscriptions groups localizations create`; this is a common cause of MISSING_METADATA",
+				})
+			} else {
+				for _, loc := range sub.GroupLocalizations {
+					locale := strings.TrimSpace(loc.Locale)
+					if locale == "" {
+						locale = "(unknown locale)"
+					}
+					if strings.TrimSpace(loc.Name) == "" {
+						checks = append(checks, CheckResult{
+							ID:           "subscriptions.diagnostics.group_localization_name_empty",
+							Severity:     SeverityWarning,
+							Field:        "groupLocalizations",
+							ResourceType: "subscriptionGroup",
+							ResourceID:   groupID,
+							Locale:       locale,
+							Message:      fmt.Sprintf("Subscription group %s localization for %s has an empty display name", groupLabel, locale),
+							Remediation:  "Set a display name for this group localization",
+						})
+					}
+				}
+			}
+		}
+
+		// Check subscription localizations.
+		if sub.LocalizationCheckSkipped {
+			remediation := strings.TrimSpace(sub.LocalizationCheckSkipReason)
+			if remediation == "" {
+				remediation = "Review this subscription's localizations in App Store Connect; validation could not verify them automatically"
+			}
+			checks = append(checks, CheckResult{
+				ID:           "subscriptions.diagnostics.localization_unverified",
+				Severity:     SeverityInfo,
+				Field:        "localizations",
+				ResourceType: "subscription",
+				ResourceID:   strings.TrimSpace(sub.ID),
+				Message:      fmt.Sprintf("Could not verify whether %s has localizations", label),
+				Remediation:  remediation,
+			})
+		} else if len(sub.Localizations) == 0 {
+			checks = append(checks, CheckResult{
+				ID:           "subscriptions.diagnostics.localization_missing",
+				Severity:     SeverityWarning,
+				Field:        "localizations",
+				ResourceType: "subscription",
+				ResourceID:   strings.TrimSpace(sub.ID),
+				Message:      fmt.Sprintf("%s has no localizations (display name and description)", label),
+				Remediation:  "Create at least one subscription localization with display name and description via App Store Connect or `asc subscriptions localizations create`",
+			})
+		} else {
+			for _, loc := range sub.Localizations {
+				var missing []string
+				locale := strings.TrimSpace(loc.Locale)
+				if locale == "" {
+					locale = "(unknown locale)"
+				}
+				if strings.TrimSpace(loc.Name) == "" {
+					missing = append(missing, "display name")
+				}
+				if strings.TrimSpace(loc.Description) == "" {
+					missing = append(missing, "description")
+				}
+				if len(missing) > 0 {
+					checks = append(checks, CheckResult{
+						ID:           "subscriptions.diagnostics.localization_incomplete",
+						Severity:     SeverityWarning,
+						Field:        "localizations",
+						ResourceType: "subscription",
+						ResourceID:   strings.TrimSpace(sub.ID),
+						Locale:       locale,
+						Message:      fmt.Sprintf("%s localization for %s is missing: %s", label, locale, strings.Join(missing, ", ")),
+						Remediation:  "Complete the missing fields for this subscription localization",
+					})
+				}
+			}
+		}
+
+		// Check pricing.
+		if sub.PriceCheckSkipped {
+			remediation := strings.TrimSpace(sub.PriceCheckSkipReason)
+			if remediation == "" {
+				remediation = "Review this subscription's pricing in App Store Connect; validation could not verify it automatically"
+			}
+			checks = append(checks, CheckResult{
+				ID:           "subscriptions.diagnostics.pricing_unverified",
+				Severity:     SeverityInfo,
+				Field:        "pricing",
+				ResourceType: "subscription",
+				ResourceID:   strings.TrimSpace(sub.ID),
+				Message:      fmt.Sprintf("Could not verify whether %s has territory prices configured", label),
+				Remediation:  remediation,
+			})
+		} else if sub.PriceCount == 0 {
+			checks = append(checks, CheckResult{
+				ID:           "subscriptions.diagnostics.pricing_missing",
+				Severity:     SeverityWarning,
+				Field:        "pricing",
+				ResourceType: "subscription",
+				ResourceID:   strings.TrimSpace(sub.ID),
+				Message:      fmt.Sprintf("%s has no territory prices configured", label),
+				Remediation:  "Set prices for all available territories using `asc subscriptions pricing equalize` or `asc subscriptions pricing prices set`",
+			})
+		}
+	}
+
+	return checks
 }

@@ -18,6 +18,11 @@ type subscriptionImageStatus struct {
 	SkipReason string
 }
 
+type metadataCheckStatus struct {
+	Verified   bool
+	SkipReason string
+}
+
 var fetchSubscriptionsFn = fetchSubscriptions
 
 func fetchSubscriptions(ctx context.Context, client *asc.Client, appID string) ([]validation.Subscription, error) {
@@ -40,6 +45,17 @@ func fetchSubscriptions(ctx context.Context, client *asc.Client, appID string) (
 	groups, ok := paginatedGroups.(*asc.SubscriptionGroupsResponse)
 	if !ok {
 		return nil, fmt.Errorf("unexpected subscription groups response type %T", paginatedGroups)
+	}
+
+	groupLocalizations := make(map[string][]validation.SubscriptionGroupLocalizationInfo)
+	groupLocalizationStatuses := make(map[string]metadataCheckStatus)
+	groupNames := make(map[string]string)
+	for _, group := range groups.Data {
+		groupID := strings.TrimSpace(group.ID)
+		if groupID == "" {
+			continue
+		}
+		groupNames[groupID] = strings.TrimSpace(group.Attributes.ReferenceName)
 	}
 
 	subscriptions := make([]validation.Subscription, 0)
@@ -77,20 +93,162 @@ func fetchSubscriptions(ctx context.Context, client *asc.Client, appID string) (
 			}
 
 			attrs := sub.Attributes
-			subscriptions = append(subscriptions, validation.Subscription{
+			valSub := validation.Subscription{
 				ID:                   sub.ID,
 				Name:                 attrs.Name,
 				ProductID:            attrs.ProductID,
 				State:                attrs.State,
 				GroupID:              groupID,
+				GroupName:            groupNames[groupID],
 				HasImage:             imageStatus.HasImage,
 				ImageCheckSkipped:    !imageStatus.Verified,
 				ImageCheckSkipReason: imageStatus.SkipReason,
-			})
+			}
+
+			// Fetch deep diagnostics only for subscriptions in MISSING_METADATA.
+			if strings.EqualFold(strings.TrimSpace(attrs.State), "MISSING_METADATA") {
+				if _, ok := groupLocalizationStatuses[groupID]; !ok {
+					locs, status, err := fetchGroupLocalizations(ctx, client, groupID)
+					if err != nil {
+						return nil, fmt.Errorf("fetch subscription group localizations for group %s: %w", groupID, err)
+					}
+					groupLocalizations[groupID] = locs
+					groupLocalizationStatuses[groupID] = status
+				}
+				groupLocalizationStatus := groupLocalizationStatuses[groupID]
+				valSub.GroupLocalizations = groupLocalizations[groupID]
+				valSub.GroupLocalizationCheckSkipped = !groupLocalizationStatus.Verified
+				valSub.GroupLocalizationCheckReason = groupLocalizationStatus.SkipReason
+
+				localizations, localizationStatus, err := fetchSubscriptionLocalizations(ctx, client, sub.ID)
+				if err != nil {
+					return nil, fmt.Errorf("fetch subscription localizations for %s: %w", strings.TrimSpace(sub.ID), err)
+				}
+				valSub.Localizations = localizations
+				valSub.LocalizationCheckSkipped = !localizationStatus.Verified
+				valSub.LocalizationCheckSkipReason = localizationStatus.SkipReason
+				priceCount, priceStatus, err := fetchSubscriptionPriceCount(ctx, client, sub.ID)
+				if err != nil {
+					return nil, fmt.Errorf("fetch subscription prices for %s: %w", strings.TrimSpace(sub.ID), err)
+				}
+				valSub.PriceCount = priceCount
+				valSub.PriceCheckSkipped = !priceStatus.Verified
+				valSub.PriceCheckSkipReason = priceStatus.SkipReason
+			}
+
+			subscriptions = append(subscriptions, valSub)
 		}
 	}
 
 	return subscriptions, nil
+}
+
+func fetchGroupLocalizations(ctx context.Context, client *asc.Client, groupID string) ([]validation.SubscriptionGroupLocalizationInfo, metadataCheckStatus, error) {
+	reqCtx, cancel := shared.ContextWithTimeout(ctx)
+	resp, err := client.GetSubscriptionGroupLocalizations(reqCtx, strings.TrimSpace(groupID), asc.WithSubscriptionGroupLocalizationsLimit(200))
+	cancel()
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil, metadataCheckStatus{}, err
+		}
+		if reason, ok := metadataCheckSkipReason(err, "subscription group localizations"); ok {
+			return nil, metadataCheckStatus{SkipReason: reason}, nil
+		}
+		return nil, metadataCheckStatus{}, err
+	}
+
+	paginated, err := asc.PaginateAll(ctx, resp, func(_ context.Context, nextURL string) (asc.PaginatedResponse, error) {
+		pageCtx, pageCancel := shared.ContextWithTimeout(ctx)
+		defer pageCancel()
+		return client.GetSubscriptionGroupLocalizations(pageCtx, strings.TrimSpace(groupID), asc.WithSubscriptionGroupLocalizationsNextURL(nextURL))
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil, metadataCheckStatus{}, err
+		}
+		if reason, ok := metadataCheckSkipReason(err, "subscription group localizations"); ok {
+			return nil, metadataCheckStatus{SkipReason: reason}, nil
+		}
+		return nil, metadataCheckStatus{}, err
+	}
+
+	typed, ok := paginated.(*asc.SubscriptionGroupLocalizationsResponse)
+	if !ok {
+		return nil, metadataCheckStatus{}, fmt.Errorf("unexpected subscription group localizations response type %T", paginated)
+	}
+
+	locs := make([]validation.SubscriptionGroupLocalizationInfo, 0, len(typed.Data))
+	for _, loc := range typed.Data {
+		locs = append(locs, validation.SubscriptionGroupLocalizationInfo{
+			Locale: strings.TrimSpace(loc.Attributes.Locale),
+			Name:   strings.TrimSpace(loc.Attributes.Name),
+		})
+	}
+	return locs, metadataCheckStatus{Verified: true}, nil
+}
+
+// fetchSubscriptionLocalizations fetches localization info for a subscription.
+func fetchSubscriptionLocalizations(ctx context.Context, client *asc.Client, subscriptionID string) ([]validation.SubscriptionLocalizationInfo, metadataCheckStatus, error) {
+	reqCtx, cancel := shared.ContextWithTimeout(ctx)
+	resp, err := client.GetSubscriptionLocalizations(reqCtx, strings.TrimSpace(subscriptionID), asc.WithSubscriptionLocalizationsLimit(200))
+	cancel()
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil, metadataCheckStatus{}, err
+		}
+		if reason, ok := metadataCheckSkipReason(err, "subscription localizations"); ok {
+			return nil, metadataCheckStatus{SkipReason: reason}, nil
+		}
+		return nil, metadataCheckStatus{}, err
+	}
+
+	paginated, err := asc.PaginateAll(ctx, resp, func(_ context.Context, nextURL string) (asc.PaginatedResponse, error) {
+		pageCtx, pageCancel := shared.ContextWithTimeout(ctx)
+		defer pageCancel()
+		return client.GetSubscriptionLocalizations(pageCtx, strings.TrimSpace(subscriptionID), asc.WithSubscriptionLocalizationsNextURL(nextURL))
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil, metadataCheckStatus{}, err
+		}
+		if reason, ok := metadataCheckSkipReason(err, "subscription localizations"); ok {
+			return nil, metadataCheckStatus{SkipReason: reason}, nil
+		}
+		return nil, metadataCheckStatus{}, err
+	}
+
+	typed, ok := paginated.(*asc.SubscriptionLocalizationsResponse)
+	if !ok {
+		return nil, metadataCheckStatus{}, fmt.Errorf("unexpected subscription localizations response type %T", paginated)
+	}
+
+	locs := make([]validation.SubscriptionLocalizationInfo, 0, len(typed.Data))
+	for _, loc := range typed.Data {
+		locs = append(locs, validation.SubscriptionLocalizationInfo{
+			Locale:      strings.TrimSpace(loc.Attributes.Locale),
+			Name:        strings.TrimSpace(loc.Attributes.Name),
+			Description: strings.TrimSpace(loc.Attributes.Description),
+		})
+	}
+	return locs, metadataCheckStatus{Verified: true}, nil
+}
+
+// fetchSubscriptionPriceCount checks whether a subscription has any prices set.
+func fetchSubscriptionPriceCount(ctx context.Context, client *asc.Client, subscriptionID string) (int, metadataCheckStatus, error) {
+	reqCtx, cancel := shared.ContextWithTimeout(ctx)
+	defer cancel()
+
+	resp, err := client.GetSubscriptionPrices(reqCtx, strings.TrimSpace(subscriptionID), asc.WithSubscriptionPricesLimit(1))
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return 0, metadataCheckStatus{}, err
+		}
+		if reason, ok := metadataCheckSkipReason(err, "subscription prices"); ok {
+			return 0, metadataCheckStatus{SkipReason: reason}, nil
+		}
+		return 0, metadataCheckStatus{SkipReason: "Validation skipped subscription prices because the App Store Connect endpoint returned an unexpected error"}, nil
+	}
+	return len(resp.Data), metadataCheckStatus{Verified: true}, nil
 }
 
 func subscriptionHasImage(ctx context.Context, client *asc.Client, subscriptionID string) (subscriptionImageStatus, error) {
@@ -137,4 +295,24 @@ func subscriptionHasImage(ctx context.Context, client *asc.Client, subscriptionI
 		HasImage: resp != nil && len(resp.Data) > 0,
 		Verified: true,
 	}, nil
+}
+
+func metadataCheckSkipReason(err error, resourceLabel string) (string, bool) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Sprintf("Validation skipped %s because the App Store Connect endpoint timed out", resourceLabel), true
+	}
+	if errors.Is(err, asc.ErrForbidden) || asc.IsUnauthorized(err) {
+		return fmt.Sprintf("Validation skipped %s because this App Store Connect account cannot read them", resourceLabel), true
+	}
+	if asc.IsRetryable(err) {
+		return fmt.Sprintf("Validation skipped %s because the App Store Connect endpoint was temporarily unavailable or rate limited", resourceLabel), true
+	}
+	if asc.IsNotFound(err) {
+		return fmt.Sprintf("Validation skipped %s because the App Store Connect endpoint returned not found", resourceLabel), true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return fmt.Sprintf("Validation skipped %s because the App Store Connect endpoint could not be reached", resourceLabel), true
+	}
+	return "", false
 }
