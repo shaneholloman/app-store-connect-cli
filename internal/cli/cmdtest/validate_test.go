@@ -45,6 +45,7 @@ type validateFixture struct {
 	localizationsBySub         map[string]string
 	localizationsStatusBySub   map[string]int
 	pricesBySubscription       map[string]string
+	expectedPriceInclude       string
 	pricesStatusBySubscription map[string]int
 	priceErrorBySubscription   map[string]error
 	subscriptionGroupsStatus   int
@@ -86,7 +87,7 @@ func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
 			return jsonResponse(http.StatusOK, `{"data":null}`)
 		case path == "/v1/appStoreVersions/ver-1/appStoreVersionLocalizations":
 			return jsonResponse(http.StatusOK, fixture.versionLocs)
-		case path == "/v1/appStoreVersions/ver-1/ageRatingDeclaration":
+		case path == "/v1/appInfos/info-1/ageRatingDeclaration":
 			return jsonResponse(http.StatusOK, fixture.ageRating)
 		case path == "/v1/appStoreVersions/ver-1/appStoreReviewDetail":
 			if fixture.reviewDetails != "" {
@@ -160,6 +161,9 @@ func newValidateTestClient(t *testing.T, fixture validateFixture) *asc.Client {
 			return jsonResponse(http.StatusOK, `{"data":[]}`)
 		case strings.HasPrefix(path, "/v1/subscriptions/") && strings.HasSuffix(path, "/prices"):
 			subscriptionID := strings.TrimSuffix(strings.TrimPrefix(path, "/v1/subscriptions/"), "/prices")
+			if fixture.expectedPriceInclude != "" && req.URL.Query().Get("include") != fixture.expectedPriceInclude {
+				t.Fatalf("expected include=%q, got %q", fixture.expectedPriceInclude, req.URL.Query().Get("include"))
+			}
 			if err, ok := fixture.priceErrorBySubscription[subscriptionID]; ok {
 				return nil, err
 			}
@@ -240,7 +244,7 @@ func validValidateFixture() validateFixture {
 	return validateFixture{
 		app:             `{"data":{"type":"apps","id":"app-1","attributes":{"primaryLocale":"en-US"}}}`,
 		versions:        `{"data":[{"type":"appStoreVersions","id":"ver-1","attributes":{"platform":"IOS","versionString":"1.0"}}]}`,
-		version:         `{"data":{"type":"appStoreVersions","id":"ver-1","attributes":{"platform":"IOS","versionString":"1.0","appVersionState":"PREPARE_FOR_SUBMISSION"}}}`,
+		version:         `{"data":{"type":"appStoreVersions","id":"ver-1","attributes":{"platform":"IOS","versionString":"1.0","appVersionState":"PREPARE_FOR_SUBMISSION"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`,
 		appInfos:        `{"data":[{"type":"appInfos","id":"info-1","attributes":{"state":"PREPARE_FOR_SUBMISSION"}}]}`,
 		appInfoLocs:     `{"data":[{"type":"appInfoLocalizations","id":"info-loc-1","attributes":{"locale":"en-US","name":"My App","subtitle":"Subtitle","privacyPolicyUrl":"https://example.com/privacy"}}]}`,
 		versionLocs:     `{"data":[{"type":"appStoreVersionLocalizations","id":"ver-loc-1","attributes":{"locale":"en-US","description":"Description","keywords":"keyword","whatsNew":"Notes","promotionalText":"Promo","supportUrl":"https://support.example.com","marketingUrl":"https://marketing.example.com"}}]}`,
@@ -923,7 +927,7 @@ func TestValidateWarnsWhenPrivacyPolicyURLMissing(t *testing.T) {
 
 func TestValidateFailsForNonEditableVersionState(t *testing.T) {
 	fixture := validValidateFixture()
-	fixture.version = `{"data":{"type":"appStoreVersions","id":"ver-1","attributes":{"platform":"IOS","versionString":"1.0","appVersionState":"WAITING_FOR_REVIEW"}}}`
+	fixture.version = `{"data":{"type":"appStoreVersions","id":"ver-1","attributes":{"platform":"IOS","versionString":"1.0","appVersionState":"WAITING_FOR_REVIEW"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`
 
 	client := newValidateTestClient(t, fixture)
 	restore := validate.SetClientFactory(func() (*asc.Client, error) {
@@ -1501,6 +1505,89 @@ func TestValidateFailsWhenNoTerritoriesAvailable(t *testing.T) {
 	}
 }
 
+func TestValidateWarnsPartialSubscriptionPricingCoverage(t *testing.T) {
+	fixture := validValidateFixture()
+	// Subscription with pricing for 1 territory but app available in many.
+	fixture.subscriptionsByGroup["group-1"] = `{"data":[{"type":"subscriptions","id":"sub-1","attributes":{"name":"Monthly","productId":"com.example.monthly","state":"APPROVED"}}]}`
+	fixture.expectedPriceInclude = "territory"
+	fixture.pricesBySubscription = map[string]string{
+		"sub-1": `{"data":[{"type":"subscriptionPrices","id":"price-1","attributes":{"startDate":"2026-01-01"},"relationships":{"territory":{"data":{"type":"territories","id":"USA"}}}}]}`,
+	}
+	// Make the app available in 5 territories so the coverage gap is clear.
+	fixture.territories = `{"data":[` +
+		`{"type":"territoryAvailabilities","id":"ta-1","attributes":{"available":true}},` +
+		`{"type":"territoryAvailabilities","id":"ta-2","attributes":{"available":true}},` +
+		`{"type":"territoryAvailabilities","id":"ta-3","attributes":{"available":true}},` +
+		`{"type":"territoryAvailabilities","id":"ta-4","attributes":{"available":true}},` +
+		`{"type":"territoryAvailabilities","id":"ta-5","attributes":{"available":true}}` +
+		`]}`
+
+	client := newValidateTestClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("expected no blocking errors, got %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var report validation.Report
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if !hasCheckWithID(report.Checks, "subscriptions.pricing.partial_territory_coverage") {
+		t.Fatalf("expected pricing coverage warning, got %+v", report.Checks)
+	}
+}
+
+func TestValidateSurfacesSkippedActiveSubscriptionPriceProbeAsInformational(t *testing.T) {
+	fixture := validValidateFixture()
+	fixture.expectedPriceInclude = "territory"
+	fixture.pricesStatusBySubscription = map[string]int{
+		"sub-1": http.StatusForbidden,
+	}
+
+	client := newValidateTestClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("expected skipped active-subscription price probe to be non-blocking, got %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var report validation.Report
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if !hasCheckWithID(report.Checks, "subscriptions.pricing.unverified") {
+		t.Fatalf("expected subscriptions.pricing.unverified check, got %+v", report.Checks)
+	}
+	if hasCheckWithID(report.Checks, "subscriptions.diagnostics.pricing_unverified") {
+		t.Fatalf("did not expect missing-metadata pricing diagnostic for approved subscription, got %+v", report.Checks)
+	}
+}
+
 func TestValidateIncludesIAPChecks(t *testing.T) {
 	fixture := validValidateFixture()
 	fixture.iaps = `{"data":[
@@ -1681,5 +1768,69 @@ func TestValidateNoIAPChecksWhenAppHasNoIAPs(t *testing.T) {
 		if strings.HasPrefix(check.ID, "iap.") {
 			t.Fatalf("expected no IAP checks when app has no IAPs, got %+v", check)
 		}
+	}
+}
+
+func TestValidateWarnsScheduledReleaseDateInPast(t *testing.T) {
+	fixture := validValidateFixture()
+	fixture.version = `{"data":{"type":"appStoreVersions","id":"ver-1","attributes":{"platform":"IOS","versionString":"1.0","appVersionState":"PREPARE_FOR_SUBMISSION","releaseType":"SCHEDULED","earliestReleaseDate":"2020-01-01T00:00:00+00:00"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`
+
+	client := newValidateTestClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("expected no blocking errors, got %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var report validation.Report
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if !hasCheckWithID(report.Checks, "release.scheduled_date_past") {
+		t.Fatalf("expected release.scheduled_date_past warning, got %+v", report.Checks)
+	}
+}
+
+func TestValidateShowsManualReleaseInfo(t *testing.T) {
+	fixture := validValidateFixture()
+	fixture.version = `{"data":{"type":"appStoreVersions","id":"ver-1","attributes":{"platform":"IOS","versionString":"1.0","appVersionState":"PREPARE_FOR_SUBMISSION","releaseType":"MANUAL"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`
+
+	client := newValidateTestClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("expected no blocking errors, got %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var report validation.Report
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if !hasCheckWithID(report.Checks, "release.type_manual") {
+		t.Fatalf("expected release.type_manual info check, got %+v", report.Checks)
 	}
 }
