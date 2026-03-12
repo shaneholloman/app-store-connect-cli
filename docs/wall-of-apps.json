@@ -55,10 +55,24 @@
     "platform": ["iOS", "watchOS"]
   },
   {
+    "app": "Bloom - Coffee Shelf & Recipe",
+    "link": "https://apps.apple.com/us/app/bloom-coffee-shelf-recipe/id6759914524?uo=4",
+    "creator": "ParthJadhav",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a4/c8/2a/a4c82a25-fae8-4c04-6d02-91a15b72bb4f/BloomIconFinal-0-1x_U007ephone-0-1-0-sRGB-85-220-0.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
     "app": "Bobbin",
     "link": "https://apps.apple.com/us/app/threads-growth-bobbin/id6756035789",
     "creator": "ljyjeffrey",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/fe/a3/9d/fea39d77-422f-d815-5af9-c0ee518f5b97/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
+    "app": "BuddyTask: AI To Do List",
+    "link": "https://apps.apple.com/us/app/buddytask-ai-to-do-list/id6758902036?uo=4",
+    "creator": "IvanLohCK",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/80/f5/84/80f584d0-6956-72b2-1294-8a5157c450b9/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/512x512bb.jpg",
     "platform": ["iOS"]
   },
   {
@@ -472,6 +486,13 @@
     "platform": ["iOS", "visionOS"]
   },
   {
+    "app": "SubList: Subscription List",
+    "link": "https://apps.apple.com/us/app/sublist-subscription-list/id6757860829?uo=4",
+    "creator": "lexrus",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/45/7e/dd/457edd6b-d9f7-89a7-99b2-72a72cab212f/AppIcon-0-0-1x_U007epad-0-1-P3-85-220.png/512x512bb.jpg",
+    "platform": ["iOS", "macOS"]
+  },
+  {
     "app": "Summit",
     "link": "https://apps.apple.com/app/id6756911679",
     "creator": "OscarGorog",
@@ -489,6 +510,13 @@
     "link": "https://apps.apple.com/app/swiftbiu/id6754772331",
     "creator": "SwiftBiu",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/90/3b/2e/903b2ef1-7097-f00c-3557-db67e054e174/AppIcon-0-0-85-220-0-5-0-2x.png/512x512bb.png",
+    "platform": ["macOS"]
+  },
+  {
+    "app": "SwiftyMenu",
+    "link": "https://apps.apple.com/us/app/swiftymenu/id1567748223?mt=12&uo=4",
+    "creator": "lexrus",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/e6/0a/2c/e60a2c36-1e5c-f018-3a56-edc1fd1bfa40/AppIcon.png/512x512bb.png",
     "platform": ["macOS"]
   },
   {
