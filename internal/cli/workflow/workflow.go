@@ -27,6 +27,7 @@ func WorkflowCommand() *ffcli.Command {
 		ShortHelp:  "Run multi-step automation workflows.",
 		LongHelp: `Define named, multi-step automation sequences in .asc/workflow.json.
 Each workflow composes existing asc commands and shell commands.
+The file supports JSONC comments ('//' and '/* */').
 Hooks are supported at the definition level: before_all, after_all, and error.
 stdout is JSON-only; step/hook command output streams to stderr.
 Commands run via bash (with pipefail) when available, otherwise sh; at least one must be in PATH.
@@ -36,9 +37,17 @@ Security note:
   Workflows intentionally execute arbitrary shell commands.
   Only run workflow files you trust (especially when using --file).
   Treat .asc/workflow.json like code: review it before running.
+  Be careful with --file: it can point to any path, not just .asc/workflow.json.
   Steps inherit your process environment; be careful with secrets.
+  Declared step outputs are persisted in the run-state file; do not map secrets into outputs.
   In CI, avoid running workflows on untrusted PRs with secrets/tokens.
   asc workflow validate checks structure, not safety of commands.
+
+Tips:
+  Use asc workflow validate before running a new workflow file.
+  Preview the plan with asc workflow run --dry-run <name>.
+  Run-step outputs can be referenced later as ${steps.resolve_build.BUILD_ID}.
+  For asc commands that declare outputs, usually pass --output json.
 
 Example workflow file (.asc/workflow.json):
 
@@ -108,8 +117,6 @@ Try it:
   asc workflow run beta BUILD_ID:123456789 GROUP_ID:abcdef
   asc workflow run release --resume beta-20260312T120000Z-deadbeef
 
-More docs: https://github.com/rudrankriyam/App-Store-Connect-CLI/blob/main/docs/WORKFLOWS.md
-
 Examples:
   asc workflow list
   asc workflow validate
@@ -147,6 +154,11 @@ func workflowRunCommand() *ffcli.Command {
 Run state is persisted in a repo-local runs directory next to the workflow file.
 Use --resume with the emitted run ID to continue a partially completed run without
 rerunning already-persisted successful steps.
+Resume automatically reuses the original workflow file, saved params, and persisted outputs.
+Do not pass extra KEY:VALUE params with --resume.
+If a step declares "outputs", the command must emit JSON on stdout; for asc commands,
+usually pass --output json.
+stdout stays machine-parseable JSON even on failure; step and hook output streams to stderr.
 
 Security note:
   Workflows intentionally execute arbitrary shell commands.
@@ -154,7 +166,13 @@ Security note:
   In CI, avoid running workflows on untrusted PRs with secrets/tokens.
   Declared step outputs are persisted in the run-state file; do not map secrets into outputs.
 
-Tip: See "asc workflow --help" for a complete workflow.json example.`,
+Tip: See "asc workflow --help" for a complete workflow.json example and file format tips.
+
+Examples:
+  asc workflow run beta
+  asc workflow run beta BUILD_ID:123456789 GROUP_ID:abcdef
+  asc workflow run --dry-run beta
+  asc workflow run release --resume beta-20260312T120000Z-deadbeef`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -224,8 +242,14 @@ func workflowValidateCommand() *ffcli.Command {
 		Name:       "validate",
 		ShortUsage: "asc workflow validate [flags]",
 		ShortHelp:  "Validate workflow.json for errors and cycles.",
-		FlagSet:    fs,
-		UsageFunc:  shared.DefaultUsageFunc,
+		LongHelp: `Validate workflow.json for structure, references, cycles, and output declarations.
+This checks schema and wiring only; it does not assess shell-command safety.
+
+Examples:
+  asc workflow validate
+  asc workflow validate --file ./.asc/workflow.json`,
+		FlagSet:   fs,
+		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(_ context.Context, args []string) error {
 			if len(args) > 0 {
 				return shared.UsageErrorf("unexpected argument(s): %s", strings.Join(args, " "))
@@ -276,8 +300,14 @@ func workflowListCommand() *ffcli.Command {
 		Name:       "list",
 		ShortUsage: "asc workflow list [flags]",
 		ShortHelp:  "List available workflows.",
-		FlagSet:    fs,
-		UsageFunc:  shared.DefaultUsageFunc,
+		LongHelp: `List public workflows from workflow.json.
+Use --all to include private helper workflows.
+
+Examples:
+  asc workflow list
+  asc workflow list --all`,
+		FlagSet:   fs,
+		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(_ context.Context, args []string) error {
 			if len(args) > 0 {
 				return shared.UsageErrorf("unexpected argument(s): %s", strings.Join(args, " "))

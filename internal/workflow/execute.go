@@ -120,7 +120,6 @@ func Run(ctx context.Context, def *Definition, opts RunOptions) (*RunResult, err
 		return nil, fmt.Errorf("workflow: %q is private and cannot be run directly", opts.WorkflowName)
 	}
 
-	env := mergeEnv(def.Env, wf.Env, opts.Params)
 	result := &RunResult{
 		Workflow: opts.WorkflowName,
 		Steps:    make([]StepResult, 0),
@@ -136,6 +135,8 @@ func Run(ctx context.Context, def *Definition, opts RunOptions) (*RunResult, err
 		result.Error = err.Error()
 		return result, err
 	}
+
+	env := mergeEnv(def.Env, wf.Env, r.opts.Params)
 
 	if resumed := r.resumedHook("before_all", def.BeforeAll); resumed != nil {
 		result.ensureHooks().BeforeAll = resumed
@@ -218,6 +219,9 @@ func newRunner(def *Definition, opts RunOptions, result *RunResult) (*runner, er
 		}
 		if state == nil {
 			return nil, fmt.Errorf("workflow: resume run %q not found", opts.ResumeRunID)
+		}
+		if len(r.opts.Params) == 0 && len(state.Params) > 0 {
+			r.opts.Params = cloneStringMap(state.Params)
 		}
 		if err := r.validateResumeState(state); err != nil {
 			return nil, err
@@ -374,15 +378,19 @@ func (r *runner) executeSteps(ctx context.Context, workflowName string, steps []
 				return err
 			}
 
-			resolvedWith, err := interpolateMapValues(step.With, r.outputs)
-			if err != nil {
-				wrapped := fmt.Errorf("workflow: %s step %d: %w", workflowName, idx, err)
-				sr.Status = "error"
-				sr.Error = err.Error()
-				sr.DurationMS = time.Since(stepStart).Milliseconds()
-				r.result.Steps = append(r.result.Steps, sr)
-				r.result.FailedStep = failedStepName(step.Name, stepKey)
-				return wrapped
+			resolvedWith := cloneStringMap(step.With)
+			var err error
+			if !r.opts.DryRun {
+				resolvedWith, err = interpolateMapValues(step.With, r.outputs)
+				if err != nil {
+					wrapped := fmt.Errorf("workflow: %s step %d: %w", workflowName, idx, err)
+					sr.Status = "error"
+					sr.Error = err.Error()
+					sr.DurationMS = time.Since(stepStart).Milliseconds()
+					r.result.Steps = append(r.result.Steps, sr)
+					r.result.FailedStep = failedStepName(step.Name, stepKey)
+					return wrapped
+				}
 			}
 
 			subEnv := mergeEnv(subWf.Env, env, resolvedWith)

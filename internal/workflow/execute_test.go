@@ -421,6 +421,83 @@ func TestRun_ResumeSkipsCompletedStepsAndReusesOutputs(t *testing.T) {
 	}
 }
 
+func TestRun_ResumeReusesOriginalParams(t *testing.T) {
+	dir := t.TempDir()
+	allowPath := filepath.Join(dir, "allow-deploy")
+
+	def := &Definition{
+		Workflows: map[string]Workflow{
+			"release": {
+				Steps: []Step{
+					{
+						Name: "prepare",
+						Run:  "echo prepared",
+					},
+					{
+						Name: "deploy",
+						Run: fmt.Sprintf(
+							`if [ -f %q ] && [ "$TARGET" = 'prod' ]; then echo deployed; else echo blocked >&2; exit 17; fi`,
+							allowPath,
+						),
+					},
+				},
+			},
+		},
+	}
+
+	runFile := filepath.Join(dir, "workflow.json")
+	stateDir := filepath.Join(dir, "runs")
+
+	firstOpts := runOpts("release")
+	firstOpts.WorkflowFile = runFile
+	firstOpts.StateDir = stateDir
+	firstOpts.Params = map[string]string{"TARGET": "prod"}
+
+	firstResult, err := Run(context.Background(), def, firstOpts)
+	if err == nil {
+		t.Fatal("expected first run to fail")
+	}
+	if firstResult == nil {
+		t.Fatal("expected structured result on failure")
+	}
+	if !firstResult.Recoverable {
+		t.Fatal("expected first failure to be recoverable")
+	}
+	if strings.TrimSpace(firstResult.RunID) == "" {
+		t.Fatal("expected run_id on recoverable failure")
+	}
+
+	if writeErr := os.WriteFile(allowPath, []byte("ok"), 0o600); writeErr != nil {
+		t.Fatalf("write allow file: %v", writeErr)
+	}
+
+	resumeOpts := runOpts("release")
+	resumeOpts.WorkflowFile = runFile
+	resumeOpts.StateDir = stateDir
+	resumeOpts.ResumeRunID = firstResult.RunID
+
+	resumeResult, resumeErr := Run(context.Background(), def, resumeOpts)
+	if resumeErr != nil {
+		t.Fatalf("resume Run: %v", resumeErr)
+	}
+	if !resumeResult.Resumed {
+		t.Fatal("expected resumed=true")
+	}
+	if resumeResult.Status != "ok" {
+		t.Fatalf("expected resumed status ok, got %q", resumeResult.Status)
+	}
+	if len(resumeResult.Steps) != 2 {
+		t.Fatalf("expected two steps in resumed result, got %d", len(resumeResult.Steps))
+	}
+	if resumeResult.Steps[0].Status != "resumed" {
+		t.Fatalf("expected first step resumed, got %q", resumeResult.Steps[0].Status)
+	}
+	stdout := resumeOpts.Stdout.(*bytes.Buffer).String()
+	if !strings.Contains(stdout, "deployed") {
+		t.Fatalf("expected resumed run to reuse TARGET param, got %q", stdout)
+	}
+}
+
 func TestRun_RuntimeParamAffectsOutput(t *testing.T) {
 	def := &Definition{
 		Workflows: map[string]Workflow{
@@ -1091,6 +1168,56 @@ func TestRun_DryRunSubWorkflow(t *testing.T) {
 	stdout := opts.Stdout.(*bytes.Buffer).String()
 	if strings.Contains(stdout, "from-helper") {
 		t.Fatal("dry-run should not execute sub-workflow commands")
+	}
+}
+
+func TestRun_DryRun_AllowsInterpolatedWithValues(t *testing.T) {
+	def := &Definition{
+		Workflows: map[string]Workflow{
+			"main": {
+				Steps: []Step{
+					{
+						Name: "upload",
+						Run:  `printf '{"buildId":"build-42"}'`,
+						Outputs: map[string]string{
+							"BUILD_ID": "$.buildId",
+						},
+					},
+					{
+						Workflow: "distribute",
+						With: map[string]string{
+							"BUILD_ID": "${steps.upload.BUILD_ID}",
+						},
+					},
+				},
+			},
+			"distribute": {
+				Steps: []Step{
+					{Run: "echo $BUILD_ID"},
+				},
+			},
+		},
+	}
+
+	opts := runOpts("main")
+	opts.DryRun = true
+
+	result, err := Run(context.Background(), def, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if result.Status != "ok" {
+		t.Fatalf("expected ok, got %q", result.Status)
+	}
+	stderr := opts.Stderr.(*bytes.Buffer).String()
+	if !strings.Contains(stderr, `[dry-run] step 1: printf '{"buildId":"build-42"}'`) {
+		t.Fatalf("expected first dry-run preview, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "[dry-run] step 2: workflow distribute") {
+		t.Fatalf("expected workflow dry-run preview, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "[dry-run] step 1: echo $BUILD_ID") {
+		t.Fatalf("expected child dry-run preview, got %q", stderr)
 	}
 }
 
