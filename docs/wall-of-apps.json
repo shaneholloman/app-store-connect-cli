@@ -82,6 +82,13 @@
     "platform": ["iOS"]
   },
   {
+    "app": "Concert Memories 2: Countdown",
+    "link": "https://apps.apple.com/us/app/concert-memories-2-countdown/id6744301154?uo=4",
+    "creator": "Eros Bonanni",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6c/ce/a1/6ccea161-6da4-52c7-1260-f44955b0bc70/ConcertMemories2-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg",
+    "platform": ["iOS", "macOS"]
+  },
+  {
     "app": "Contact Sheet",
     "link": "https://apps.apple.com/us/app/contact-sheet-generator/id6744368077",
     "creator": "sambitcreate",
@@ -402,6 +409,13 @@
     "platform": ["iOS"]
   },
   {
+    "app": "SajdaTV",
+    "link": "https://apps.apple.com/us/app/sajdatv/id6759179587",
+    "creator": "Abdo-codes",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a2/86/a6/a286a647-d984-7f1d-6f2b-7d4fda64c3e2/App_Icon-marketing.lsr/512x512bb.jpg",
+    "platform": ["tvOS"]
+  },
+  {
     "app": "Siraj — Your Ramadan Light",
     "link": "https://apps.apple.com/app/id6759178047",
     "creator": "SwifAI",
@@ -587,6 +601,13 @@
     "link": "https://apps.apple.com/app/id6670147622",
     "creator": "randomor",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/61/5a/dc/615adc54-4abd-f5f0-34a8-0ee239868470/AppIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg",
+    "platform": ["iOS"]
+  },
+  {
+    "app": "Zenther: AI Calorie Tracker",
+    "link": "https://apps.apple.com/us/app/zenther-ai-calorie-tracker/id6748252780?uo=4",
+    "creator": "rudrankriyam",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c6/49/14/c6491404-390d-82e2-3c3c-1b6053594311/Zenther-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg",
     "platform": ["iOS"]
   },
   {
