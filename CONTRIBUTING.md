@@ -131,16 +131,12 @@ To add your app:
    `asc apps wall submit --app "1234567890" --dry-run`
 
 The command uses your authenticated `gh` session to fork the repo, create a branch, update `docs/wall-of-apps.json`, and open a pull request automatically.
-It resolves the public App Store name, URL, icon, and platform labels from the app ID automatically. For entries that are not on the public App Store yet, use `--link` with `--name` and `--platform`.
+It resolves the public App Store name, URL, and icon from the app ID automatically. For entries that are not on the public App Store yet, use `--link` with `--name`.
 
 Format:
 ```json
 {
   "app": "Your App Name",
-  "link": "https://apps.apple.com/app/id1234567890",
-  "creator": "your-github-handle",
-  "platform": ["iOS"]
+  "link": "https://apps.apple.com/app/id1234567890"
 }
 ```
-
-Platform values are free-form labels (for example: `iOS`, `macOS`, `watchOS`, `tvOS`, `visionOS`, `Android`, `Web`).

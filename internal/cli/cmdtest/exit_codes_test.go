@@ -242,13 +242,13 @@ func TestRun_UsageValidationErrorsReturnExitUsage(t *testing.T) {
 			name: "apps wall submit parent wall flags",
 			args: []string{
 				"apps", "wall",
-				"--include-platforms", "iOS",
+				"--limit", "20",
 				"--output", "markdown",
 				"submit",
 				"--app", "1234567890",
 				"--dry-run",
 			},
-			wantErr: `apps wall submit does not accept parent wall flags (--include-platforms, --output)`,
+			wantErr: `apps wall submit does not accept parent wall flags (--limit, --output)`,
 		},
 	}
 
