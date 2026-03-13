@@ -181,11 +181,17 @@ func runSubmitCreateLocalizationPreflight(ctx context.Context, client *asc.Clien
 	return fmt.Errorf("submit create: submit preflight failed")
 }
 
-// isAppUpdate returns true if the app already has a version in READY_FOR_SALE
-// state, meaning this submission is an update and whatsNew is required.
+// isAppUpdate returns true if the app has ever been released, meaning this
+// submission is an update and whatsNew is required. Checks for READY_FOR_SALE
+// as well as DEVELOPER_REMOVED_FROM_SALE and REMOVED_FROM_SALE, since apps
+// that were published then removed are still considered updates by Apple.
 func isAppUpdate(ctx context.Context, client *asc.Client, appID string) bool {
 	versions, err := client.GetAppStoreVersions(ctx, appID,
-		asc.WithAppStoreVersionsStates([]string{"READY_FOR_SALE"}),
+		asc.WithAppStoreVersionsStates([]string{
+			"READY_FOR_SALE",
+			"DEVELOPER_REMOVED_FROM_SALE",
+			"REMOVED_FROM_SALE",
+		}),
 		asc.WithAppStoreVersionsLimit(1),
 	)
 	if err != nil {
