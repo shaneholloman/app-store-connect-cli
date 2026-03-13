@@ -322,9 +322,10 @@ func autoResolveAppInfoIDByVersionState(candidates []appInfoCandidate, versionSt
 		return "", false
 	}
 
+	acceptableStates := acceptableAppInfoStatesForVersionState(resolvedVersionState)
 	matches := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.id == "" || !strings.EqualFold(candidate.state, resolvedVersionState) {
+		if candidate.id == "" || !matchesAppInfoState(candidate.state, acceptableStates) {
 			continue
 		}
 		matches = append(matches, candidate.id)
@@ -333,6 +334,32 @@ func autoResolveAppInfoIDByVersionState(candidates []appInfoCandidate, versionSt
 		return "", false
 	}
 	return matches[0], true
+}
+
+func acceptableAppInfoStatesForVersionState(versionState string) []string {
+	switch strings.TrimSpace(versionState) {
+	case "PENDING_DEVELOPER_RELEASE", "PENDING_APPLE_RELEASE":
+		return []string{versionState, "PENDING_RELEASE"}
+	case "REPLACED_WITH_NEW_VERSION":
+		return []string{versionState, "REPLACED_WITH_NEW_INFO"}
+	case "READY_FOR_SALE":
+		return []string{versionState, "READY_FOR_DISTRIBUTION"}
+	default:
+		return []string{versionState}
+	}
+}
+
+func matchesAppInfoState(candidateState string, acceptableStates []string) bool {
+	resolved := strings.TrimSpace(candidateState)
+	if resolved == "" {
+		return false
+	}
+	for _, acceptable := range acceptableStates {
+		if strings.EqualFold(resolved, strings.TrimSpace(acceptable)) {
+			return true
+		}
+	}
+	return false
 }
 
 func appInfoState(attributes asc.AppInfoAttributes) string {

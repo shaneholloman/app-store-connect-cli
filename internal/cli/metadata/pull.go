@@ -35,6 +35,7 @@ func MetadataPullCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("metadata pull", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
+	appInfoID := fs.String("app-info", "", "App Info ID (optional override for apps with multiple app-infos)")
 	version := fs.String("version", "", "App version string (for example 1.2.3)")
 	platform := fs.String("platform", "", "Optional platform: IOS, MAC_OS, TV_OS, or VISION_OS")
 	dir := fs.String("dir", "", "Output root directory (required)")
@@ -44,7 +45,7 @@ func MetadataPullCommand() *ffcli.Command {
 
 	return &ffcli.Command{
 		Name:       "pull",
-		ShortUsage: "asc metadata pull --app \"APP_ID\" --version \"1.2.3\" --dir \"./metadata\" [flags]",
+		ShortUsage: "asc metadata pull --app \"APP_ID\" --version \"1.2.3\" --dir \"./metadata\" [--app-info \"APP_INFO_ID\"] [flags]",
 		ShortHelp:  "Pull metadata from App Store Connect into canonical files.",
 		LongHelp: `Pull metadata from App Store Connect into canonical files.
 
@@ -53,6 +54,7 @@ Phase 1 supports localization metadata for app-info and app-store versions.
 Examples:
   asc metadata pull --app "APP_ID" --version "1.2.3" --dir "./metadata"
   asc metadata pull --app "APP_ID" --version "1.2.3" --platform IOS --dir "./metadata"
+  asc metadata pull --app "APP_ID" --app-info "APP_INFO_ID" --version "1.2.3" --dir "./metadata"
   asc metadata pull --app "APP_ID" --version "1.2.3" --dir "./metadata" --force`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -98,16 +100,25 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			appInfoIDValue, err := shared.ResolveAppInfoID(requestCtx, client, resolvedAppID, "")
-			if err != nil {
-				return fmt.Errorf("metadata pull: %w", err)
-			}
-
-			versionIDValue, _, err := resolveVersionID(requestCtx, client, resolvedAppID, versionValue, platformValue)
+			versionIDValue, versionStateValue, err := resolveVersionID(requestCtx, client, resolvedAppID, versionValue, platformValue)
 			if err != nil {
 				if errors.Is(err, flag.ErrHelp) {
 					return err
 				}
+				return fmt.Errorf("metadata pull: %w", err)
+			}
+
+			appInfoIDValue, err := resolveMetadataPullAppInfoID(
+				requestCtx,
+				client,
+				resolvedAppID,
+				strings.TrimSpace(*appInfoID),
+				versionValue,
+				platformValue,
+				dirValue,
+				versionStateValue,
+			)
+			if err != nil {
 				return fmt.Errorf("metadata pull: %w", err)
 			}
 
@@ -262,6 +273,84 @@ func resolveVersionID(ctx context.Context, client *asc.Client, appID, version, p
 		return "", "", shared.UsageErrorf("--platform is required when multiple app store versions match --version %q", version)
 	}
 	return resp.Data[0].ID, strings.TrimSpace(resp.Data[0].Attributes.AppStoreState), nil
+}
+
+func resolveMetadataPullAppInfoID(
+	ctx context.Context,
+	client *asc.Client,
+	appID string,
+	appInfoID string,
+	version string,
+	platform string,
+	dir string,
+	versionState string,
+) (string, error) {
+	if appInfoID != "" {
+		return appInfoID, nil
+	}
+
+	resp, err := client.GetAppInfos(ctx, appID)
+	if err != nil {
+		return "", err
+	}
+	if len(resp.Data) == 0 {
+		return "", fmt.Errorf("no app info found for app %q", appID)
+	}
+	if len(resp.Data) == 1 {
+		return strings.TrimSpace(resp.Data[0].ID), nil
+	}
+
+	candidates := make([]appInfoCandidate, 0, len(resp.Data))
+	for _, item := range resp.Data {
+		candidates = append(candidates, appInfoCandidate{
+			id:    strings.TrimSpace(item.ID),
+			state: appInfoState(item.Attributes),
+		})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].id < candidates[j].id
+	})
+
+	if resolvedID, ok := autoResolveAppInfoIDByVersionState(candidates, versionState); ok {
+		return resolvedID, nil
+	}
+
+	exampleAppInfoID := "<APP_INFO_ID>"
+	for _, candidate := range candidates {
+		if candidate.id != "" {
+			exampleAppInfoID = candidate.id
+			break
+		}
+	}
+	exampleCommand := buildMetadataPullAppInfoExample(appID, version, platform, dir, exampleAppInfoID)
+	return "", shared.UsageErrorf(
+		"multiple app infos found for app %q (%s). Run `asc apps info list --app %q` to inspect candidates, then re-run with --app-info. Example: %s",
+		appID,
+		formatAppInfoCandidates(candidates),
+		appID,
+		exampleCommand,
+	)
+}
+
+func buildMetadataPullAppInfoExample(appID, version, platform, dir, appInfoID string) string {
+	parts := []string{
+		"asc metadata pull",
+		fmt.Sprintf(`--app %q`, appID),
+		fmt.Sprintf(`--version %q`, version),
+	}
+	if strings.TrimSpace(platform) != "" {
+		parts = append(parts, fmt.Sprintf("--platform %s", strings.TrimSpace(platform)))
+	}
+
+	dirValue := strings.TrimSpace(dir)
+	if dirValue == "" {
+		dirValue = "./metadata"
+	}
+	parts = append(parts,
+		fmt.Sprintf(`--dir %q`, dirValue),
+		fmt.Sprintf(`--app-info %q`, appInfoID),
+	)
+	return strings.Join(parts, " ")
 }
 
 func fetchAppInfoLocalizations(ctx context.Context, client *asc.Client, appInfoID string) ([]asc.Resource[asc.AppInfoLocalizationAttributes], error) {
