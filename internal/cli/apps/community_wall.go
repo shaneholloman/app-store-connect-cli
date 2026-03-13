@@ -63,7 +63,7 @@ Examples:
   asc apps wall --output markdown
   asc apps wall --include-platforms iOS,macOS --limit 20
   asc apps wall --sort -name
-  asc apps wall submit --app "1234567890" --platform "iOS,macOS" --confirm`,
+  asc apps wall submit --app "1234567890" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{

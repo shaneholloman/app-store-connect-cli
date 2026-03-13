@@ -100,7 +100,7 @@ asc apps list --output json
 [See the Wall of Apps →](https://asccli.sh/#wall-of-apps)
 
 Want to add yours?
-`asc apps wall submit --app "1234567890" --platform "iOS,macOS" --confirm`
+`asc apps wall submit --app "1234567890" --confirm`
 
 The command uses your authenticated `gh` session to fork the repo and open a pull request that updates `docs/wall-of-apps.json`.
 It resolves the public App Store name, URL, and icon from the app ID automatically.

@@ -81,7 +81,6 @@ func TestAppsWallSubmitRequiresConfirmUnlessDryRun(t *testing.T) {
 		if err := root.Parse([]string{
 			"apps", "wall", "submit",
 			"--app", "1234567890",
-			"--platform", "iOS,macOS",
 		}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -110,7 +109,6 @@ func TestAppsWallSubmitRejectsParentWallFlags(t *testing.T) {
 			"--output", "markdown",
 			"submit",
 			"--app", "1234567890",
-			"--platform", "iOS",
 			"--dry-run",
 		}); err != nil {
 			t.Fatalf("parse error: %v", err)
@@ -144,7 +142,6 @@ func TestAppsWallSubmitRejectsMultipleParentWallFlags(t *testing.T) {
 			"--output", "markdown",
 			"submit",
 			"--app", "1234567890",
-			"--platform", "iOS",
 			"--dry-run",
 		}); err != nil {
 			t.Fatalf("parse error: %v", err)
