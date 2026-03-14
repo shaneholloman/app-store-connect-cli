@@ -22,7 +22,7 @@ func resolveXcodeCloudAppID(ctx context.Context, client *asc.Client, appID strin
 		return "", nil
 	}
 
-	return shared.ResolveAppIDWithLookup(ctx, client, resolvedAppID)
+	return shared.ResolveAppIDWithExactLookup(ctx, client, resolvedAppID)
 }
 
 // XcodeCloudCommand returns the xcode-cloud command with subcommands.

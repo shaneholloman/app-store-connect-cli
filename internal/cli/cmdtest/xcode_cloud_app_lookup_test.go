@@ -336,3 +336,172 @@ func TestXcodeCloudRunResolvesAppByExactNameWhenWorkflowNameProvided(t *testing.
 		t.Fatalf("expected build run output, got %q", stdout)
 	}
 }
+
+func TestXcodeCloudProductsRejectsUniqueFuzzyAppName(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	callCount := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		callCount++
+		switch callCount {
+		case 1:
+			if req.Method != http.MethodGet || req.URL.Path != "/v1/apps" {
+				t.Fatalf("unexpected first request: %s %s", req.Method, req.URL.String())
+			}
+			if req.URL.Query().Get("filter[bundleId]") != "Relax" {
+				t.Fatalf("expected bundle filter Relax, got %q", req.URL.Query().Get("filter[bundleId]"))
+			}
+			body := `{"data":[]}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case 2:
+			if req.Method != http.MethodGet || req.URL.Path != "/v1/apps" {
+				t.Fatalf("unexpected second request: %s %s", req.Method, req.URL.String())
+			}
+			if req.URL.Query().Get("filter[name]") != "Relax" {
+				t.Fatalf("expected name filter Relax, got %q", req.URL.Query().Get("filter[name]"))
+			}
+			body := `{"data":[{"type":"apps","id":"app-fuzzy","attributes":{"name":"Relax: Sleep + Focus"}}],"links":{"next":""}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case 3:
+			if req.Method != http.MethodGet || req.URL.Path != "/v1/apps" {
+				t.Fatalf("unexpected third request: %s %s", req.Method, req.URL.String())
+			}
+			if req.URL.Query().Get("limit") != "200" {
+				t.Fatalf("expected full-scan limit=200, got %q", req.URL.Query().Get("limit"))
+			}
+			body := `{"data":[{"type":"apps","id":"app-fuzzy","attributes":{"name":"Relax: Sleep + Focus"}}],"links":{"next":""}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		default:
+			t.Fatalf("unexpected request count %d", callCount)
+			return nil, nil
+		}
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	var runErr error
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"xcode-cloud", "products", "--app", "Relax"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if runErr == nil {
+		t.Fatal("expected fuzzy app-name lookup to fail")
+	}
+	if !strings.Contains(runErr.Error(), `app "Relax" not found`) {
+		t.Fatalf("expected strict not-found error, got %v", runErr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if callCount != 3 {
+		t.Fatalf("expected exactly 3 lookup requests, got %d", callCount)
+	}
+}
+
+func TestXcodeCloudProductsResolvesNumericExactNameBeforeNumericPassthrough(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	callCount := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		callCount++
+		switch callCount {
+		case 1:
+			if req.Method != http.MethodGet || req.URL.Path != "/v1/apps" {
+				t.Fatalf("unexpected first request: %s %s", req.Method, req.URL.String())
+			}
+			if req.URL.Query().Get("filter[bundleId]") != "2048" {
+				t.Fatalf("expected bundle filter 2048, got %q", req.URL.Query().Get("filter[bundleId]"))
+			}
+			body := `{"data":[]}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case 2:
+			if req.Method != http.MethodGet || req.URL.Path != "/v1/apps" {
+				t.Fatalf("unexpected second request: %s %s", req.Method, req.URL.String())
+			}
+			if req.URL.Query().Get("filter[name]") != "2048" {
+				t.Fatalf("expected name filter 2048, got %q", req.URL.Query().Get("filter[name]"))
+			}
+			body := `{"data":[{"type":"apps","id":"app-2048","attributes":{"name":"2048"}}],"links":{"next":""}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case 3:
+			if req.Method != http.MethodGet || req.URL.Path != "/v1/ciProducts" {
+				t.Fatalf("unexpected third request: %s %s", req.Method, req.URL.String())
+			}
+			if req.URL.Query().Get("filter[app]") != "app-2048" {
+				t.Fatalf("expected filter[app]=app-2048, got %q", req.URL.Query().Get("filter[app]"))
+			}
+			body := `{"data":[{"type":"ciProducts","id":"prod-2048","attributes":{"name":"2048"}}]}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		default:
+			t.Fatalf("unexpected request count %d", callCount)
+			return nil, nil
+		}
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"xcode-cloud", "products", "--app", "2048"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, `"id":"prod-2048"`) {
+		t.Fatalf("expected product output, got %q", stdout)
+	}
+	if callCount != 3 {
+		t.Fatalf("expected exactly 3 requests, got %d", callCount)
+	}
+}
