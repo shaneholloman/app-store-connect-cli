@@ -151,6 +151,7 @@ Examples:
 			)
 			if err != nil {
 				cleanupEmptyReviewSubmission(requestCtx, client, reviewSubmission.Data.ID)
+				printSubmissionErrorHints(err, resolvedAppID)
 				return fmt.Errorf("submit create: failed to add version to submission: %w", err)
 			}
 			if submissionIDToSubmit != reviewSubmission.Data.ID {
@@ -160,6 +161,7 @@ Examples:
 			// Step 3: Submit for review
 			submitResp, err := client.SubmitReviewSubmission(requestCtx, submissionIDToSubmit)
 			if err != nil {
+				printSubmissionErrorHints(err, resolvedAppID)
 				return fmt.Errorf("submit create: failed to submit for review: %w", err)
 			}
 
@@ -657,9 +659,9 @@ func cleanupEmptyReviewSubmission(ctx context.Context, client *asc.Client, submi
 	if strings.TrimSpace(submissionID) == "" {
 		return
 	}
-	if _, cancelErr := client.CancelReviewSubmission(ctx, submissionID); cancelErr != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to cancel empty submission %s: %v\n", submissionID, cancelErr)
-	}
+	// Failures here are expected when the submission is already in a
+	// non-cancellable state; silently ignore them.
+	_, _ = client.CancelReviewSubmission(ctx, submissionID)
 }
 
 // cancelStaleReviewSubmissions cancels any READY_FOR_REVIEW submissions for the
@@ -690,9 +692,7 @@ func cancelStaleReviewSubmissions(ctx context.Context, client *asc.Client, appID
 		}
 
 		if _, cancelErr := client.CancelReviewSubmission(ctx, sub.ID); cancelErr != nil {
-			if errors.Is(cancelErr, asc.ErrConflict) {
-				fmt.Fprintf(os.Stderr, "Skipped stale submission %s: already transitioned to a non-cancellable state\n", sub.ID)
-			} else {
+			if !errors.Is(cancelErr, asc.ErrConflict) && !isResourceStateInvalid(cancelErr) {
 				fmt.Fprintf(os.Stderr, "Warning: failed to cancel stale submission %s: %v\n", sub.ID, cancelErr)
 			}
 			continue
@@ -705,6 +705,48 @@ func cancelStaleReviewSubmissions(ctx context.Context, client *asc.Client, appID
 		return nil
 	}
 	return canceledSubmissionIDs
+}
+
+// printSubmissionErrorHints inspects an error returned by App Store Connect
+// during submission and prints actionable fix suggestions to stderr.
+func printSubmissionErrorHints(err error, appID string) {
+	if err == nil {
+		return
+	}
+	errMsg := err.Error()
+
+	var hints []string
+	if strings.Contains(errMsg, "ageRatingDeclaration") {
+		hints = append(hints, fmt.Sprintf("Fix age rating: asc age-rating set --app %s (see asc age-rating set --help for flags)", appID))
+	}
+	if strings.Contains(errMsg, "contentRightsDeclaration") {
+		hints = append(hints, fmt.Sprintf("asc apps content-rights set --app %s --uses-third-party-content=false", appID))
+	}
+	if strings.Contains(errMsg, "appDataUsage") {
+		hints = append(hints, fmt.Sprintf("Complete App Privacy at: https://appstoreconnect.apple.com/apps/%s/appPrivacy", appID))
+	}
+	if strings.Contains(errMsg, "primaryCategory") {
+		hints = append(hints, fmt.Sprintf("Set category: asc app-setup categories set --app %s --primary SPORTS", appID))
+	}
+
+	if len(hints) > 0 {
+		fmt.Fprintln(os.Stderr, "")
+		for _, hint := range hints {
+			fmt.Fprintf(os.Stderr, "Hint: %s\n", hint)
+		}
+	}
+}
+
+// isResourceStateInvalid returns true if the error message indicates the
+// resource is not in a cancellable state — an expected condition when racing
+// with App Store Connect state transitions.
+func isResourceStateInvalid(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "Resource is not in cancellable state") ||
+		strings.Contains(msg, "Resource state is invalid")
 }
 
 func sleepWithContext(ctx context.Context, delay time.Duration) error {
