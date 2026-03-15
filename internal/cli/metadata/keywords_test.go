@@ -109,3 +109,27 @@ func TestParseMetadataKeywordJSONAcceptsLocaleMapObjectsWithSideData(t *testing.
 		t.Fatalf("unexpected fr-FR keywords: %v", got["fr-FR"])
 	}
 }
+
+func TestResolveMetadataKeywordImportFormatAcceptsPreset(t *testing.T) {
+	got, err := resolveMetadataKeywordImportFormat("astro-export.csv", "astro-csv")
+	if err != nil {
+		t.Fatalf("resolveMetadataKeywordImportFormat() error: %v", err)
+	}
+	if got != keywordImportFormatAstroCSV {
+		t.Fatalf("expected astro-csv, got %q", got)
+	}
+}
+
+func TestParseMetadataKeywordAstroCSVUsesKeywordColumn(t *testing.T) {
+	data := []byte("Keyword,Notes,Popularity,Difficulty,Position,Apps in Ranking\nhabit tracker,high intent,42,31,7,App A\nmood journal,secondary,35,28,9,App B\n")
+	got, err := parseMetadataKeywordAstroCSV(data, "en-US")
+	if err != nil {
+		t.Fatalf("parseMetadataKeywordAstroCSV() error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 locale, got %d: %v", len(got), got)
+	}
+	if len(got["en-US"]) != 2 || got["en-US"][0] != "habit tracker" || got["en-US"][1] != "mood journal" {
+		t.Fatalf("unexpected astro keywords: %v", got["en-US"])
+	}
+}

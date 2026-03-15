@@ -22,13 +22,23 @@ import (
 )
 
 const (
-	keywordImportFormatAuto = "auto"
-	keywordImportFormatCSV  = "csv"
-	keywordImportFormatJSON = "json"
-	keywordImportFormatText = "text"
+	keywordImportFormatAuto     = "auto"
+	keywordImportFormatCSV      = "csv"
+	keywordImportFormatJSON     = "json"
+	keywordImportFormatText     = "text"
+	keywordImportFormatAstroCSV = "astro-csv"
 )
 
 var keywordPlanFields = []string{"keywords"}
+
+type metadataKeywordImportParser func([]byte, string) (map[string][]string, error)
+
+var metadataKeywordImportFormats = map[string]metadataKeywordImportParser{
+	keywordImportFormatCSV:      parseMetadataKeywordCSV,
+	keywordImportFormatJSON:     parseMetadataKeywordJSON,
+	keywordImportFormatText:     parseMetadataKeywordText,
+	keywordImportFormatAstroCSV: parseMetadataKeywordAstroCSV,
+}
 
 // MetadataKeywordFileResult describes one local keyword file change.
 type MetadataKeywordFileResult struct {
@@ -203,7 +213,7 @@ func MetadataKeywordsImportCommand() *ffcli.Command {
 	dir := fs.String("dir", "", "Metadata root directory (required)")
 	version := fs.String("version", "", "App version string (for example 1.2.3)")
 	input := fs.String("input", "", "Import file path or - for stdin (required)")
-	format := fs.String("format", keywordImportFormatAuto, "Input format: auto, csv, json, or text")
+	format := fs.String("format", keywordImportFormatAuto, "Input format: auto, csv, json, text, or astro-csv")
 	locale := fs.String("locale", "", "Default locale for inputs without a locale column/field")
 	dryRun := fs.Bool("dry-run", false, "Preview local file changes without writing files")
 	output := shared.BindOutputFlags(fs)
@@ -218,6 +228,7 @@ Supported input formats:
   - csv: header-based rows with locale + keywords/keyword/term columns
   - json: locale-keyed maps, arrays of localization objects, or a single localization object
   - text: a plain comma/newline-separated keyword list (requires --locale)
+  - astro-csv: Astro keyword export CSV using the documented Keyword column (requires --locale unless locale data is present)
 
 Examples:
   asc metadata keywords import --dir "./metadata" --version "1.2.3" --locale "en-US" --input "./keywords.csv"
@@ -500,7 +511,7 @@ func MetadataKeywordsSyncCommand() *ffcli.Command {
 	platform := fs.String("platform", "", "Optional platform: IOS, MAC_OS, TV_OS, or VISION_OS")
 	dir := fs.String("dir", "", "Metadata root directory (required)")
 	input := fs.String("input", "", "Import file path or - for stdin (required)")
-	format := fs.String("format", keywordImportFormatAuto, "Input format: auto, csv, json, or text")
+	format := fs.String("format", keywordImportFormatAuto, "Input format: auto, csv, json, text, or astro-csv")
 	locale := fs.String("locale", "", "Default locale for inputs without a locale column/field")
 	dryRun := fs.Bool("dry-run", false, "Preview import and remote keyword changes without writing or mutating")
 	confirm := fs.Bool("confirm", false, "Confirm remote keyword mutations after import")
@@ -840,8 +851,6 @@ func resolveMetadataKeywordImportFormat(inputPath string, format string) (string
 		formatValue = keywordImportFormatAuto
 	}
 	switch formatValue {
-	case keywordImportFormatCSV, keywordImportFormatJSON, keywordImportFormatText:
-		return formatValue, nil
 	case keywordImportFormatAuto:
 		if strings.TrimSpace(inputPath) == "-" {
 			return "", fmt.Errorf("--format is required when --input is -")
@@ -857,8 +866,20 @@ func resolveMetadataKeywordImportFormat(inputPath string, format string) (string
 			return "", fmt.Errorf("could not infer input format from %q; use --format", inputPath)
 		}
 	default:
-		return "", fmt.Errorf("--format must be one of auto, csv, json, or text")
+		if _, ok := metadataKeywordImportFormats[formatValue]; ok {
+			return formatValue, nil
+		}
+		return "", fmt.Errorf("--format must be one of %s", strings.Join(metadataKeywordImportFormatList(), ", "))
 	}
+}
+
+func metadataKeywordImportFormatList() []string {
+	formats := []string{keywordImportFormatAuto}
+	for name := range metadataKeywordImportFormats {
+		formats = append(formats, name)
+	}
+	sort.Strings(formats[1:])
+	return formats
 }
 
 func readMetadataKeywordImportInput(inputPath, format, defaultLocale string) (map[string][]string, error) {
@@ -870,17 +891,11 @@ func readMetadataKeywordImportInput(inputPath, format, defaultLocale string) (ma
 		return nil, shared.UsageError("import input is empty")
 	}
 
-	var raw map[string][]string
-	switch format {
-	case keywordImportFormatCSV:
-		raw, err = parseMetadataKeywordCSV(data, defaultLocale)
-	case keywordImportFormatJSON:
-		raw, err = parseMetadataKeywordJSON(data, defaultLocale)
-	case keywordImportFormatText:
-		raw, err = parseMetadataKeywordText(data, defaultLocale)
-	default:
-		err = fmt.Errorf("unsupported import format %q", format)
+	parser, ok := metadataKeywordImportFormats[format]
+	if !ok {
+		return nil, shared.UsageErrorf("unsupported import format %q", format)
 	}
+	raw, err := parser(data, defaultLocale)
 	if err != nil {
 		return nil, err
 	}
@@ -905,6 +920,32 @@ func parseMetadataKeywordText(data []byte, defaultLocale string) (map[string][]s
 }
 
 func parseMetadataKeywordCSV(data []byte, defaultLocale string) (map[string][]string, error) {
+	return parseMetadataKeywordCSVWithHeaders(
+		data,
+		defaultLocale,
+		[]string{"locale", "lang", "language"},
+		[]string{"keywords", "keywordfield", "keywordlist"},
+		[]string{"keyword", "term", "searchterm", "searchkeyword"},
+	)
+}
+
+func parseMetadataKeywordAstroCSV(data []byte, defaultLocale string) (map[string][]string, error) {
+	return parseMetadataKeywordCSVWithHeaders(
+		data,
+		defaultLocale,
+		[]string{"locale", "lang", "language"},
+		nil,
+		[]string{"keyword"},
+	)
+}
+
+func parseMetadataKeywordCSVWithHeaders(
+	data []byte,
+	defaultLocale string,
+	localeHeaders []string,
+	keywordsHeaders []string,
+	keywordHeaders []string,
+) (map[string][]string, error) {
 	reader := csv.NewReader(strings.NewReader(string(data)))
 	reader.FieldsPerRecord = -1
 	reader.TrimLeadingSpace = true
@@ -922,9 +963,9 @@ func parseMetadataKeywordCSV(data []byte, defaultLocale string) (map[string][]st
 		headerIndex[normalizeMetadataKeywordHeader(header)] = idx
 	}
 
-	localeIdx, hasLocale := metadataKeywordHeaderIndex(headerIndex, "locale", "lang", "language")
-	keywordsIdx, hasKeywords := metadataKeywordHeaderIndex(headerIndex, "keywords", "keywordfield", "keywordlist")
-	keywordIdx, hasKeyword := metadataKeywordHeaderIndex(headerIndex, "keyword", "term", "searchterm", "searchkeyword")
+	localeIdx, hasLocale := metadataKeywordHeaderIndex(headerIndex, localeHeaders...)
+	keywordsIdx, hasKeywords := metadataKeywordHeaderIndex(headerIndex, keywordsHeaders...)
+	keywordIdx, hasKeyword := metadataKeywordHeaderIndex(headerIndex, keywordHeaders...)
 	if !hasKeywords && !hasKeyword {
 		return nil, shared.UsageError(`csv input requires a "keywords" or "keyword" column`)
 	}
