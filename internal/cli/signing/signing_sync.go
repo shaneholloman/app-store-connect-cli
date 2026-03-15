@@ -164,7 +164,7 @@ func syncPushCommand() *ffcli.Command {
 				LocalDir: tmpDir,
 				Branch:   *branch,
 			}
-			defer store.Cleanup()
+			defer func() { _ = store.Cleanup() }()
 
 			fmt.Fprintln(os.Stderr, "Cloning signing repo...")
 			if err := store.Clone(ctx, true); err != nil {
@@ -266,7 +266,7 @@ func syncPullCommand() *ffcli.Command {
 				LocalDir: tmpDir,
 				Branch:   *branch,
 			}
-			defer store.Cleanup()
+			defer func() { _ = store.Cleanup() }()
 
 			fmt.Fprintln(os.Stderr, "Cloning signing repo...")
 			if err := store.Clone(ctx, false); err != nil {
