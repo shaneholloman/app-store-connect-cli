@@ -943,6 +943,54 @@ func TestGetCredentialsWithSource_BackfillsLegacyKeychainPayload(t *testing.T) {
 	}
 }
 
+func TestGetCredentialsWithSource_BackfillsMetadataForExistingPEM(t *testing.T) {
+	newKr, _ := withSeparateKeyrings(t)
+
+	keyPath := filepath.Join(t.TempDir(), "AuthKey.p8")
+	writeECDSAPEM(t, keyPath, 0o600, true)
+
+	privateKeyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("os.ReadFile(%q) error: %v", keyPath, err)
+	}
+	payload := credentialPayload{
+		KeyID:          "KEY123",
+		IssuerID:       "ISS456",
+		PrivateKeyPath: keyPath,
+		PrivateKeyPEM:  string(privateKeyPEM),
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("json.Marshal() error: %v", err)
+	}
+	if err := newKr.Set(keyring.Item{
+		Key:   keyringKey("legacy"),
+		Data:  data,
+		Label: "ASC API Key (legacy)",
+	}); err != nil {
+		t.Fatalf("Set(keyring item) error: %v", err)
+	}
+
+	creds, source, err := GetCredentialsWithSource("legacy")
+	if err != nil {
+		t.Fatalf("GetCredentialsWithSource() error: %v", err)
+	}
+	if source != "keychain" {
+		t.Fatalf("expected source keychain, got %q", source)
+	}
+	if strings.TrimSpace(creds.PrivateKeyPEM) == "" {
+		t.Fatal("expected private key PEM from existing keychain payload")
+	}
+
+	item, err := newKr.Get(keyringKey("legacy"))
+	if err != nil {
+		t.Fatalf("Get(keyring item) error: %v", err)
+	}
+	if item.Description != testCredentialMetadataDescription {
+		t.Fatalf("expected metadata description %q, got %q", testCredentialMetadataDescription, item.Description)
+	}
+}
+
 func TestRemoveAllCredentials(t *testing.T) {
 	withArrayKeyring(t)
 

@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -232,6 +233,47 @@ func TestRun_HelpSkipsAuthResolution(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMergeEnvOverridesReplacesExistingKeys(t *testing.T) {
+	env := mergeEnvOverrides(
+		[]string{
+			"ASC_BYPASS_KEYCHAIN=1",
+			"ASC_KEY_ID=PARENT",
+			"UNCHANGED=keep",
+		},
+		map[string]string{
+			"ASC_BYPASS_KEYCHAIN":  "",
+			"ASC_KEY_ID":           "",
+			"GO_WANT_HELP_PROCESS": "1",
+		},
+	)
+
+	values := map[string]string{}
+	counts := map[string]int{}
+	for _, entry := range env {
+		parts := strings.SplitN(entry, "=", 2)
+		key := parts[0]
+		value := ""
+		if len(parts) == 2 {
+			value = parts[1]
+		}
+		values[key] = value
+		counts[key]++
+	}
+
+	if counts["ASC_BYPASS_KEYCHAIN"] != 1 || values["ASC_BYPASS_KEYCHAIN"] != "" {
+		t.Fatalf("expected ASC_BYPASS_KEYCHAIN override, got counts=%v values=%v", counts, values)
+	}
+	if counts["ASC_KEY_ID"] != 1 || values["ASC_KEY_ID"] != "" {
+		t.Fatalf("expected ASC_KEY_ID override, got counts=%v values=%v", counts, values)
+	}
+	if counts["GO_WANT_HELP_PROCESS"] != 1 || values["GO_WANT_HELP_PROCESS"] != "1" {
+		t.Fatalf("expected GO_WANT_HELP_PROCESS override, got counts=%v values=%v", counts, values)
+	}
+	if values["UNCHANGED"] != "keep" {
+		t.Fatalf("expected unrelated env to be preserved, got values=%v", values)
 	}
 }
 
@@ -934,18 +976,18 @@ func runHelpSubprocess(t *testing.T, tempDir string, args ...string) (string, st
 	cmdArgs := []string{"-test.run=TestRunHelpHelperProcess", "--"}
 	cmdArgs = append(cmdArgs, args...)
 	cmd := exec.Command(exe, cmdArgs...)
-	cmd.Env = append(os.Environ(),
-		"GO_WANT_HELP_PROCESS=1",
-		"ASC_BYPASS_KEYCHAIN=",
-		"ASC_CONFIG_PATH="+filepath.Join(tempDir, "missing.json"),
-		"ASC_PROFILE=",
-		"ASC_KEY_ID=",
-		"ASC_ISSUER_ID=",
-		"ASC_PRIVATE_KEY_PATH=",
-		"ASC_PRIVATE_KEY=",
-		"ASC_PRIVATE_KEY_B64=",
-		"ASC_STRICT_AUTH=",
-	)
+	cmd.Env = mergeEnvOverrides(os.Environ(), map[string]string{
+		"GO_WANT_HELP_PROCESS": "1",
+		"ASC_BYPASS_KEYCHAIN":  "",
+		"ASC_CONFIG_PATH":      filepath.Join(tempDir, "missing.json"),
+		"ASC_PROFILE":          "",
+		"ASC_KEY_ID":           "",
+		"ASC_ISSUER_ID":        "",
+		"ASC_PRIVATE_KEY_PATH": "",
+		"ASC_PRIVATE_KEY":      "",
+		"ASC_PRIVATE_KEY_B64":  "",
+		"ASC_STRICT_AUTH":      "",
+	})
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -960,6 +1002,28 @@ func runHelpSubprocess(t *testing.T, tempDir string, args ...string) (string, st
 		t.Fatalf("help subprocess error: %v", err)
 	}
 	return stdout.String(), stderr.String(), exitErr.ExitCode()
+}
+
+func mergeEnvOverrides(base []string, overrides map[string]string) []string {
+	filtered := make([]string, 0, len(base)+len(overrides))
+	for _, entry := range base {
+		parts := strings.SplitN(entry, "=", 2)
+		key := parts[0]
+		if _, ok := overrides[key]; ok {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+
+	keys := make([]string, 0, len(overrides))
+	for key := range overrides {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		filtered = append(filtered, key+"="+overrides[key])
+	}
+	return filtered
 }
 
 func TestRunHelpHelperProcess(t *testing.T) {

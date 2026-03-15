@@ -44,14 +44,15 @@ const (
 
 // Credential represents stored API credentials
 type Credential struct {
-	Name           string `json:"name"`
-	KeyID          string `json:"key_id"`
-	IssuerID       string `json:"issuer_id"`
-	PrivateKeyPath string `json:"private_key_path"`
-	PrivateKeyPEM  string `json:"-"`
-	IsDefault      bool   `json:"is_default"`
-	Source         string `json:"source,omitempty"`
-	SourcePath     string `json:"source_path,omitempty"`
+	Name                  string `json:"name"`
+	KeyID                 string `json:"key_id"`
+	IssuerID              string `json:"issuer_id"`
+	PrivateKeyPath        string `json:"private_key_path"`
+	PrivateKeyPEM         string `json:"-"`
+	IsDefault             bool   `json:"is_default"`
+	Source                string `json:"source,omitempty"`
+	SourcePath            string `json:"source_path,omitempty"`
+	MetadataNeedsBackfill bool   `json:"-"`
 }
 
 // CredentialsWarning indicates that some credential sources could not be read.
@@ -553,8 +554,9 @@ func GetCredentialsWithSource(profile string) (*config.Config, string, error) {
 			defaultKey = strings.TrimSpace(defaultKey)
 			resolvedProfile = defaultKey
 		}
-		cfg, found := selectCredential(resolvedProfile, credentials)
+		cfg, selectedCred, found := selectCredential(resolvedProfile, credentials)
 		if found {
+			maybeBackfillCredentialMetadata(selectedCred)
 			return cfg, "keychain", nil
 		}
 		if profile != "" {
@@ -643,21 +645,37 @@ func GetCredentials(profile string) (*config.Config, error) {
 	return cfg, err
 }
 
-func selectCredential(profile string, credentials []Credential) (*config.Config, bool) {
+func selectCredential(profile string, credentials []Credential) (*config.Config, Credential, bool) {
 	name := strings.TrimSpace(profile)
 	if name != "" {
 		for _, cred := range credentials {
 			if cred.Name == name {
-				return configFromCredential(cred), true
+				return configFromCredential(cred), cred, true
 			}
 		}
-		return nil, false
+		return nil, Credential{}, false
 	}
 	if len(credentials) == 1 {
 		cred := credentials[0]
-		return configFromCredential(cred), true
+		return configFromCredential(cred), cred, true
 	}
-	return nil, false
+	return nil, Credential{}, false
+}
+
+func maybeBackfillCredentialMetadata(cred Credential) {
+	if !cred.MetadataNeedsBackfill {
+		return
+	}
+	payload := credentialPayload{
+		KeyID:          cred.KeyID,
+		IssuerID:       cred.IssuerID,
+		PrivateKeyPath: cred.PrivateKeyPath,
+		PrivateKeyPEM:  cred.PrivateKeyPEM,
+	}
+	if strings.TrimSpace(payload.PrivateKeyPEM) == "" {
+		return
+	}
+	_ = storeInKeychain(cred.Name, payload)
 }
 
 func configFromCredential(cred Credential) *config.Config {
@@ -916,6 +934,7 @@ func listFromKeyring(kr keyring.Keyring) ([]Credential, error) {
 			return nil, fmt.Errorf("invalid keychain entry %q: %w", key, err)
 		}
 		name := strings.TrimPrefix(key, keyringItemPrefix)
+		metadataNeedsBackfill := strings.TrimSpace(item.Description) != credentialMetadataDescription(payload)
 		needsRewrite := false
 		if strings.TrimSpace(payload.PrivateKeyPEM) == "" {
 			if privateKeyPEM, err := loadPrivateKeyPEMForStorage(payload.PrivateKeyPath); err == nil && strings.TrimSpace(privateKeyPEM) != "" {
@@ -930,13 +949,14 @@ func listFromKeyring(kr keyring.Keyring) ([]Credential, error) {
 			}
 		}
 		credentials = append(credentials, Credential{
-			Name:           name,
-			KeyID:          payload.KeyID,
-			IssuerID:       payload.IssuerID,
-			PrivateKeyPath: payload.PrivateKeyPath,
-			PrivateKeyPEM:  payload.PrivateKeyPEM,
-			IsDefault:      name == defaultName,
-			Source:         "keychain",
+			Name:                  name,
+			KeyID:                 payload.KeyID,
+			IssuerID:              payload.IssuerID,
+			PrivateKeyPath:        payload.PrivateKeyPath,
+			PrivateKeyPEM:         payload.PrivateKeyPEM,
+			IsDefault:             name == defaultName,
+			Source:                "keychain",
+			MetadataNeedsBackfill: metadataNeedsBackfill,
 		})
 	}
 
