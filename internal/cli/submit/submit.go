@@ -690,7 +690,11 @@ func cancelStaleReviewSubmissions(ctx context.Context, client *asc.Client, appID
 		}
 
 		if _, cancelErr := client.CancelReviewSubmission(ctx, sub.ID); cancelErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to cancel stale submission %s: %v\n", sub.ID, cancelErr)
+			// Silently skip submissions that transitioned to a non-cancellable
+			// state between the list query and the cancel attempt (409 Conflict).
+			if !errors.Is(cancelErr, asc.ErrConflict) {
+				fmt.Fprintf(os.Stderr, "Warning: failed to cancel stale submission %s: %v\n", sub.ID, cancelErr)
+			}
 			continue
 		}
 		canceledSubmissionIDs[sub.ID] = struct{}{}
