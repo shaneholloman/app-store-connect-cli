@@ -191,3 +191,58 @@ func TestWebAuthCapabilitiesRunReturnsRuntimeErrorForMissingKey(t *testing.T) {
 		t.Fatalf("expected runtime not-found error, got %q", stderr)
 	}
 }
+
+func TestWebAuthCapabilitiesRunUsesEnvAuthResolution(t *testing.T) {
+	tempDir := t.TempDir()
+	keyPath := filepath.Join(tempDir, "AuthKey.p8")
+	writeECDSAPEM(t, keyPath)
+
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(tempDir, "missing.json"))
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
+	t.Setenv("ASC_PROFILE", "")
+	t.Setenv("ASC_KEY_ID", "ENVKEY")
+	t.Setenv("ASC_ISSUER_ID", "ENVISS")
+	t.Setenv("ASC_PRIVATE_KEY_PATH", keyPath)
+	t.Setenv("ASC_PRIVATE_KEY", "")
+	t.Setenv("ASC_PRIVATE_KEY_B64", "")
+
+	prevProfile := shared.SelectedProfile()
+	shared.SetSelectedProfile("")
+	t.Cleanup(func() {
+		shared.SetSelectedProfile(prevProfile)
+	})
+
+	stubWebAuthCapabilitiesLookup(t, func(ctx context.Context, client *webcore.Client, keyID string) (*webcore.APIKeyRoleLookup, error) {
+		return &webcore.APIKeyRoleLookup{
+			KeyID:      keyID,
+			Kind:       "team",
+			Roles:      []string{"APP_MANAGER"},
+			RoleSource: "key",
+			Active:     true,
+			Lookup:     "team_keys",
+		}, nil
+	})
+
+	var code int
+	stdout, stderr := captureOutput(t, func() {
+		code = cmd.Run([]string{"web", "auth", "capabilities", "--output", "json"}, "1.0.0")
+	})
+	if code != cmd.ExitSuccess {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, cmd.ExitSuccess, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		KeyID        string `json:"keyId"`
+		Profile      string `json:"profile"`
+		ResolvedFrom string `json:"resolvedFrom"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("json.Unmarshal() error: %v; stdout=%q", err, stdout)
+	}
+	if payload.KeyID != "ENVKEY" || payload.Profile != "" || payload.ResolvedFrom != "auth" {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+}
