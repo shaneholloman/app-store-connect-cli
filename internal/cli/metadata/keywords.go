@@ -1372,7 +1372,7 @@ func buildMetadataKeywordWriteResults(dir, version string, valuesByLocale map[st
 	issues := make([]MetadataKeywordIssue, 0)
 
 	for _, locale := range locales {
-		path, err := VersionLocalizationFilePath(dir, version, locale)
+		path, err := resolveExistingVersionLocalizationPath(dir, version, locale)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -1460,6 +1460,52 @@ func readExistingVersionLocalization(path string) (VersionLocalization, bool, er
 		return VersionLocalization{}, false, nil
 	}
 	return VersionLocalization{}, false, err
+}
+
+func resolveExistingVersionLocalizationPath(dir string, version string, canonicalLocale string) (string, error) {
+	canonicalPath, err := VersionLocalizationFilePath(dir, version, canonicalLocale)
+	if err != nil {
+		return "", err
+	}
+
+	resolvedVersion, err := validatePathSegment("version", version)
+	if err != nil {
+		return "", err
+	}
+	versionPath := filepath.Join(strings.TrimSpace(dir), versionDirName, resolvedVersion)
+	entries, err := os.ReadDir(versionPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return canonicalPath, nil
+		}
+		return "", err
+	}
+
+	seenLocales := make(map[string]string)
+	existingPath := ""
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		rawLocale := strings.TrimSuffix(entry.Name(), ".json")
+		if strings.EqualFold(rawLocale, DefaultLocale) {
+			continue
+		}
+		resolvedLocale, localeErr := validateMetadataKeywordLocale(rawLocale)
+		if localeErr != nil {
+			return "", shared.UsageErrorf("invalid metadata keywords file %q: %v", entry.Name(), localeErr)
+		}
+		if err := recordCanonicalLocaleFile(seenLocales, resolvedLocale, entry.Name()); err != nil {
+			return "", shared.UsageError(err.Error())
+		}
+		if resolvedLocale == canonicalLocale {
+			existingPath = filepath.Join(versionPath, entry.Name())
+		}
+	}
+	if existingPath != "" {
+		return existingPath, nil
+	}
+	return canonicalPath, nil
 }
 
 func loadMetadataKeywordLocalState(dir, version string) (map[string]keywordLocalState, error) {

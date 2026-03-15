@@ -267,6 +267,73 @@ func TestMetadataKeywordsImportTextCanonicalizesLocaleAlias(t *testing.T) {
 	}
 }
 
+func TestMetadataKeywordsImportReusesExistingAliasLocaleFile(t *testing.T) {
+	dir := t.TempDir()
+	versionDir := filepath.Join(dir, "version", "1.2.3")
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("mkdir version dir: %v", err)
+	}
+	aliasPath := filepath.Join(versionDir, "en_US.json")
+	if err := os.WriteFile(aliasPath, []byte(`{"description":"Existing description","keywords":"old,keywords"}`), 0o644); err != nil {
+		t.Fatalf("write alias file: %v", err)
+	}
+	inputPath := filepath.Join(t.TempDir(), "keywords.txt")
+	if err := os.WriteFile(inputPath, []byte("habit tracker,mood journal"), 0o644); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"metadata", "keywords", "import",
+			"--dir", dir,
+			"--version", "1.2.3",
+			"--input", inputPath,
+			"--format", "text",
+			"--locale", "en-US",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		Results []struct {
+			File         string `json:"file"`
+			Locale       string `json:"locale"`
+			KeywordField string `json:"keywordField"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout=%q", err, stdout)
+	}
+	if len(payload.Results) != 1 || payload.Results[0].File != aliasPath || payload.Results[0].Locale != "en-US" {
+		t.Fatalf("expected alias path reused in output, got %+v", payload.Results)
+	}
+
+	data, err := os.ReadFile(aliasPath)
+	if err != nil {
+		t.Fatalf("read alias file: %v", err)
+	}
+	var filePayload map[string]string
+	if err := json.Unmarshal(data, &filePayload); err != nil {
+		t.Fatalf("unmarshal alias file: %v", err)
+	}
+	if filePayload["description"] != "Existing description" || filePayload["keywords"] != "habit tracker,mood journal" {
+		t.Fatalf("unexpected alias file payload: %+v", filePayload)
+	}
+	if _, err := os.Stat(filepath.Join(versionDir, "en-US.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected canonical duplicate file not to be created, got err=%v", err)
+	}
+}
+
 func TestMetadataKeywordsImportTextNormalizesMixedSeparatorsAndDuplicates(t *testing.T) {
 	dir := t.TempDir()
 	inputPath := filepath.Join(t.TempDir(), "keywords.txt")
@@ -880,6 +947,71 @@ func TestMetadataKeywordsLocalizeSkipsExistingWithoutOverwrite(t *testing.T) {
 	}
 	if dePayload["keywords"] != "habit tracker,mood journal" {
 		t.Fatalf("expected de-DE keywords copy, got %+v", dePayload)
+	}
+}
+
+func TestMetadataKeywordsLocalizeReusesExistingAliasTargetFile(t *testing.T) {
+	dir := t.TempDir()
+	versionDir := filepath.Join(dir, "version", "1.2.3")
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("mkdir version dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(versionDir, "en-US.json"), []byte(`{"keywords":"habit tracker,mood journal"}`), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+	aliasPath := filepath.Join(versionDir, "de_DE.json")
+	if err := os.WriteFile(aliasPath, []byte(`{"keywords":"old,keywords"}`), 0o644); err != nil {
+		t.Fatalf("write alias target file: %v", err)
+	}
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"metadata", "keywords", "localize",
+			"--dir", dir,
+			"--version", "1.2.3",
+			"--from-locale", "en-US",
+			"--to-locales", "de-DE",
+			"--overwrite",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		Results []struct {
+			File   string `json:"file"`
+			Locale string `json:"locale"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout=%q", err, stdout)
+	}
+	if len(payload.Results) != 1 || payload.Results[0].File != aliasPath || payload.Results[0].Locale != "de-DE" {
+		t.Fatalf("expected alias target reused in output, got %+v", payload.Results)
+	}
+
+	data, err := os.ReadFile(aliasPath)
+	if err != nil {
+		t.Fatalf("read alias file: %v", err)
+	}
+	var filePayload map[string]string
+	if err := json.Unmarshal(data, &filePayload); err != nil {
+		t.Fatalf("unmarshal alias file: %v", err)
+	}
+	if filePayload["keywords"] != "habit tracker,mood journal" {
+		t.Fatalf("unexpected alias target payload: %+v", filePayload)
+	}
+	if _, err := os.Stat(filepath.Join(versionDir, "de-DE.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected canonical duplicate file not to be created, got err=%v", err)
 	}
 }
 
