@@ -3,10 +3,17 @@ package xcode
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -367,6 +374,65 @@ func TestIsMoreRecentBuildUploadCandidateKeepsCurrentOnOpaqueTies(t *testing.T) 
 	}
 }
 
+func TestFindRecentBuildUploadIDIgnoresUndatedUploadsAfterExportStarts(t *testing.T) {
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	http.DefaultTransport = xcodeCommandRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet {
+			return nil, fmt.Errorf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/apps/app-123/buildUploads" {
+			return nil, fmt.Errorf("unexpected path: %s", req.URL.Path)
+		}
+		values := req.URL.Query()
+		if values.Get("filter[cfBundleShortVersionString]") != "1.2.3" {
+			return nil, fmt.Errorf("unexpected short version filter: %q", values.Get("filter[cfBundleShortVersionString]"))
+		}
+		if values.Get("filter[cfBundleVersion]") != "42" {
+			return nil, fmt.Errorf("unexpected build version filter: %q", values.Get("filter[cfBundleVersion]"))
+		}
+		if values.Get("filter[platform]") != "IOS" {
+			return nil, fmt.Errorf("unexpected platform filter: %q", values.Get("filter[platform]"))
+		}
+		if values.Get("sort") != "-uploadedDate" {
+			return nil, fmt.Errorf("unexpected sort: %q", values.Get("sort"))
+		}
+		if values.Get("limit") != "10" {
+			return nil, fmt.Errorf("unexpected limit: %q", values.Get("limit"))
+		}
+		return xcodeCommandJSONResponse(http.StatusOK, `{
+			"data": [
+				{
+					"type": "buildUploads",
+					"id": "stale-undated",
+					"attributes": {
+						"cfBundleShortVersionString": "1.2.3",
+						"cfBundleVersion": "42",
+						"platform": "IOS"
+					}
+				}
+			],
+			"links": {}
+		}`)
+	})
+
+	client := newXcodeCommandTestClient(t)
+	exportStartedAt := time.Date(2026, time.March, 16, 12, 0, 0, 0, time.UTC)
+	uploadID, found, err := findRecentBuildUploadID(context.Background(), client, "app-123", "1.2.3", "42", "IOS", exportStartedAt)
+	if err != nil {
+		t.Fatalf("findRecentBuildUploadID() error: %v", err)
+	}
+	if found {
+		t.Fatalf("expected undated uploads to be ignored after export start, got upload ID %q", uploadID)
+	}
+	if uploadID != "" {
+		t.Fatalf("expected empty upload ID when only undated uploads exist, got %q", uploadID)
+	}
+}
+
 func overrideXcodeCommandTestHooks(t *testing.T) func() {
 	t.Helper()
 
@@ -449,4 +515,42 @@ func captureCommandOutput(t *testing.T, fn func() error) (string, string) {
 	os.Stderr = oldStderr
 
 	return stdout, stderr
+}
+
+type xcodeCommandRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn xcodeCommandRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func xcodeCommandJSONResponse(status int, body string) (*http.Response, error) {
+	return &http.Response{
+		Status:     fmt.Sprintf("%d %s", status, http.StatusText(status)),
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
+}
+
+func newXcodeCommandTestClient(t *testing.T) *asc.Client {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	if pemBytes == nil {
+		t.Fatal("encode pem: nil")
+	}
+
+	client, err := asc.NewClientFromPEM("KEY_ID", "ISSUER_ID", string(pemBytes))
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+	return client
 }

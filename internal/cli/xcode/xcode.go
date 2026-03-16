@@ -345,6 +345,9 @@ func findRecentBuildUploadID(ctx context.Context, client *asc.Client, appID, ver
 	bestHasObservedAt := false
 	for _, upload := range resp.Data {
 		observedAt, hasObservedAt := buildUploadObservedAt(upload.Attributes)
+		if !hasObservedAt && !exportStartedAt.IsZero() {
+			continue
+		}
 		if hasObservedAt && !exportStartedAt.IsZero() && observedAt.Before(exportStartedAt) {
 			continue
 		}
