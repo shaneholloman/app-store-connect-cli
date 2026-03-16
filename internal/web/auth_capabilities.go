@@ -443,6 +443,9 @@ func (c *Client) LookupAPIKeyRoles(ctx context.Context, keyID string) (*APIKeyRo
 
 		actor, actors, err := c.resolveActor(ctx, item.CreatedByActorID)
 		if err != nil {
+			if errors.Is(err, ErrAPIKeyRolesUnresolved) {
+				return nil, fmt.Errorf("%w: %s", ErrAPIKeyRolesUnresolved, keyID)
+			}
 			return nil, err
 		}
 		if actor == nil || len(actor.Roles) == 0 {
@@ -510,6 +513,9 @@ func (c *Client) resolveActor(ctx context.Context, actorID string) (*olympusActo
 
 	actors, listErr := c.listActors(ctx)
 	if listErr != nil {
+		if shouldFallbackToActorList(listErr) {
+			return nil, nil, ErrAPIKeyRolesUnresolved
+		}
 		return nil, nil, listErr
 	}
 	byID := make(map[string]olympusActor, len(actors))

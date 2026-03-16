@@ -763,3 +763,52 @@ func TestClientLookupAPIKeyRolesFailsWhenIndividualRolesCannotBeResolved(t *test
 		t.Fatalf("expected ErrAPIKeyRolesUnresolved, got %v", err)
 	}
 }
+
+func TestClientLookupAPIKeyRolesFailsWhenActorListIsForbidden(t *testing.T) {
+	client := &Client{
+		httpClient: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			switch {
+			case strings.Contains(r.URL.Path, "/iris/v1/apiKeys"):
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"data":[],"included":[]}`)),
+				}, nil
+			case strings.Contains(r.URL.Path, "/iris/v2/apiKeys"):
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(`{
+						"data":[
+							{
+								"id":"ind-5",
+								"attributes":{"roles":[],"nickname":"individual-key","isActive":true,"keyType":"PUBLIC_API"},
+								"relationships":{"createdByActor":{"data":{"id":"actor-hidden"}},"revokedByActor":{"data":null}}
+							}
+						]
+					}`)),
+				}, nil
+			case strings.Contains(r.URL.Path, "/olympus/v1/actors/actor-hidden"):
+				return &http.Response{
+					StatusCode: http.StatusForbidden,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"errors":[{"status":"403"}]}`)),
+				}, nil
+			case strings.Contains(r.URL.Path, "/olympus/v1/actors"):
+				return &http.Response{
+					StatusCode: http.StatusForbidden,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"errors":[{"status":"403"}]}`)),
+				}, nil
+			default:
+				t.Fatalf("unexpected request URL %q", r.URL.String())
+				return nil, nil
+			}
+		})},
+	}
+
+	_, err := client.LookupAPIKeyRoles(context.Background(), "ind-5")
+	if !errors.Is(err, ErrAPIKeyRolesUnresolved) {
+		t.Fatalf("expected ErrAPIKeyRolesUnresolved, got %v", err)
+	}
+}
