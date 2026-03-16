@@ -136,6 +136,34 @@ func TestEnsureTwoFactorCodeRequestedRequestsPhoneCodeForSingleTrustedPhone(t *t
 	}
 }
 
+func TestRequestPhoneCodeReturnsMarshalError(t *testing.T) {
+	sentinel := errors.New("marshal boom")
+	previousMarshal := marshalAuthPayload
+	marshalAuthPayload = func(v any) ([]byte, error) {
+		return nil, sentinel
+	}
+	t.Cleanup(func() {
+		marshalAuthPayload = previousMarshal
+	})
+
+	session := &AuthSession{
+		Client: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				t.Fatalf("unexpected request %s %s", req.Method, req.URL.String())
+				return nil, nil
+			}),
+		},
+	}
+
+	err := requestPhoneCode(context.Background(), session, 7, "sms")
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected marshal error, got %v", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "failed to marshal phone request payload") {
+		t.Fatalf("expected wrapped marshal error, got %q", got)
+	}
+}
+
 func TestEnsureTwoFactorCodeRequestedHonorsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -218,6 +246,62 @@ func TestTwoFactorChallengeIsPhoneMethod(t *testing.T) {
 	}
 	if challenge := (&TwoFactorChallenge{Method: twoFactorMethodTrustedDevice}); challenge.IsPhoneMethod() {
 		t.Fatal("expected trusted-device challenge not to report phone method")
+	}
+}
+
+func TestSubmitTrustedDeviceCodeReturnsMarshalError(t *testing.T) {
+	sentinel := errors.New("marshal boom")
+	previousMarshal := marshalAuthPayload
+	marshalAuthPayload = func(v any) ([]byte, error) {
+		return nil, sentinel
+	}
+	t.Cleanup(func() {
+		marshalAuthPayload = previousMarshal
+	})
+
+	session := &AuthSession{
+		Client: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				t.Fatalf("unexpected request %s %s", req.Method, req.URL.String())
+				return nil, nil
+			}),
+		},
+	}
+
+	err := submitTrustedDeviceCode(session, "123456")
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected marshal error, got %v", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "failed to marshal trusted-device payload") {
+		t.Fatalf("expected wrapped marshal error, got %q", got)
+	}
+}
+
+func TestSubmitPhoneCodeReturnsMarshalError(t *testing.T) {
+	sentinel := errors.New("marshal boom")
+	previousMarshal := marshalAuthPayload
+	marshalAuthPayload = func(v any) ([]byte, error) {
+		return nil, sentinel
+	}
+	t.Cleanup(func() {
+		marshalAuthPayload = previousMarshal
+	})
+
+	session := &AuthSession{
+		Client: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				t.Fatalf("unexpected request %s %s", req.Method, req.URL.String())
+				return nil, nil
+			}),
+		},
+	}
+
+	err := submitPhoneCode(session, "123456", 7, "sms")
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("expected marshal error, got %v", err)
+	}
+	if got := err.Error(); !strings.Contains(got, "failed to marshal phone payload") {
+		t.Fatalf("expected wrapped marshal error, got %q", got)
 	}
 }
 

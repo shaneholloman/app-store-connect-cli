@@ -26,6 +26,8 @@ import (
 
 var errAppleAccountActionRequired = errors.New("complete the pending Apple Account web prompt in a browser (privacy acknowledgement or 2FA upgrade) and try again")
 
+var marshalAuthPayload = json.Marshal
+
 func newIrisHTTPClient(jar http.CookieJar) *http.Client {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -843,7 +845,10 @@ func requestPhoneCode(ctx context.Context, session *AuthSession, phoneID int, mo
 		"phoneNumber": map[string]int{"id": phoneID},
 		"mode":        mode,
 	}
-	body, _ := json.Marshal(payload)
+	body, err := marshalAuthPayload(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal phone request payload: %w", err)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "PUT", authServiceURL+"/verify/phone", bytes.NewReader(body))
 	if err != nil {
@@ -1002,7 +1007,10 @@ func submitTrustedDeviceCode(session *AuthSession, code string) error {
 	payload := map[string]interface{}{
 		"securityCode": map[string]string{"code": code},
 	}
-	body, _ := json.Marshal(payload)
+	body, err := marshalAuthPayload(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal trusted-device payload: %w", err)
+	}
 
 	req, err := http.NewRequest("POST", authServiceURL+"/verify/trusteddevice/securitycode", bytes.NewReader(body))
 	if err != nil {
@@ -1036,7 +1044,10 @@ func submitPhoneCode(session *AuthSession, code string, phoneID int, mode string
 		"phoneNumber":  map[string]int{"id": phoneID},
 		"mode":         mode,
 	}
-	body, _ := json.Marshal(payload)
+	body, err := marshalAuthPayload(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal phone payload: %w", err)
+	}
 
 	req, err := http.NewRequest("POST", authServiceURL+"/verify/phone/securitycode", bytes.NewReader(body))
 	if err != nil {
