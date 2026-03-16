@@ -72,8 +72,8 @@ func TestWebAppsCreateMissingRequiredFlags(t *testing.T) {
 	if !errors.Is(runErr, flag.ErrHelp) {
 		t.Fatalf("expected ErrHelp, got %v", runErr)
 	}
-	if !strings.Contains(stderr, "Error: --bundle-id is required") {
-		t.Fatalf("expected missing --bundle-id error, got %q", stderr)
+	if !strings.Contains(stderr, "Error: missing required flags: --bundle-id, --sku") {
+		t.Fatalf("expected aggregated missing-flags error, got %q", stderr)
 	}
 }
 

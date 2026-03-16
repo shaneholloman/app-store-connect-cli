@@ -253,14 +253,17 @@ func RunAppsCreate(ctx context.Context, opts AppsCreateRunOptions) error {
 	missingSKU := opts.SKU == ""
 	if missingName || missingBundleID || missingSKU {
 		if !appCreateCanPromptInteractivelyFn() {
-			switch {
-			case missingName:
-				return shared.UsageError("--name is required")
-			case missingBundleID:
-				return shared.UsageError("--bundle-id is required")
-			default:
-				return shared.UsageError("--sku is required")
+			missingFlags := make([]string, 0, 3)
+			if missingName {
+				missingFlags = append(missingFlags, "--name")
 			}
+			if missingBundleID {
+				missingFlags = append(missingFlags, "--bundle-id")
+			}
+			if missingSKU {
+				missingFlags = append(missingFlags, "--sku")
+			}
+			return shared.UsageError(fmt.Sprintf("missing required flags: %s", strings.Join(missingFlags, ", ")))
 		}
 		if err := promptAppsCreateFields(&opts); err != nil {
 			return err
