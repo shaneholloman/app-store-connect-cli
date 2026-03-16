@@ -13,6 +13,11 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
+type contentRightsResult struct {
+	AppID                    string                        `json:"app_id"`
+	ContentRightsDeclaration *asc.ContentRightsDeclaration `json:"content_rights_declaration"`
+}
+
 // AppsContentRightsCommand returns the content-rights command group.
 func AppsContentRightsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("content-rights", flag.ExitOnError)
@@ -27,13 +32,13 @@ The content rights declaration indicates whether your app uses third-party conte
 This is required for App Store submission.
 
 Examples:
-  asc apps content-rights get --app "APP_ID"
-  asc apps content-rights set --app "APP_ID" --uses-third-party-content=false`,
+  asc apps content-rights view --app "APP_ID"
+  asc apps content-rights edit --app "APP_ID" --uses-third-party-content=false`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
-			AppsContentRightsGetCommand(),
-			AppsContentRightsSetCommand(),
+			AppsContentRightsViewCommand(),
+			AppsContentRightsEditCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -41,24 +46,28 @@ Examples:
 	}
 }
 
-// AppsContentRightsGetCommand returns the content-rights get subcommand.
-func AppsContentRightsGetCommand() *ffcli.Command {
-	fs := flag.NewFlagSet("content-rights get", flag.ExitOnError)
+// AppsContentRightsViewCommand returns the content-rights view subcommand.
+func AppsContentRightsViewCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("content-rights view", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
-		Name:       "get",
-		ShortUsage: "asc apps content-rights get --app \"APP_ID\"",
-		ShortHelp:  "Get an app's content rights declaration.",
-		LongHelp: `Get an app's content rights declaration.
+		Name:       "view",
+		ShortUsage: "asc apps content-rights view --app \"APP_ID\"",
+		ShortHelp:  "View an app's content rights declaration.",
+		LongHelp: `View an app's content rights declaration.
 
 Examples:
-  asc apps content-rights get --app "APP_ID"`,
+  asc apps content-rights view --app "APP_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return shared.UsageErrorf("unexpected argument(s): %s", strings.Join(args, " "))
+			}
+
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
@@ -67,7 +76,7 @@ Examples:
 
 			client, err := shared.GetASCClient()
 			if err != nil {
-				return fmt.Errorf("apps content-rights get: %w", err)
+				return fmt.Errorf("apps content-rights view: %w", err)
 			}
 
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
@@ -75,42 +84,59 @@ Examples:
 
 			app, err := client.GetApp(requestCtx, resolvedAppID)
 			if err != nil {
-				return fmt.Errorf("apps content-rights get: failed to fetch: %w", err)
+				return fmt.Errorf("apps content-rights view: failed to fetch: %w", err)
 			}
 
-			return shared.PrintOutput(app, *output.Output, *output.Pretty)
+			result := buildContentRightsResult(app)
+			return shared.PrintOutputWithRenderers(
+				result,
+				*output.Output,
+				*output.Pretty,
+				func() error {
+					asc.RenderTable([]string{"field", "value"}, contentRightsRows(result))
+					return nil
+				},
+				func() error {
+					asc.RenderMarkdown([]string{"field", "value"}, contentRightsRows(result))
+					return nil
+				},
+			)
 		},
 	}
 }
 
-// AppsContentRightsSetCommand returns the content-rights set subcommand.
-func AppsContentRightsSetCommand() *ffcli.Command {
-	fs := flag.NewFlagSet("content-rights set", flag.ExitOnError)
+// AppsContentRightsEditCommand returns the content-rights edit subcommand.
+func AppsContentRightsEditCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("content-rights edit", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
 	usesThirdParty := fs.String("uses-third-party-content", "", "Whether app uses third-party content (true/false, yes/no)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
-		Name:       "set",
-		ShortUsage: "asc apps content-rights set --app \"APP_ID\" --uses-third-party-content false",
-		ShortHelp:  "Set an app's content rights declaration.",
-		LongHelp: `Set an app's content rights declaration.
+		Name:       "edit",
+		ShortUsage: "asc apps content-rights edit --app \"APP_ID\" --uses-third-party-content=false",
+		ShortHelp:  "Edit an app's content rights declaration.",
+		LongHelp: `Edit an app's content rights declaration.
 
 This declares whether your app uses third-party content, which is required
 for App Store submission.
 
-  --uses-third-party-content false  → DOES_NOT_USE_THIRD_PARTY_CONTENT
-  --uses-third-party-content true   → USES_THIRD_PARTY_CONTENT
+  --uses-third-party-content=false  → DOES_NOT_USE_THIRD_PARTY_CONTENT
+  --uses-third-party-content=true   → USES_THIRD_PARTY_CONTENT
 
 Accepts: true, false, yes, no, uses, does-not-use, or the raw API values.
 
 Examples:
-  asc apps content-rights set --app "APP_ID" --uses-third-party-content false
-  asc apps content-rights set --app "APP_ID" --uses-third-party-content true`,
+  asc apps content-rights edit --app "APP_ID" --uses-third-party-content=false
+  asc apps content-rights edit --app "APP_ID" --uses-third-party-content=true`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return shared.UsageErrorf("unexpected argument(s): %s", strings.Join(args, " "))
+			}
+
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
@@ -129,7 +155,7 @@ Examples:
 
 			client, err := shared.GetASCClient()
 			if err != nil {
-				return fmt.Errorf("apps content-rights set: %w", err)
+				return fmt.Errorf("apps content-rights edit: %w", err)
 			}
 
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
@@ -141,13 +167,47 @@ Examples:
 
 			app, err := client.UpdateApp(requestCtx, resolvedAppID, attrs)
 			if err != nil {
-				return fmt.Errorf("apps content-rights set: failed to update: %w", err)
+				return fmt.Errorf("apps content-rights edit: failed to update: %w", err)
 			}
 
 			fmt.Fprintf(os.Stderr, "Content rights declaration set to %s\n", string(declaration))
 
-			return shared.PrintOutput(app, *output.Output, *output.Pretty)
+			result := buildContentRightsResult(app)
+			return shared.PrintOutputWithRenderers(
+				result,
+				*output.Output,
+				*output.Pretty,
+				func() error {
+					asc.RenderTable([]string{"field", "value"}, contentRightsRows(result))
+					return nil
+				},
+				func() error {
+					asc.RenderMarkdown([]string{"field", "value"}, contentRightsRows(result))
+					return nil
+				},
+			)
 		},
+	}
+}
+
+func buildContentRightsResult(app *asc.AppResponse) contentRightsResult {
+	if app == nil {
+		return contentRightsResult{}
+	}
+	return contentRightsResult{
+		AppID:                    strings.TrimSpace(app.Data.ID),
+		ContentRightsDeclaration: app.Data.Attributes.ContentRightsDeclaration,
+	}
+}
+
+func contentRightsRows(result contentRightsResult) [][]string {
+	declaration := "unset"
+	if result.ContentRightsDeclaration != nil && strings.TrimSpace(string(*result.ContentRightsDeclaration)) != "" {
+		declaration = string(*result.ContentRightsDeclaration)
+	}
+	return [][]string{
+		{"app_id", result.AppID},
+		{"content_rights_declaration", declaration},
 	}
 }
 
