@@ -780,6 +780,28 @@ func persistSessionBySelection(selection backendSelection, key string, sess pers
 	}
 }
 
+func readSessionFromFileWithKeychainFallback(key string, fallbackKeychain bool) (persistedSession, bool, error) {
+	sess, ok, err := readSessionFromFile(key)
+	if err == nil && (ok || !fallbackKeychain) {
+		return sess, ok, nil
+	}
+	if err != nil && !fallbackKeychain {
+		return persistedSession{}, false, err
+	}
+
+	sess, ok, keychainErr := readSessionFromKeychain(key)
+	if keychainErr != nil {
+		if err != nil {
+			return persistedSession{}, false, err
+		}
+		return persistedSession{}, false, nil
+	}
+	if err != nil && !ok {
+		return persistedSession{}, false, err
+	}
+	return sess, ok, nil
+}
+
 func readSessionBySelection(selection backendSelection, key string) (persistedSession, bool, error) {
 	switch selection.backend {
 	case sessionBackendOff:
@@ -797,24 +819,7 @@ func readSessionBySelection(selection backendSelection, key string) (persistedSe
 		}
 		return sess, ok, nil
 	case sessionBackendFile:
-		sess, ok, err := readSessionFromFile(key)
-		if err == nil && (ok || !selection.fallbackKeychain) {
-			return sess, ok, err
-		}
-		if err != nil && !selection.fallbackKeychain {
-			return persistedSession{}, false, err
-		}
-		sess, ok, keychainErr := readSessionFromKeychain(key)
-		if keychainErr != nil {
-			if err != nil {
-				return persistedSession{}, false, err
-			}
-			return persistedSession{}, false, nil
-		}
-		if err != nil && !ok {
-			return persistedSession{}, false, err
-		}
-		return sess, ok, nil
+		return readSessionFromFileWithKeychainFallback(key, selection.fallbackKeychain)
 	default:
 		return persistedSession{}, false, nil
 	}
@@ -867,24 +872,7 @@ func readLastSessionBySelection(selection backendSelection) (persistedSession, b
 	case sessionBackendFile:
 		key, ok, err := readLastKeyFromFile()
 		if err == nil && ok {
-			sess, ok, err := readSessionFromFile(key)
-			if err == nil && (ok || !selection.fallbackKeychain) {
-				return sess, ok, err
-			}
-			if err != nil && !selection.fallbackKeychain {
-				return persistedSession{}, false, err
-			}
-			sess, ok, keychainErr := readSessionFromKeychain(key)
-			if keychainErr != nil {
-				if err != nil {
-					return persistedSession{}, false, err
-				}
-				return persistedSession{}, false, nil
-			}
-			if err != nil && !ok {
-				return persistedSession{}, false, err
-			}
-			return sess, ok, nil
+			return readSessionFromFileWithKeychainFallback(key, selection.fallbackKeychain)
 		}
 		if err != nil {
 			if !selection.fallbackKeychain {

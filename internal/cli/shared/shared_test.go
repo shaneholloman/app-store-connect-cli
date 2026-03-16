@@ -1357,6 +1357,142 @@ func TestResolveAuthCredentialsMetadata_FallsBackToStoredCredentialsWhenMetadata
 	}
 }
 
+func TestResolveAuthCredentialsMetadata_PrefersActiveLocalConfigOverGlobalMetadataFallback(t *testing.T) {
+	homeDir := t.TempDir()
+	repoDir := t.TempDir()
+	subdir := filepath.Join(repoDir, "nested")
+	if err := os.MkdirAll(subdir, 0o700); err != nil {
+		t.Fatalf("mkdir nested: %v", err)
+	}
+
+	t.Setenv("ASC_CONFIG_PATH", "")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ASC_PROFILE", "")
+	t.Setenv("ASC_KEY_ID", "")
+	t.Setenv("ASC_ISSUER_ID", "")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(subdir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+
+	localPath := filepath.Join(repoDir, ".asc", "config.json")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o700); err != nil {
+		t.Fatalf("mkdir local config dir: %v", err)
+	}
+	if err := config.SaveAt(localPath, &config.Config{
+		DefaultKeyName: "local",
+	}); err != nil {
+		t.Fatalf("config.SaveAt(local) error: %v", err)
+	}
+
+	globalPath, err := config.GlobalPath()
+	if err != nil {
+		t.Fatalf("config.GlobalPath() error: %v", err)
+	}
+	if err := config.SaveAt(globalPath, &config.Config{
+		DefaultKeyName: "global",
+		KeychainMetadata: []config.KeychainMetadata{{
+			Name:     "global",
+			KeyID:    "GLOBALKEY",
+			IssuerID: "GLOBALISS",
+		}},
+	}); err != nil {
+		t.Fatalf("config.SaveAt(global) error: %v", err)
+	}
+
+	previousProfile := selectedProfile
+	selectedProfile = ""
+	t.Cleanup(func() { selectedProfile = previousProfile })
+
+	previous := getCredentialsWithSourceFn
+	getCredentialsWithSourceFn = func(profile string) (*config.Config, string, error) {
+		if profile != "" {
+			t.Fatalf("expected empty profile override, got %q", profile)
+		}
+		return &config.Config{
+			DefaultKeyName: "local",
+			KeyID:          "LOCALKEY",
+			IssuerID:       "LOCALISS",
+			PrivateKeyPEM:  "pem-data",
+		}, "keychain", nil
+	}
+	t.Cleanup(func() { getCredentialsWithSourceFn = previous })
+
+	resolved, err := ResolveAuthCredentialsMetadata("")
+	if err != nil {
+		t.Fatalf("ResolveAuthCredentialsMetadata() error: %v", err)
+	}
+	if resolved.KeyID != "LOCALKEY" || resolved.IssuerID != "LOCALISS" || resolved.Profile != "local" {
+		t.Fatalf("unexpected local-preferred metadata: %+v", resolved)
+	}
+}
+
+func TestResolveAuthCredentialsMetadata_FallsBackToGlobalMetadataWhenLocalConfigHasNoAuth(t *testing.T) {
+	homeDir := t.TempDir()
+	repoDir := t.TempDir()
+	subdir := filepath.Join(repoDir, "nested")
+	if err := os.MkdirAll(subdir, 0o700); err != nil {
+		t.Fatalf("mkdir nested: %v", err)
+	}
+
+	t.Setenv("ASC_CONFIG_PATH", "")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("ASC_PROFILE", "")
+	t.Setenv("ASC_KEY_ID", "")
+	t.Setenv("ASC_ISSUER_ID", "")
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(subdir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+
+	localPath := filepath.Join(repoDir, ".asc", "config.json")
+	if err := os.MkdirAll(filepath.Dir(localPath), 0o700); err != nil {
+		t.Fatalf("mkdir local config dir: %v", err)
+	}
+	if err := config.SaveAt(localPath, &config.Config{
+		AppID: "123456789",
+	}); err != nil {
+		t.Fatalf("config.SaveAt(local) error: %v", err)
+	}
+
+	globalPath, err := config.GlobalPath()
+	if err != nil {
+		t.Fatalf("config.GlobalPath() error: %v", err)
+	}
+	if err := config.SaveAt(globalPath, &config.Config{
+		DefaultKeyName: "global",
+		KeychainMetadata: []config.KeychainMetadata{{
+			Name:     "global",
+			KeyID:    "GLOBALKEY",
+			IssuerID: "GLOBALISS",
+		}},
+	}); err != nil {
+		t.Fatalf("config.SaveAt(global) error: %v", err)
+	}
+
+	previousProfile := selectedProfile
+	selectedProfile = ""
+	t.Cleanup(func() { selectedProfile = previousProfile })
+
+	resolved, err := ResolveAuthCredentialsMetadata("")
+	if err != nil {
+		t.Fatalf("ResolveAuthCredentialsMetadata() error: %v", err)
+	}
+	if resolved.KeyID != "GLOBALKEY" || resolved.IssuerID != "GLOBALISS" || resolved.Profile != "global" {
+		t.Fatalf("unexpected global-fallback metadata: %+v", resolved)
+	}
+}
+
 func resetPrivateKeyTemp(t *testing.T) {
 	t.Helper()
 	CleanupTempPrivateKeys()

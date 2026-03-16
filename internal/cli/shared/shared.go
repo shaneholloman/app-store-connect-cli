@@ -566,6 +566,9 @@ func loadConfigForCredentialMetadata() (*config.Config, string, error) {
 	if hasConfigCredentialMetadata(cfg) || strings.TrimSpace(os.Getenv("ASC_CONFIG_PATH")) != "" {
 		return cfg, path, nil
 	}
+	if hasConfigCredentialSelection(cfg) {
+		return cfg, path, nil
+	}
 
 	globalPath, err := config.GlobalPath()
 	if err != nil || globalPath == path {
@@ -586,6 +589,22 @@ func loadConfigForCredentialMetadata() (*config.Config, string, error) {
 
 func hasConfigCredentialMetadata(cfg *config.Config) bool {
 	return len(configCredentialMetadataSummaries(cfg)) > 0
+}
+
+func hasConfigCredentialSelection(cfg *config.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	if strings.TrimSpace(cfg.DefaultKeyName) != "" {
+		return true
+	}
+	if strings.TrimSpace(cfg.KeyID) != "" || strings.TrimSpace(cfg.IssuerID) != "" {
+		return true
+	}
+	if strings.TrimSpace(cfg.PrivateKeyPath) != "" || strings.TrimSpace(cfg.PrivateKeyPEM) != "" {
+		return true
+	}
+	return len(cfg.Keys) > 0 || len(cfg.KeychainMetadata) > 0
 }
 
 func configCredentialMetadataSummaries(cfg *config.Config) []credentialMetadataSummary {
