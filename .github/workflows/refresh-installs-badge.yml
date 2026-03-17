@@ -33,6 +33,8 @@ jobs:
         run: python3 scripts/test_download_stats_total.py
 
       - name: Regenerate badge JSON
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/download_stats_total.py --write-badge docs/badges/installs-total.json
 
       - name: Commit if changed

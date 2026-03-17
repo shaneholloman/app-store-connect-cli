@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -25,14 +26,23 @@ FORMULA = "asc"
 WRITEUP = "https://til.bhupesh.me/shell/get-download-stats-github-brew"
 
 
-def github_release_asset_downloads() -> int:
-    base = f"https://api.github.com/repos/{REPO}/releases"
-    total = 0
-    page = 1
+def _github_api_headers() -> dict[str, str]:
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "asc-download-stats",
     }
+    token = os.getenv("GITHUB_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        headers["X-GitHub-Api-Version"] = "2022-11-28"
+    return headers
+
+
+def github_release_asset_downloads() -> int:
+    base = f"https://api.github.com/repos/{REPO}/releases"
+    total = 0
+    page = 1
+    headers = _github_api_headers()
     while True:
         url = f"{base}?per_page=100&page={page}"
         req = urllib.request.Request(url, headers=headers)

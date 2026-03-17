@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import runpy
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ def main() -> int:
     root = Path(__file__).resolve().parent.parent
     mod = runpy.run_path(str(root / "scripts" / "download_stats_total.py"))
     fmt = mod["_format_badge_total"]
+    github_headers = mod["_github_api_headers"]
     cases: list[tuple[int, str]] = [
         (999, "999"),
         (1000, "1k"),
@@ -27,7 +29,25 @@ def main() -> int:
         if got != want:
             print(f"FAIL _format_badge_total({n}) = {got!r} want {want!r}", file=sys.stderr)
             return 1
-    print(f"ok {len(cases)} _format_badge_total cases")
+
+    original_token = os.environ.pop("GITHUB_TOKEN", None)
+    try:
+        headers = github_headers()
+        if "Authorization" in headers:
+            print("FAIL expected no Authorization header without GITHUB_TOKEN", file=sys.stderr)
+            return 1
+        os.environ["GITHUB_TOKEN"] = "test-token"
+        headers = github_headers()
+        if headers.get("Authorization") != "Bearer test-token":
+            print(f"FAIL expected bearer auth header, got {headers!r}", file=sys.stderr)
+            return 1
+    finally:
+        if original_token is None:
+            os.environ.pop("GITHUB_TOKEN", None)
+        else:
+            os.environ["GITHUB_TOKEN"] = original_token
+
+    print(f"ok {len(cases)} _format_badge_total cases + auth header checks")
     return 0
 
 
