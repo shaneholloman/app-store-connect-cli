@@ -5,5 +5,3 @@
 `python3 scripts/download_stats_total.py --write-badge docs/badges/installs-total.json`
 
 **Meaning:** GitHub release-asset downloads (all-time) + Homebrew install-on-request (365 days). Overlaps are not deduplicated; see [write-up](https://til.bhupesh.me/shell/get-download-stats-github-brew).
-
-If the workflow cannot push to `main` (branch protection), allow **GitHub Actions** to bypass or run the script locally and open a PR.
