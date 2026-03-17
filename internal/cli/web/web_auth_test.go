@@ -620,6 +620,60 @@ func TestResolveWebSessionReturnsPromptedAppleIDCacheLookupError(t *testing.T) {
 	}
 }
 
+func TestResolveWebSessionPrintsExpiredNoticeOnlyOnceAcrossPromptedLookup(t *testing.T) {
+	origTryResume := tryResumeSessionFn
+	origTryResumeLast := tryResumeLastFn
+	origExpiredWriter := sessionExpiredWriter
+	origWebLogin := webLoginFn
+	t.Cleanup(func() {
+		tryResumeSessionFn = origTryResume
+		tryResumeLastFn = origTryResumeLast
+		sessionExpiredWriter = origExpiredWriter
+		webLoginFn = origWebLogin
+	})
+
+	var notice bytes.Buffer
+	sessionExpiredWriter = &notice
+
+	tryResumeLastFn = func(ctx context.Context) (*webcore.AuthSession, bool, error) {
+		return nil, false, webcore.ErrCachedSessionExpired
+	}
+	tryResumeSessionFn = func(ctx context.Context, username string) (*webcore.AuthSession, bool, error) {
+		if username != "user@example.com" {
+			t.Fatalf("expected prompted username user@example.com, got %q", username)
+		}
+		return nil, false, webcore.ErrCachedSessionExpired
+	}
+	webLoginFn = func(ctx context.Context, creds webcore.LoginCredentials) (*webcore.AuthSession, error) {
+		if got := notice.String(); got != "Session expired.\n" {
+			t.Fatalf("expected a single expired-session notice before login, got %q", got)
+		}
+		return &webcore.AuthSession{UserEmail: creds.Username}, nil
+	}
+
+	session, source, err := resolveWebSession(context.Background(), "", "secret", "", webSessionResolveOptions{
+		promptAppleID: func(appleID *string) error {
+			*appleID = "user@example.com"
+			return nil
+		},
+		resolvePassword: func(password string) (string, error) {
+			return "secret", nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolveWebSession returned error: %v", err)
+	}
+	if source != "fresh" {
+		t.Fatalf("expected source %q, got %q", "fresh", source)
+	}
+	if session == nil {
+		t.Fatal("expected fresh login session")
+	}
+	if got := notice.String(); got != "Session expired.\n" {
+		t.Fatalf("expected a single expired-session notice, got %q", got)
+	}
+}
+
 func TestResolveSessionWhitespaceOnlyPasswordFallsBackToEnv(t *testing.T) {
 	origTryResume := tryResumeSessionFn
 	origTryResumeLast := tryResumeLastFn
