@@ -123,9 +123,13 @@ func runPreflight(ctx context.Context, client *asc.Client, appID, version, platf
 	versionID, versionCheck := checkVersionExists(ctx, client, appID, version, platform)
 	result.Checks = append(result.Checks, versionCheck)
 
-	// 2. Build attached
+	// 2. Build attached + 3. Encryption compliance
 	if versionID != "" {
-		result.Checks = append(result.Checks, checkBuildAttached(ctx, client, versionID))
+		buildID, buildAttrs, buildCheck := checkBuildAttachedWithAttrs(ctx, client, versionID)
+		result.Checks = append(result.Checks, buildCheck)
+		if buildID != "" {
+			result.Checks = append(result.Checks, checkBuildEncryption(ctx, client, buildID, buildAttrs))
+		}
 	}
 
 	appInfoID, appInfoErr := resolveAppInfoID(ctx, client, appID, versionID)
@@ -189,30 +193,30 @@ func checkVersionExists(ctx context.Context, client *asc.Client, appID, version,
 	}
 }
 
-func checkBuildAttached(ctx context.Context, client *asc.Client, versionID string) checkResult {
+func checkBuildAttachedWithAttrs(ctx context.Context, client *asc.Client, versionID string) (string, *asc.BuildAttributes, checkResult) {
 	buildCtx, cancel := shared.ContextWithTimeout(ctx)
 	defer cancel()
 
 	buildResp, err := client.GetAppStoreVersionBuild(buildCtx, versionID)
 	if err != nil {
 		if asc.IsNotFound(err) {
-			return checkResult{
+			return "", nil, checkResult{
 				Name:    "Build attached",
 				Passed:  false,
 				Message: "No build attached to this version",
 				Hint:    fmt.Sprintf("asc submit create --version-id %s --build BUILD_ID --confirm", versionID),
 			}
 		}
-		return checkResult{
+		return "", nil, checkResult{
 			Name:    "Build attached",
 			Passed:  false,
 			Message: fmt.Sprintf("Failed to check build: %v", err),
 		}
 	}
 
-	buildVersion := buildResp.Data.Attributes.Version
-	if strings.TrimSpace(buildResp.Data.ID) == "" {
-		return checkResult{
+	buildID := strings.TrimSpace(buildResp.Data.ID)
+	if buildID == "" {
+		return "", nil, checkResult{
 			Name:    "Build attached",
 			Passed:  false,
 			Message: "No build attached to this version",
@@ -220,14 +224,73 @@ func checkBuildAttached(ctx context.Context, client *asc.Client, versionID strin
 		}
 	}
 
+	buildVersion := buildResp.Data.Attributes.Version
 	msg := "Build attached"
 	if buildVersion != "" {
 		msg = fmt.Sprintf("Build attached (build %s)", buildVersion)
 	}
-	return checkResult{
+	return buildID, &buildResp.Data.Attributes, checkResult{
 		Name:    "Build attached",
 		Passed:  true,
 		Message: msg,
+	}
+}
+
+// checkBuildEncryption verifies encryption compliance using attributes already
+// fetched by checkBuildAttachedWithAttrs, avoiding a redundant API call. Only
+// makes an additional request when usesNonExemptEncryption=true (to verify the
+// encryption declaration is attached).
+func checkBuildEncryption(ctx context.Context, client *asc.Client, buildID string, attrs *asc.BuildAttributes) checkResult {
+	if attrs == nil || attrs.UsesNonExemptEncryption == nil {
+		return checkResult{
+			Name:    "Encryption compliance",
+			Passed:  false,
+			Message: "usesNonExemptEncryption not set on build",
+			Hint:    fmt.Sprintf("asc builds update --build %s --uses-non-exempt-encryption=false", buildID),
+		}
+	}
+
+	if !*attrs.UsesNonExemptEncryption {
+		return checkResult{
+			Name:    "Encryption compliance",
+			Passed:  true,
+			Message: "No non-exempt encryption used",
+		}
+	}
+
+	// usesNonExemptEncryption=true — verify declaration is attached.
+	declCtx, declCancel := shared.ContextWithTimeout(ctx)
+	defer declCancel()
+
+	declarationResp, err := client.GetBuildAppEncryptionDeclaration(declCtx, buildID)
+	if err != nil {
+		if asc.IsNotFound(err) {
+			return checkResult{
+				Name:    "Encryption compliance",
+				Passed:  false,
+				Message: "usesNonExemptEncryption=true but no encryption declaration attached to build",
+				Hint:    fmt.Sprintf("asc encryption declarations assign-builds --id DECLARATION_ID --build %s", buildID),
+			}
+		}
+		return checkResult{
+			Name:    "Encryption compliance",
+			Passed:  false,
+			Message: fmt.Sprintf("Failed to check encryption declaration: %v", err),
+		}
+	}
+	declarationID := strings.TrimSpace(declarationResp.Data.ID)
+	if declarationID == "" {
+		return checkResult{
+			Name:    "Encryption compliance",
+			Passed:  false,
+			Message: "usesNonExemptEncryption=true but build encryption declaration is missing an ID",
+			Hint:    fmt.Sprintf("asc encryption declarations assign-builds --id DECLARATION_ID --build %s", buildID),
+		}
+	}
+	return checkResult{
+		Name:    "Encryption compliance",
+		Passed:  true,
+		Message: fmt.Sprintf("Encryption declaration attached (%s)", declarationID),
 	}
 }
 
