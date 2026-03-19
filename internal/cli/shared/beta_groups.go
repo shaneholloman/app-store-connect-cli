@@ -19,9 +19,10 @@ type buildBetaGroupsMutationClient interface {
 
 // ResolvedBetaGroup captures the canonical ID and metadata for a beta group.
 type ResolvedBetaGroup struct {
-	ID              string
-	Name            string
-	IsInternalGroup bool
+	ID                   string
+	Name                 string
+	IsInternalGroup      bool
+	HasAccessToAllBuilds bool
 }
 
 func (g ResolvedBetaGroup) NameForDisplay() string {
@@ -139,9 +140,10 @@ func ResolveBetaGroupsFromList(inputGroups []string, groups *asc.BetaGroupsRespo
 			return nil, fmt.Errorf("resolved beta group %q not found in app group list", resolvedID)
 		}
 		resolvedGroups = append(resolvedGroups, ResolvedBetaGroup{
-			ID:              resolvedID,
-			Name:            strings.TrimSpace(group.Attributes.Name),
-			IsInternalGroup: group.Attributes.IsInternalGroup,
+			ID:                   resolvedID,
+			Name:                 strings.TrimSpace(group.Attributes.Name),
+			IsInternalGroup:      group.Attributes.IsInternalGroup,
+			HasAccessToAllBuilds: group.Attributes.HasAccessToAllBuilds,
 		})
 	}
 
