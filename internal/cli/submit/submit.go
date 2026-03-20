@@ -748,7 +748,7 @@ func runSubmitCreateSubscriptionPreflight(ctx context.Context, client *asc.Clien
 		for _, name := range readyToSubmit {
 			fmt.Fprintf(os.Stderr, "  - %s\n", name)
 		}
-		fmt.Fprintln(os.Stderr, "If this is their first review, you must submit them via the app version page in App Store Connect.")
+		fmt.Fprintln(os.Stderr, "If this is their first review, run `asc web review subscriptions list --app \"APP_ID\"` to find the relevant IDs, then attach the group with `asc web review subscriptions attach-group --app \"APP_ID\" --group-id \"GROUP_ID\" --confirm` (or use `attach --subscription-id \"SUB_ID\"` for one subscription) before retrying `asc submit create`.")
 		fmt.Fprintln(os.Stderr, "For subsequent reviews, use `asc subscriptions review submit --subscription-id \"SUB_ID\" --confirm`.")
 	}
 
