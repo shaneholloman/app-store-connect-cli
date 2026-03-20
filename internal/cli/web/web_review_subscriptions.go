@@ -275,7 +275,7 @@ func reviewSubscriptionAttachSkipReason(subscription webcore.ReviewSubscription)
 	case "MISSING_METADATA":
 		return "state is MISSING_METADATA; run `asc validate subscriptions` and upload missing assets first"
 	case "READY_TO_SUBMIT":
-		return "already attached"
+		return "state is READY_TO_SUBMIT but the refreshed review state still shows not attached"
 	case "":
 		return "state is unknown; Apple only allows attach from READY_TO_SUBMIT"
 	default:
@@ -283,26 +283,55 @@ func reviewSubscriptionAttachSkipReason(subscription webcore.ReviewSubscription)
 	}
 }
 
+func reviewSubscriptionAttachUnchangedAfterRefreshReason() string {
+	return "attach request completed but refreshed state still shows not attached"
+}
+
+func reviewSubscriptionRemoveUnchangedAfterRefreshReason() string {
+	return "remove request completed but refreshed state still shows attached"
+}
+
+func collectReviewSubscriptionGroupChanges(
+	refreshedGroup []webcore.ReviewSubscription,
+	subscriptionIDs []string,
+	wantAttached bool,
+	unchangedReason string,
+) ([]webcore.ReviewSubscription, []reviewSubscriptionMutationSkip) {
+	changed := make([]webcore.ReviewSubscription, 0, len(subscriptionIDs))
+	skipped := make([]reviewSubscriptionMutationSkip, 0)
+	for _, subscriptionID := range subscriptionIDs {
+		refreshed, ok := findReviewSubscription(refreshedGroup, subscriptionID)
+		if !ok {
+			skipped = append(skipped, reviewSubscriptionMutationSkip{
+				Subscription: webcore.ReviewSubscription{ID: strings.TrimSpace(subscriptionID)},
+				Reason:       "subscription was not found after refresh",
+			})
+			continue
+		}
+		if refreshed.SubmitWithNextAppStoreVersion == wantAttached {
+			changed = append(changed, *refreshed)
+			continue
+		}
+		skipped = append(skipped, reviewSubscriptionMutationSkip{
+			Subscription: *refreshed,
+			Reason:       unchangedReason,
+		})
+	}
+	return changed, skipped
+}
+
 func reviewSubscriptionGroupAttachPreflight(appID, groupID string, subscriptions []webcore.ReviewSubscription) error {
 	readyCount := 0
 	attachedCount := 0
-	missingCount := 0
 	for _, subscription := range subscriptions {
 		if subscription.SubmitWithNextAppStoreVersion {
 			attachedCount++
 		}
-		switch reviewSubscriptionState(subscription) {
-		case "READY_TO_SUBMIT":
-			if !subscription.SubmitWithNextAppStoreVersion {
-				readyCount++
-			}
-		case "MISSING_METADATA":
-			if !subscription.SubmitWithNextAppStoreVersion {
-				missingCount++
-			}
+		if reviewSubscriptionState(subscription) == "READY_TO_SUBMIT" && !subscription.SubmitWithNextAppStoreVersion {
+			readyCount++
 		}
 	}
-	if readyCount > 0 || attachedCount > 0 || missingCount == 0 {
+	if readyCount > 0 || attachedCount > 0 {
 		return nil
 	}
 
@@ -493,8 +522,8 @@ func WebReviewSubscriptionsAttachCommand() *ffcli.Command {
 				if !ok {
 					return fmt.Errorf("subscription %q was not found for app %q after attach", trimmedSubscriptionID, trimmedAppID)
 				}
-				payload.Changed = true
 				payload.SubmissionID = strings.TrimSpace(submission.ID)
+				payload.Changed = refreshed.SubmitWithNextAppStoreVersion
 				payload.Subscription = *refreshed
 			}
 
@@ -591,12 +620,13 @@ func WebReviewSubscriptionsAttachGroupCommand() *ffcli.Command {
 			}
 			refreshedGroup := findReviewSubscriptionsByGroup(refreshedSubscriptions, trimmedGroupID)
 
-			changed := make([]webcore.ReviewSubscription, 0)
-			for _, subscriptionID := range attachIDs {
-				if refreshed, ok := findReviewSubscription(refreshedGroup, subscriptionID); ok {
-					changed = append(changed, *refreshed)
-				}
-			}
+			changed, postRefreshSkipped := collectReviewSubscriptionGroupChanges(
+				refreshedGroup,
+				attachIDs,
+				true,
+				reviewSubscriptionAttachUnchangedAfterRefreshReason(),
+			)
+			skipped = append(skipped, postRefreshSkipped...)
 
 			payload := reviewSubscriptionGroupMutationOutput{
 				AppID:              trimmedAppID,
@@ -688,7 +718,7 @@ func WebReviewSubscriptionsRemoveCommand() *ffcli.Command {
 				if !ok {
 					return fmt.Errorf("subscription %q was not found for app %q after remove", trimmedSubscriptionID, trimmedAppID)
 				}
-				payload.Changed = true
+				payload.Changed = !refreshed.SubmitWithNextAppStoreVersion
 				payload.Subscription = *refreshed
 			}
 
@@ -779,12 +809,13 @@ func WebReviewSubscriptionsRemoveGroupCommand() *ffcli.Command {
 			}
 			refreshedGroup := findReviewSubscriptionsByGroup(refreshedSubscriptions, trimmedGroupID)
 
-			changed := make([]webcore.ReviewSubscription, 0)
-			for _, subscriptionID := range removeIDs {
-				if refreshed, ok := findReviewSubscription(refreshedGroup, subscriptionID); ok {
-					changed = append(changed, *refreshed)
-				}
-			}
+			changed, postRefreshSkipped := collectReviewSubscriptionGroupChanges(
+				refreshedGroup,
+				removeIDs,
+				false,
+				reviewSubscriptionRemoveUnchangedAfterRefreshReason(),
+			)
+			skipped = append(skipped, postRefreshSkipped...)
 
 			payload := reviewSubscriptionGroupMutationOutput{
 				AppID:              trimmedAppID,
