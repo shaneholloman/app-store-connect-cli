@@ -21,6 +21,9 @@ func TestReviewDetailsCreateCommandClarifiesReviewerAccessGuidance(t *testing.T)
 	if got := cmd.FlagSet.Lookup("notes").Usage; !strings.Contains(got, "reviewer instructions") {
 		t.Fatalf("expected --notes usage to mention reviewer instructions, got %q", got)
 	}
+	if !strings.Contains(cmd.LongHelp, `--contact-first-name "Dev" --contact-last-name "Support" --contact-email "dev@example.com" --contact-phone "+1 555 0100" --notes "Reviewer can use the guest flow from the welcome screen."`) {
+		t.Fatalf("expected notes-only create example to include the required contact fields, got %q", cmd.LongHelp)
+	}
 }
 
 func TestReviewDetailsUpdateCommandClarifiesReviewerAccessGuidance(t *testing.T) {

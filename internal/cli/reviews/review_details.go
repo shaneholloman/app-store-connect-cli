@@ -130,7 +130,7 @@ Use ` + "`--demo-account-required=true`" + ` only when App Review needs demo cre
 Do not use placeholder demo credentials just to satisfy the field shape.
 
 Examples:
-  asc review details-create --version-id "VERSION_ID" --contact-email "dev@example.com" --notes "Reviewer can use the guest flow from the welcome screen."
+  asc review details-create --version-id "VERSION_ID" --contact-first-name "Dev" --contact-last-name "Support" --contact-email "dev@example.com" --contact-phone "+1 555 0100" --notes "Reviewer can use the guest flow from the welcome screen."
   asc review details-create --version-id "VERSION_ID" --demo-account-required=true --demo-account-name "reviewer@example.com" --demo-account-password "app-specific-password" --notes "2FA is disabled for this review account."`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
