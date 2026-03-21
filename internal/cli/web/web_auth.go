@@ -226,6 +226,14 @@ func promptTwoFactorCodeInteractive() (string, error) {
 	return "", fmt.Errorf("2fa required: run in a terminal for an interactive prompt or pass --two-factor-code-command or set %s", webTwoFactorCodeCommandEnv)
 }
 
+func twoFactorCodeCommandShellArgs(command string) []string {
+	if runtime.GOOS == "windows" {
+		return []string{"/d", "/s", "/c", command}
+	}
+	// Avoid login-shell startup noise contaminating stdout before the 2FA code.
+	return []string{"-c", command}
+}
+
 func readTwoFactorCodeFromCommand(ctx context.Context, command string) (string, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
@@ -234,13 +242,13 @@ func readTwoFactorCodeFromCommand(ctx context.Context, command string) (string, 
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/d", "/s", "/c", command)
+		cmd = exec.CommandContext(ctx, "cmd", twoFactorCodeCommandShellArgs(command)...)
 	} else {
 		shell := strings.TrimSpace(os.Getenv("SHELL"))
 		if shell == "" {
 			shell = "/bin/sh"
 		}
-		cmd = exec.CommandContext(ctx, shell, "-lc", command)
+		cmd = exec.CommandContext(ctx, shell, twoFactorCodeCommandShellArgs(command)...)
 	}
 
 	output, err := cmd.Output()
