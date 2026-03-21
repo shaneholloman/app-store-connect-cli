@@ -79,7 +79,7 @@ on findTwoFactorCode()
 end findTwoFactorCode
 
 on clickTrustButtonIfPresent(theWindow)
-	if my clickButtonWithLabels(theWindow, {"Allow", "Erlauben"}) then
+	if my clickAllowButtonIfPresent(theWindow) then
 		return true
 	end if
 
@@ -87,31 +87,36 @@ on clickTrustButtonIfPresent(theWindow)
 end clickTrustButtonIfPresent
 
 on clickDoneButtonIfPresent(theWindow)
-	return my clickButtonWithLabels(theWindow, {"Done", "Fertig"})
+	return my clickDoneLabelIfPresent(theWindow)
 end clickDoneButtonIfPresent
 
-on clickButtonWithLabels(theWindow, expectedLabels)
+on clickAllowButtonIfPresent(theWindow)
 	try
-		tell theWindow
-			set windowButtons to buttons
-		end tell
-	on error
-		return false
+		tell application "System Events" to click button "Allow" of theWindow
+		return true
 	end try
 
-	repeat with currentButton in windowButtons
-		try
-			set buttonLabel to my normalizeText(name of currentButton)
-			if my textMatchesAny(buttonLabel, expectedLabels) then
-				if my pressButton(currentButton) then
-					return true
-				end if
-			end if
-		end try
-	end repeat
+	try
+		tell application "System Events" to click button "Erlauben" of theWindow
+		return true
+	end try
 
 	return false
-end clickButtonWithLabels
+end clickAllowButtonIfPresent
+
+on clickDoneLabelIfPresent(theWindow)
+	try
+		tell application "System Events" to click button "Done" of theWindow
+		return true
+	end try
+
+	try
+		tell application "System Events" to click button "Fertig" of theWindow
+		return true
+	end try
+
+	return false
+end clickDoneLabelIfPresent
 
 on clickRightmostButton(theWindow)
 	try
@@ -165,17 +170,6 @@ on pressButton(buttonReference)
 	end try
 end pressButton
 
-on textMatchesAny(candidateText, expectedLabels)
-	set candidateText to candidateText as text
-	repeat with expectedLabel in expectedLabels
-		if candidateText is equal to (expectedLabel as text) then
-			return true
-		end if
-	end repeat
-
-	return false
-end textMatchesAny
-
 on scanElement(theElement)
 	set candidates to {}
 
@@ -224,7 +218,7 @@ end normalizeText
 on extractFirstCode(sourceText)
 	set sourceText to sourceText as text
 	try
-		return do shell script "/bin/echo " & quoted form of sourceText & " | /usr/bin/grep -Eo '[0-9]{6}' | /usr/bin/head -n1"
+		return do shell script "/bin/echo " & quoted form of sourceText & " | /usr/bin/tr -cd '0-9' | /usr/bin/grep -Eo '[0-9]{6}' | /usr/bin/head -n1"
 	on error
 		return ""
 	end try
