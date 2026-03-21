@@ -15,6 +15,33 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/itunes"
 )
 
+type publicPricesPayload struct {
+	AppID          int64   `json:"appId"`
+	Name           string  `json:"name"`
+	Country        string  `json:"country"`
+	CountryName    string  `json:"countryName"`
+	Price          float64 `json:"price"`
+	FormattedPrice string  `json:"formattedPrice"`
+	Currency       string  `json:"currency"`
+	IsFree         bool    `json:"isFree"`
+}
+
+type publicDescriptionsPayload struct {
+	AppID       int64  `json:"appId"`
+	Name        string `json:"name"`
+	Country     string `json:"country"`
+	CountryName string `json:"countryName"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+}
+
+type publicSearchPayload struct {
+	Term    string                `json:"term"`
+	Country string                `json:"country"`
+	Limit   int                   `json:"limit"`
+	Results []itunes.SearchResult `json:"results"`
+}
+
 func runCommand(t *testing.T, args []string) (string, string, error) {
 	t.Helper()
 
@@ -221,5 +248,234 @@ func TestAppsPublicAliasIsSilentAndMatchesCanonical(t *testing.T) {
 	}
 	if payload.CountryName != "United States" {
 		t.Fatalf("CountryName = %q, want United States", payload.CountryName)
+	}
+}
+
+func TestAppsPublicOutputFormats(t *testing.T) {
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	lookupBody := `{
+		"resultCount": 1,
+		"results": [{
+			"trackId": 123,
+			"trackName": "Alpha",
+			"bundleId": "com.example.alpha",
+			"trackViewUrl": "https://apps.apple.com/us/app/alpha/id123",
+			"artworkUrl512": "https://example.com/icon.png",
+			"sellerName": "Alpha Inc",
+			"primaryGenreName": "Games",
+			"genres": ["Games", "Action"],
+			"version": "1.0.0",
+			"description": "Alpha description",
+			"price": 0,
+			"formattedPrice": "Free",
+			"currency": "USD",
+			"averageUserRating": 4.5,
+			"userRatingCount": 12,
+			"averageUserRatingForCurrentVersion": 4.4,
+			"userRatingCountForCurrentVersion": 11
+		}]
+	}`
+
+	searchBody := `{
+		"resultCount": 1,
+		"results": [{
+			"trackId": 321,
+			"trackName": "Focus App",
+			"bundleId": "com.example.focus",
+			"trackViewUrl": "https://apps.apple.com/us/app/focus/id321",
+			"artworkUrl512": "https://example.com/focus.png",
+			"sellerName": "Focus Inc",
+			"primaryGenreName": "Productivity",
+			"formattedPrice": "$1.99",
+			"currency": "USD",
+			"averageUserRating": 4.8,
+			"userRatingCount": 44
+		}]
+	}`
+
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/lookup":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(lookupBody)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case "/search":
+			if got := req.URL.Query().Get("term"); got != "focus" {
+				t.Fatalf("expected term=focus, got %q", got)
+			}
+			if got := req.URL.Query().Get("country"); got != "us" {
+				t.Fatalf("expected country=us, got %q", got)
+			}
+			if got := req.URL.Query().Get("entity"); got != "software" {
+				t.Fatalf("expected entity=software, got %q", got)
+			}
+			if got := req.URL.Query().Get("limit"); got != "20" {
+				t.Fatalf("expected limit=20, got %q", got)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(searchBody)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		default:
+			t.Fatalf("unexpected path %s", req.URL.Path)
+			return nil, nil
+		}
+	})
+
+	tests := []struct {
+		name        string
+		args        []string
+		wantStrings []string
+		unmarshal   func(t *testing.T, stdout string)
+	}{
+		{
+			name: "view json",
+			args: []string{"apps", "public", "view", "--app", "123", "--output", "json"},
+			unmarshal: func(t *testing.T, stdout string) {
+				t.Helper()
+				var payload itunes.App
+				if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+					t.Fatalf("unmarshal view: %v", err)
+				}
+				if payload.Name != "Alpha" || payload.Country != "US" {
+					t.Fatalf("unexpected view payload: %+v", payload)
+				}
+			},
+		},
+		{
+			name:        "view table",
+			args:        []string{"apps", "public", "view", "--app", "123", "--output", "table"},
+			wantStrings: []string{"Field", "Value", "Alpha", "United States"},
+		},
+		{
+			name:        "view markdown",
+			args:        []string{"apps", "public", "view", "--app", "123", "--output", "markdown"},
+			wantStrings: []string{"| Field", "Value", "Alpha", "United States"},
+		},
+		{
+			name: "prices json",
+			args: []string{"apps", "public", "prices", "--app", "123", "--output", "json"},
+			unmarshal: func(t *testing.T, stdout string) {
+				t.Helper()
+				var payload publicPricesPayload
+				if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+					t.Fatalf("unmarshal prices: %v", err)
+				}
+				if payload.IsFree != true || payload.Country != "US" {
+					t.Fatalf("unexpected prices payload: %+v", payload)
+				}
+			},
+		},
+		{
+			name:        "prices table",
+			args:        []string{"apps", "public", "prices", "--app", "123", "--output", "table"},
+			wantStrings: []string{"Field", "Value", "Formatted Price", "Free"},
+		},
+		{
+			name:        "prices markdown",
+			args:        []string{"apps", "public", "prices", "--app", "123", "--output", "markdown"},
+			wantStrings: []string{"| Field", "Value", "Formatted Price", "Free"},
+		},
+		{
+			name: "descriptions json",
+			args: []string{"apps", "public", "descriptions", "--app", "123", "--output", "json"},
+			unmarshal: func(t *testing.T, stdout string) {
+				t.Helper()
+				var payload publicDescriptionsPayload
+				if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+					t.Fatalf("unmarshal descriptions: %v", err)
+				}
+				if payload.Version != "1.0.0" || payload.Country != "US" {
+					t.Fatalf("unexpected descriptions payload: %+v", payload)
+				}
+			},
+		},
+		{
+			name:        "descriptions table",
+			args:        []string{"apps", "public", "descriptions", "--app", "123", "--output", "table"},
+			wantStrings: []string{"Field", "Value", "Description", "Alpha description"},
+		},
+		{
+			name:        "descriptions markdown",
+			args:        []string{"apps", "public", "descriptions", "--app", "123", "--output", "markdown"},
+			wantStrings: []string{"| Field", "Value", "Alpha description"},
+		},
+		{
+			name: "search json",
+			args: []string{"apps", "public", "search", "--term", "focus", "--output", "json"},
+			unmarshal: func(t *testing.T, stdout string) {
+				t.Helper()
+				var payload publicSearchPayload
+				if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+					t.Fatalf("unmarshal search: %v", err)
+				}
+				if payload.Term != "focus" || payload.Country != "US" || len(payload.Results) != 1 {
+					t.Fatalf("unexpected search payload: %+v", payload)
+				}
+			},
+		},
+		{
+			name:        "search table",
+			args:        []string{"apps", "public", "search", "--term", "focus", "--output", "table"},
+			wantStrings: []string{"Term: focus", "Country: US", "App ID", "Focus App"},
+		},
+		{
+			name:        "search markdown",
+			args:        []string{"apps", "public", "search", "--term", "focus", "--output", "markdown"},
+			wantStrings: []string{"## Search Results", "| Field", "Value", "Focus App"},
+		},
+		{
+			name: "storefronts json",
+			args: []string{"apps", "public", "storefronts", "list", "--output", "json"},
+			unmarshal: func(t *testing.T, stdout string) {
+				t.Helper()
+				var payload []itunes.Storefront
+				if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+					t.Fatalf("unmarshal storefronts: %v", err)
+				}
+				if len(payload) == 0 || payload[0].Country != "AE" {
+					t.Fatalf("unexpected storefront payload: %+v", payload[:1])
+				}
+			},
+		},
+		{
+			name:        "storefronts table",
+			args:        []string{"apps", "public", "storefronts", "list", "--output", "table"},
+			wantStrings: []string{"Country", "Country Name", "Storefront ID", "AE"},
+		},
+		{
+			name:        "storefronts markdown",
+			args:        []string{"apps", "public", "storefronts", "list", "--output", "markdown"},
+			wantStrings: []string{"| Country", "Country Name", "Storefront ID", "AE"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			stdout, stderr, runErr := runCommand(t, test.args)
+			if runErr != nil {
+				t.Fatalf("run error: %v", runErr)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+			if test.unmarshal != nil {
+				test.unmarshal(t, stdout)
+			}
+			for _, want := range test.wantStrings {
+				if !strings.Contains(stdout, want) {
+					t.Fatalf("expected stdout to contain %q, got %q", want, stdout)
+				}
+			}
+		})
 	}
 }
