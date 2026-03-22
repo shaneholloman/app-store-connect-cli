@@ -12,8 +12,8 @@ import (
 )
 
 type deprecatedAliasLeafMetadata struct {
-	warning string
-	exec    func(context.Context, []string) error
+	warning   string
+	canonical *ffcli.Command
 }
 
 var deprecatedAliasLeafRegistry sync.Map
@@ -58,17 +58,17 @@ func DeprecatedAliasLeafCommand(cmd *ffcli.Command, name, shortUsage, newCommand
 	clone.UsageFunc = DeprecatedUsageFunc
 
 	meta := &deprecatedAliasLeafMetadata{
-		warning: warning,
-		exec:    cmd.Exec,
+		warning:   warning,
+		canonical: cmd,
 	}
 	deprecatedAliasLeafRegistry.Store(&clone, meta)
 
 	clone.Exec = func(ctx context.Context, args []string) error {
 		fmt.Fprintln(os.Stderr, meta.warning)
-		if meta.exec == nil {
+		if meta.canonical == nil || meta.canonical.Exec == nil {
 			return nil
 		}
-		return meta.exec(ctx, args)
+		return meta.canonical.Exec(ctx, args)
 	}
 
 	return &clone
