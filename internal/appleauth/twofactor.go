@@ -57,14 +57,37 @@ func (c *TwoFactorChallenge) IsPhoneMethod() bool {
 }
 
 type TrustedPhoneNumber struct {
-	ID                 int
-	PushMode           string
-	NumberWithDialCode string
+	ID                 int    `json:"id"`
+	PushMode           string `json:"pushMode"`
+	NumberWithDialCode string `json:"numberWithDialCode"`
 }
 
 type AuthOptions struct {
 	NoTrustedDevices    bool
 	TrustedPhoneNumbers []TrustedPhoneNumber
+}
+
+type AuthOptionsResponse struct {
+	NoTrustedDevices    bool                 `json:"noTrustedDevices"`
+	TrustedDevices      []map[string]any     `json:"trustedDevices"`
+	TrustedPhoneNumbers []TrustedPhoneNumber `json:"trustedPhoneNumbers"`
+	SecurityCode        struct {
+		Length int `json:"length"`
+	} `json:"securityCode"`
+}
+
+func (opts *AuthOptionsResponse) AuthOptions() *AuthOptions {
+	if opts == nil {
+		return &AuthOptions{}
+	}
+	shared := &AuthOptions{
+		NoTrustedDevices: opts.NoTrustedDevices,
+	}
+	if len(opts.TrustedPhoneNumbers) == 0 {
+		return shared
+	}
+	shared.TrustedPhoneNumbers = append([]TrustedPhoneNumber(nil), opts.TrustedPhoneNumbers...)
+	return shared
 }
 
 type SessionState interface {

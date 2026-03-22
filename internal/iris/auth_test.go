@@ -24,6 +24,8 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+type sessionInfoContextKey struct{}
+
 func TestEnsureTwoFactorCodeRequestedRequestsPhoneCodeWhenNoTrustedDevicesHasMultipleNumbers(t *testing.T) {
 	session := &AuthSession{
 		Client: &http.Client{
@@ -234,6 +236,46 @@ func TestPrepareTwoFactorChallengeKeepsPhoneFallbackForTrustedDeviceFlow(t *test
 	}
 	if cachedChallenge.Destination != challenge.Destination {
 		t.Fatalf("expected cached challenge destination %q, got %q", challenge.Destination, cachedChallenge.Destination)
+	}
+}
+
+func TestFinalizeTwoFactorPassesContextToSessionInfo(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), sessionInfoContextKey{}, "marker"))
+	defer cancel()
+
+	timer := time.AfterFunc(10*time.Millisecond, cancel)
+	defer timer.Stop()
+
+	session := &AuthSession{
+		Client: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				switch req.URL.String() {
+				case authServiceURL + "/2sv/trust":
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     make(http.Header),
+						Body:       io.NopCloser(strings.NewReader(`{}`)),
+					}, nil
+				case olympusSessionURL:
+					if req.Context().Value(sessionInfoContextKey{}) != "marker" {
+						return nil, errors.New("missing caller context on session info request")
+					}
+					<-req.Context().Done()
+					return nil, req.Context().Err()
+				default:
+					t.Fatalf("unexpected request %s %s", req.Method, req.URL.String())
+					return nil, nil
+				}
+			}),
+		},
+		ServiceKey:       "service-key",
+		AppleIDSessionID: "session-id",
+		SCNT:             "scnt-token",
+	}
+
+	err := finalizeTwoFactor(ctx, session)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected finalizeTwoFactor to return context cancellation, got %v", err)
 	}
 }
 

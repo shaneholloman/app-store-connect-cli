@@ -253,15 +253,7 @@ type sessionInfo struct {
 	} `json:"user"`
 }
 
-type authOptionsResponse struct {
-	NoTrustedDevices    bool             `json:"noTrustedDevices"`
-	TrustedDevices      []map[string]any `json:"trustedDevices"`
-	TrustedPhoneNumbers []struct {
-		ID                 int    `json:"id"`
-		PushMode           string `json:"pushMode"`
-		NumberWithDialCode string `json:"numberWithDialCode"`
-	} `json:"trustedPhoneNumbers"`
-}
+type authOptionsResponse = appleauth.AuthOptionsResponse
 
 type twoFAVerificationFailedError struct {
 	Kind   string
@@ -1085,7 +1077,7 @@ func PrepareTwoFactorChallenge(ctx context.Context, session *AuthSession) (*TwoF
 		if err != nil {
 			return nil, err
 		}
-		return webSharedAuthOptions(opts), nil
+		return opts.AuthOptions(), nil
 	})
 	return challenge, wrapWebTwoFactorFlowError(err)
 }
@@ -1099,7 +1091,7 @@ func EnsureTwoFactorCodeRequested(ctx context.Context, session *AuthSession) (*T
 			if err != nil {
 				return nil, err
 			}
-			return webSharedAuthOptions(opts), nil
+			return opts.AuthOptions(), nil
 		},
 		func(ctx context.Context, phoneID int, mode string) error {
 			return requestPhoneCode(ctx, session, phoneID, mode)
@@ -1238,7 +1230,7 @@ func SubmitTwoFactorCode(ctx context.Context, session *AuthSession, code string)
 			if err != nil {
 				return nil, err
 			}
-			return webSharedAuthOptions(opts), nil
+			return opts.AuthOptions(), nil
 		},
 		func(ctx context.Context, code string) error {
 			return submitTrustedDeviceCode(ctx, session, code)

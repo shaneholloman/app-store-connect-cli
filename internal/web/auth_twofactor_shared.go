@@ -59,27 +59,6 @@ func (s *AuthSession) SetTwoFactorCodeRequested(requested bool) {
 	s.twoFactorCodeRequested = requested
 }
 
-func webSharedAuthOptions(opts *authOptionsResponse) *appleauth.AuthOptions {
-	if opts == nil {
-		return &appleauth.AuthOptions{}
-	}
-	shared := &appleauth.AuthOptions{
-		NoTrustedDevices: opts.NoTrustedDevices,
-	}
-	if len(opts.TrustedPhoneNumbers) == 0 {
-		return shared
-	}
-	shared.TrustedPhoneNumbers = make([]appleauth.TrustedPhoneNumber, 0, len(opts.TrustedPhoneNumbers))
-	for _, phone := range opts.TrustedPhoneNumbers {
-		shared.TrustedPhoneNumbers = append(shared.TrustedPhoneNumbers, appleauth.TrustedPhoneNumber{
-			ID:                 phone.ID,
-			PushMode:           phone.PushMode,
-			NumberWithDialCode: phone.NumberWithDialCode,
-		})
-	}
-	return shared
-}
-
 func wrapWebTwoFactorFlowError(err error) error {
 	if err == nil {
 		return nil

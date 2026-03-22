@@ -201,7 +201,7 @@ func Login(creds LoginCredentials) (*AuthSession, error) {
 	}
 
 	// Get session info
-	sessionInfo, err := getSessionInfo(client)
+	sessionInfo, err := getSessionInfo(context.Background(), client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session info: %w", err)
 	}
@@ -706,9 +706,16 @@ func signinComplete(client *http.Client, username, m1, m2, challenge, serviceKey
 	return fmt.Errorf("signin complete failed with status %d: %s", resp.StatusCode, string(respBody))
 }
 
-// getSessionInfo gets the current session information
-func getSessionInfo(client *http.Client) (*SessionInfo, error) {
-	resp, err := client.Get(olympusSessionURL)
+// getSessionInfo gets the current session information.
+func getSessionInfo(ctx context.Context, client *http.Client) (*SessionInfo, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, olympusSessionURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -728,18 +735,7 @@ func getSessionInfo(client *http.Client) (*SessionInfo, error) {
 	return &result, nil
 }
 
-type authOptionsResponse struct {
-	NoTrustedDevices    bool                     `json:"noTrustedDevices"`
-	TrustedDevices      []map[string]interface{} `json:"trustedDevices"`
-	TrustedPhoneNumbers []struct {
-		ID                 int    `json:"id"`
-		PushMode           string `json:"pushMode"`
-		NumberWithDialCode string `json:"numberWithDialCode"`
-	} `json:"trustedPhoneNumbers"`
-	SecurityCode struct {
-		Length int `json:"length"`
-	} `json:"securityCode"`
-}
+type authOptionsResponse = appleauth.AuthOptionsResponse
 
 type twoFAVerificationFailedError struct {
 	Kind   string
@@ -845,7 +841,7 @@ func PrepareTwoFactorChallenge(ctx context.Context, session *AuthSession) (*TwoF
 		if err != nil {
 			return nil, err
 		}
-		return irisSharedAuthOptions(opts), nil
+		return opts.AuthOptions(), nil
 	})
 	return challenge, wrapIrisTwoFactorFlowError(err)
 }
@@ -859,7 +855,7 @@ func EnsureTwoFactorCodeRequested(ctx context.Context, session *AuthSession) (*T
 			if err != nil {
 				return nil, err
 			}
-			return irisSharedAuthOptions(opts), nil
+			return opts.AuthOptions(), nil
 		},
 		func(ctx context.Context, phoneID int, mode string) error {
 			return requestPhoneCode(ctx, session, phoneID, mode)
@@ -894,7 +890,7 @@ func SubmitTwoFactorCode(ctx context.Context, session *AuthSession, code string)
 			if err != nil {
 				return nil, err
 			}
-			return irisSharedAuthOptions(opts), nil
+			return opts.AuthOptions(), nil
 		},
 		func(ctx context.Context, code string) error {
 			return submitTrustedDeviceCode(ctx, session, code)
@@ -997,7 +993,7 @@ func finalizeTwoFactor(ctx context.Context, session *AuthSession) error {
 	}
 
 	// Refresh session info so callers can proceed with API calls.
-	info, err := getSessionInfo(session.Client)
+	info, err := getSessionInfo(ctx, session.Client)
 	if err != nil {
 		return err
 	}
