@@ -1,5 +1,10 @@
 [
   {
+    "app": "6 Nations - Rugby Scores Live",
+    "link": "https://apps.apple.com/us/app/6-nations-rugby-scores-live/id414001342?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/34/09/f3/3409f3bc-b011-ef18-f9cf-1e885da8f97f/6nations-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "66-Day Streak: Habit Builder",
     "link": "https://apps.apple.com/us/app/66-day-streak-habit-builder/id6759220059",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5c/ce/67/5cce6782-729c-07af-1e0b-7322b8ffd914/SixtysixStreaksIcon-0-0-1x_U007emarketing-0-9-0-85-220.png/512x512bb.jpg"
@@ -262,6 +267,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/52/0e/ed/520eed9c-d3f0-5d0e-3e68-5b6e698e5efc/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Gecko Med",
+    "link": "https://apps.apple.com/us/app/gecko-med/id6737719743?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/63/4c/14/634c143e-7e6b-4afb-9748-0816af5d4544/apple-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Geeps: AI Chat BYOK",
     "link": "https://apps.apple.com/us/app/geeps-ai-chat-byok/id6476961115?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/37/b6/e1/37b6e1c0-87da-9cb0-1d76-6d2a88b86b0a/Geeps-0-0-1x_U007epad-0-0-0-1-0-sRGB-85-220.png/512x512bb.jpg"
@@ -320,6 +330,11 @@
     "app": "Jinshu Reader",
     "link": "https://apps.apple.com/us/app/jinshu-reader/id6759705710?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6c/ce/46/6cce46eb-8613-c97d-8913-6888c3d4f1d2/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Jurni: Trip Planner",
+    "link": "https://apps.apple.com/us/app/jurni-trip-planner/id6759559463?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/67/19/a1/6719a179-73ef-1266-5682-bf1c944f98b9/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
   },
   {
     "app": "KeepCount: Tally Counter",
@@ -452,6 +467,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/1c/77/66/1c776632-25a0-9af7-38ac-2d6c31d42826/icon_composed-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "NextCatch",
+    "link": "https://apps.apple.com/us/app/nextcatch/id6758589575?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5c/6c/21/5c6c21ac-7b19-3556-a639-55a63601163a/AppIcon-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Notch: Target Scoring Tracker",
     "link": "https://apps.apple.com/us/app/notch-target-scoring-tracker/id6747980153?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d7/83/48/d783480d-74fa-4033-44ce-f4154c3ab7de/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
@@ -509,6 +529,11 @@
     "app": "Pico-8 Emulator: Picpic",
     "link": "https://apps.apple.com/us/app/pico-8-emulator-picpic/id6759208792?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/e7/cb/5c/e7cb5c08-a96f-f0f3-3642-416e1bba991e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Pievra: Jules AI Coding Agent",
+    "link": "https://apps.apple.com/us/app/pievra-jules-ai-coding-agent/id6758630855?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/32/40/cf/3240cf5f-61e5-d99e-b395-a24fae6bb6bd/AppIcon-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg"
   },
   {
     "app": "Placify - Map & Trip Planner",
