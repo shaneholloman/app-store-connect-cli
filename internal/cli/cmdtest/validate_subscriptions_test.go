@@ -641,10 +641,12 @@ func TestValidateSubscriptionsRefreshesContextBeforeBuildProbeAfterAvailabilityT
 	})
 	defer restoreAvailability()
 
+	var buildProbeCtx context.Context
 	restoreBuilds := validate.SetFetchAppBuildCountFunc(func(ctx context.Context, _ *asc.Client, appID string) (int, bool, string, error) {
 		if appID != "app-1" {
 			t.Fatalf("expected app-1, got %q", appID)
 		}
+		buildProbeCtx = ctx
 		if err := ctx.Err(); err != nil {
 			return 0, false, "stale build ctx", nil
 		}
@@ -697,6 +699,12 @@ func TestValidateSubscriptionsRefreshesContextBeforeBuildProbeAfterAvailabilityT
 	}
 	if buildRow.Status != validation.DiagnosticStatusYes {
 		t.Fatalf("expected refreshed context to let build probe succeed, got %+v", buildRow)
+	}
+	if buildProbeCtx == nil {
+		t.Fatal("expected build probe to capture the refreshed request context")
+	}
+	if !errors.Is(buildProbeCtx.Err(), context.Canceled) {
+		t.Fatalf("expected refreshed request context to be canceled on return, got %v", buildProbeCtx.Err())
 	}
 }
 
@@ -931,7 +939,7 @@ func TestValidateSubscriptionsIncludesDiagnosticsMatrixForOpaqueMissingMetadata(
 		{"type":"territoryAvailabilities","id":"ta-us","attributes":{"available":true},"relationships":{"territory":{"data":{"type":"territories","id":"USA"}}}},
 		{"type":"territoryAvailabilities","id":"ta-ca","attributes":{"available":true},"relationships":{"territory":{"data":{"type":"territories","id":"CAN"}}}}
 	]}`
-	fixture.builds = `{"data":[]}`
+	fixture.builds = `{"data":[{"type":"builds","id":"build-1"}]}`
 	fixture.subscriptionsByGroup["group-1"] = `{"data":[{"type":"subscriptions","id":"sub-1","attributes":{"name":"Monthly","productId":"com.example.monthly","state":"MISSING_METADATA"}}]}`
 	fixture.groupLocalizationsByGroup = map[string]string{
 		"group-1": `{"data":[{"type":"subscriptionGroupLocalizations","id":"group-loc-1","attributes":{"locale":"en-US","name":"Premium"}}]}`,
@@ -999,6 +1007,8 @@ func TestValidateSubscriptionsIncludesDiagnosticsMatrixForOpaqueMissingMetadata(
 		"price_records",
 		"price_coverage_subscription_availability",
 		"price_coverage_app_availability",
+		"promotional_image",
+		"app_has_build",
 	} {
 		row, ok := findSubscriptionDiagnosticRow(t, diag.Rows, key)
 		if !ok {
@@ -1013,8 +1023,8 @@ func TestValidateSubscriptionsIncludesDiagnosticsMatrixForOpaqueMissingMetadata(
 	if !ok {
 		t.Fatalf("expected app_has_build row, got %+v", diag.Rows)
 	}
-	if buildRow.Status != validation.DiagnosticStatusNo {
-		t.Fatalf("expected app_has_build=no when app build count is zero, got %+v", buildRow)
+	if buildRow.Status != validation.DiagnosticStatusYes {
+		t.Fatalf("expected app_has_build=yes when app build count is non-zero, got %+v", buildRow)
 	}
 
 	root = RootCommand("1.2.3")
@@ -1028,6 +1038,83 @@ func TestValidateSubscriptionsIncludesDiagnosticsMatrixForOpaqueMissingMetadata(
 	})
 	if !strings.Contains(stdout, "Conclusion") || !strings.Contains(stdout, "opaque_apple_state") || !strings.Contains(stdout, "review_screenshot") {
 		t.Fatalf("expected table output to include diagnostics rows, got %q", stdout)
+	}
+}
+
+func TestValidateSubscriptionsPrefersAdvisoryConclusionOverOpaqueAppleState(t *testing.T) {
+	fixture := validValidateSubscriptionsFixture()
+	fixture.availabilityV2 = `{"data":{"type":"appAvailabilities","id":"app-avail-1","attributes":{"availableInNewTerritories":true}}}`
+	fixture.territories = `{"data":[
+		{"type":"territoryAvailabilities","id":"ta-us","attributes":{"available":true},"relationships":{"territory":{"data":{"type":"territories","id":"USA"}}}},
+		{"type":"territoryAvailabilities","id":"ta-ca","attributes":{"available":true},"relationships":{"territory":{"data":{"type":"territories","id":"CAN"}}}}
+	]}`
+	fixture.builds = `{"data":[{"type":"builds","id":"build-1"}]}`
+	fixture.subscriptionsByGroup["group-1"] = `{"data":[{"type":"subscriptions","id":"sub-1","attributes":{"name":"Monthly","productId":"com.example.monthly","state":"MISSING_METADATA"}}]}`
+	fixture.groupLocalizationsByGroup = map[string]string{
+		"group-1": `{"data":[{"type":"subscriptionGroupLocalizations","id":"group-loc-1","attributes":{"locale":"en-US","name":"Premium"}}]}`,
+	}
+	fixture.localizationsBySub = map[string]string{
+		"sub-1": `{"data":[{"type":"subscriptionLocalizations","id":"loc-1","attributes":{"locale":"en-US","name":"Monthly","description":"Unlimited access"}}]}`,
+	}
+	fixture.expectedPriceInclude = "territory"
+	fixture.pricesBySubscription = map[string]string{
+		"sub-1": `{"data":[
+			{"type":"subscriptionPrices","id":"price-1","relationships":{"territory":{"data":{"type":"territories","id":"USA"}}}},
+			{"type":"subscriptionPrices","id":"price-2","relationships":{"territory":{"data":{"type":"territories","id":"CAN"}}}}
+		]}`,
+	}
+	fixture.subscriptionAvailabilityBySub = map[string]string{
+		"sub-1": `{"data":{"type":"subscriptionAvailabilities","id":"sub-avail-1","attributes":{"availableInNewTerritories":true}}}`,
+	}
+	fixture.availabilityTerritoriesByAvailability = map[string]string{
+		"sub-avail-1": `{"data":[{"type":"territories","id":"USA"},{"type":"territories","id":"CAN"}]}`,
+	}
+	fixture.reviewScreenshotBySub = map[string]string{
+		"sub-1": `{"data":{"type":"subscriptionAppStoreReviewScreenshots","id":"shot-1","attributes":{"fileName":"review.png"}}}`,
+	}
+	fixture.imagesBySubscription["sub-1"] = `{"data":[]}`
+
+	client := newValidateSubscriptionsClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "subscriptions", "--app", "app-1"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("expected advisory-only diagnostics to stay warning-only, got %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var report validation.SubscriptionsReport
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+	if len(report.Diagnostics) != 1 {
+		t.Fatalf("expected one diagnostics entry, got %+v", report.Diagnostics)
+	}
+
+	diag := report.Diagnostics[0]
+	if diag.Conclusion != "advisory_only" {
+		t.Fatalf("expected advisory_only conclusion when only advisory findings remain, got %+v", diag)
+	}
+	if !strings.Contains(diag.Summary, "only advisory subscription findings remain") {
+		t.Fatalf("expected advisory-only summary, got %+v", diag)
+	}
+
+	imageRow, ok := findSubscriptionDiagnosticRow(t, diag.Rows, "promotional_image")
+	if !ok {
+		t.Fatalf("expected promotional_image row, got %+v", diag.Rows)
+	}
+	if imageRow.Status != validation.DiagnosticStatusNo || imageRow.Blocking {
+		t.Fatalf("expected promotional_image row to remain advisory, got %+v", imageRow)
 	}
 }
 

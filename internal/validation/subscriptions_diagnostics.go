@@ -514,12 +514,12 @@ func summarizeSubscriptionDiagnostics(sub Subscription, rows []SubscriptionDiagn
 	switch {
 	case blockingFailures > 0:
 		return "known_blocker", fmt.Sprintf("%d known blocking subscription issue(s) found", blockingFailures)
-	case state == "MISSING_METADATA" && blockingUnknown == 0:
-		return "opaque_apple_state", "All verifiable public checks passed, but Apple still reports MISSING_METADATA."
 	case blockingUnknown > 0:
 		return "unknown", fmt.Sprintf("%d blocking subscription check(s) could not be verified automatically", blockingUnknown)
 	case advisoryFailures > 0:
 		return "advisory_only", "No blocking issues found; only advisory subscription findings remain."
+	case state == "MISSING_METADATA":
+		return "opaque_apple_state", "All verifiable public checks passed, but Apple still reports MISSING_METADATA."
 	case state == "READY_TO_SUBMIT":
 		return "ready_to_submit", "No public metadata issues found. Attach this subscription from the app version review flow if needed."
 	default:

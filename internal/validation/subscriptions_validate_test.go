@@ -373,6 +373,7 @@ func TestValidateSubscriptionsIncludesPricingCoverageSkipCheck(t *testing.T) {
 func TestValidateSubscriptionsIncludesDetailedDiagnosticsForOpaqueMissingMetadata(t *testing.T) {
 	report := ValidateSubscriptions(SubscriptionsInput{
 		AppID:                   "app-1",
+		AppBuildCount:           1,
 		AppAvailableTerritories: []string{"USA", "CAN"},
 		Subscriptions: []Subscription{
 			{
@@ -387,6 +388,7 @@ func TestValidateSubscriptionsIncludesDetailedDiagnosticsForOpaqueMissingMetadat
 				ReviewScreenshotID:      "shot-1",
 				AvailabilityID:          "avail-1",
 				AvailabilityTerritories: []string{"USA", "CAN"},
+				HasImage:                true,
 				PriceCount:              2,
 				PriceTerritories:        []string{"USA", "CAN"},
 			},
@@ -413,6 +415,8 @@ func TestValidateSubscriptionsIncludesDetailedDiagnosticsForOpaqueMissingMetadat
 		"price_records",
 		"price_coverage_subscription_availability",
 		"price_coverage_app_availability",
+		"promotional_image",
+		"app_has_build",
 	} {
 		row, ok := findSubscriptionDiagnosticRow(diag.Rows, key)
 		if !ok {
@@ -427,8 +431,53 @@ func TestValidateSubscriptionsIncludesDetailedDiagnosticsForOpaqueMissingMetadat
 	if !ok {
 		t.Fatalf("expected app_has_build row, got %+v", diag.Rows)
 	}
-	if buildRow.Status != DiagnosticStatusNo {
-		t.Fatalf("expected app_has_build=no when app build count is zero, got %+v", buildRow)
+	if buildRow.Status != DiagnosticStatusYes {
+		t.Fatalf("expected app_has_build=yes when app build count is non-zero, got %+v", buildRow)
+	}
+}
+
+func TestValidateSubscriptionsPrefersAdvisoryConclusionOverOpaqueAppleState(t *testing.T) {
+	report := ValidateSubscriptions(SubscriptionsInput{
+		AppID:                   "app-1",
+		AppBuildCount:           1,
+		AppAvailableTerritories: []string{"USA", "CAN"},
+		Subscriptions: []Subscription{
+			{
+				ID:                      "sub-1",
+				Name:                    "Monthly",
+				ProductID:               "com.example.monthly",
+				State:                   "MISSING_METADATA",
+				GroupID:                 "group-1",
+				GroupName:               "Premium",
+				GroupLocalizations:      []SubscriptionGroupLocalizationInfo{{Locale: "en-US", Name: "Premium"}},
+				Localizations:           []SubscriptionLocalizationInfo{{Locale: "en-US", Name: "Monthly", Description: "Unlimited access"}},
+				ReviewScreenshotID:      "shot-1",
+				AvailabilityID:          "avail-1",
+				AvailabilityTerritories: []string{"USA", "CAN"},
+				PriceCount:              2,
+				PriceTerritories:        []string{"USA", "CAN"},
+			},
+		},
+	}, false)
+
+	if len(report.Diagnostics) != 1 {
+		t.Fatalf("expected one subscription diagnostics entry, got %+v", report.Diagnostics)
+	}
+
+	diag := report.Diagnostics[0]
+	if diag.Conclusion != "advisory_only" {
+		t.Fatalf("expected advisory_only conclusion when only advisory rows fail, got %+v", diag)
+	}
+	if !strings.Contains(diag.Summary, "only advisory subscription findings remain") {
+		t.Fatalf("expected advisory summary, got %+v", diag)
+	}
+
+	imageRow, ok := findSubscriptionDiagnosticRow(diag.Rows, "promotional_image")
+	if !ok {
+		t.Fatalf("expected promotional_image row, got %+v", diag.Rows)
+	}
+	if imageRow.Status != DiagnosticStatusNo || imageRow.Blocking {
+		t.Fatalf("expected promotional image finding to stay advisory, got %+v", imageRow)
 	}
 }
 
@@ -564,6 +613,7 @@ func TestValidateSubscriptionsFallsBackToAppTerritoryCountInDiagnostics(t *testi
 func TestValidateSubscriptionsTreatsAppOnlyTerritoriesAsAdvisoryInDiagnostics(t *testing.T) {
 	report := ValidateSubscriptions(SubscriptionsInput{
 		AppID:                   "app-1",
+		AppBuildCount:           1,
 		AppAvailableTerritories: []string{"USA", "CAN"},
 		Subscriptions: []Subscription{
 			{
@@ -578,6 +628,7 @@ func TestValidateSubscriptionsTreatsAppOnlyTerritoriesAsAdvisoryInDiagnostics(t 
 				ReviewScreenshotID:      "shot-1",
 				AvailabilityID:          "avail-1",
 				AvailabilityTerritories: []string{"USA"},
+				HasImage:                true,
 				PriceCount:              1,
 				PriceTerritories:        []string{"USA"},
 			},
@@ -607,7 +658,8 @@ func TestValidateSubscriptionsTreatsAppOnlyTerritoriesAsAdvisoryInDiagnostics(t 
 
 func TestValidateSubscriptionsDoesNotBlockDiagnosticsWhenAppAvailabilityIsMissing(t *testing.T) {
 	report := ValidateSubscriptions(SubscriptionsInput{
-		AppID: "app-1",
+		AppID:         "app-1",
+		AppBuildCount: 1,
 		Subscriptions: []Subscription{
 			{
 				ID:                      "sub-1",
@@ -621,6 +673,7 @@ func TestValidateSubscriptionsDoesNotBlockDiagnosticsWhenAppAvailabilityIsMissin
 				ReviewScreenshotID:      "shot-1",
 				AvailabilityID:          "avail-1",
 				AvailabilityTerritories: []string{"USA"},
+				HasImage:                true,
 				PriceCount:              1,
 				PriceTerritories:        []string{"USA"},
 			},

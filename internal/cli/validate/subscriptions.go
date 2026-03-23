@@ -70,7 +70,7 @@ func runValidateSubscriptions(ctx context.Context, opts validateSubscriptionsOpt
 	}
 
 	requestCtx, cancel := shared.ContextWithTimeout(ctx)
-	defer cancel()
+	defer func() { cancel() }()
 
 	refreshRequestCtx := func() {
 		cancel()
