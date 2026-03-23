@@ -17,6 +17,8 @@ import (
 
 const defaultShotsFrameOutputDir = "./screenshots/framed"
 
+var shotsFrameFn = screenshots.Frame
+
 // ShotsFrameCommand returns the screenshots frame subcommand.
 func ShotsFrameCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("frame", flag.ExitOnError)
@@ -150,7 +152,7 @@ framed screenshots whenever the YAML config or referenced raw assets change.`,
 				}
 			}
 
-			result, err := screenshots.Frame(timeoutCtx, screenshots.FrameRequest{
+			result, err := shotsFrameFn(timeoutCtx, screenshots.FrameRequest{
 				InputPath:  absInput,
 				OutputPath: outPath,
 				Device:     string(deviceVal),
