@@ -4687,6 +4687,15 @@ func TestUpdateAppPreview(t *testing.T) {
 		if req.URL.Path != "/v1/appPreviews/PREVIEW_123" {
 			t.Fatalf("expected path /v1/appPreviews/PREVIEW_123, got %s", req.URL.Path)
 		}
+		payload := decodeRequestBody(t, req)
+		data := requireMap(t, payload["data"], "data")
+		attrs := requireMap(t, data["attributes"], "data.attributes")
+		if requireString(t, attrs["sourceFileChecksum"], "sourceFileChecksum") != "def456" {
+			t.Fatalf("unexpected sourceFileChecksum %v", attrs["sourceFileChecksum"])
+		}
+		if !requireBool(t, attrs["uploaded"], "uploaded") {
+			t.Fatalf("expected uploaded true")
+		}
 		assertAuthorized(t, req)
 	}, response)
 
@@ -4708,6 +4717,12 @@ func TestSetAppPreviewFrameTimeCode(t *testing.T) {
 		}
 		if req.URL.Path != "/v1/appPreviews/PREVIEW_123" {
 			t.Fatalf("expected path /v1/appPreviews/PREVIEW_123, got %s", req.URL.Path)
+		}
+		payload := decodeRequestBody(t, req)
+		data := requireMap(t, payload["data"], "data")
+		attrs := requireMap(t, data["attributes"], "data.attributes")
+		if requireString(t, attrs["previewFrameTimeCode"], "previewFrameTimeCode") != "00:00:01:00" {
+			t.Fatalf("unexpected previewFrameTimeCode %v", attrs["previewFrameTimeCode"])
 		}
 		assertAuthorized(t, req)
 	}, response)

@@ -40,8 +40,8 @@ func TestVideoPreviewsSetPosterFrameInvalidTimeCode(t *testing.T) {
 		_ = root.Parse([]string{"video-previews", "set-poster-frame", "--id", "PREVIEW_123", "--time-code", "abc"})
 		_ = root.Run(t.Context())
 	})
-	if !strings.Contains(stderr, "HH:MM:SS:FF") {
-		t.Fatalf("expected HH:MM:SS:FF format error, got stderr: %s", stderr)
+	if !strings.Contains(stderr, "HH:MM:SS:FF or HH:MM:SS.mmm") {
+		t.Fatalf("expected timecode format error, got stderr: %s", stderr)
 	}
 }
 
