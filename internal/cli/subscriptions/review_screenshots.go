@@ -159,11 +159,13 @@ Examples:
 
 			// Verify asset delivery — poll until COMPLETE or FAILED
 			screenshotID := resp.Data.ID
-			if _, verifyErr := waitForSubscriptionReviewScreenshotDelivery(requestCtx, client, screenshotID); verifyErr != nil {
+			verifyCtx, verifyCancel := shared.ContextWithUploadTimeout(ctx)
+			defer verifyCancel()
+			if _, verifyErr := waitForSubscriptionReviewScreenshotDelivery(verifyCtx, client, screenshotID); verifyErr != nil {
 				return fmt.Errorf("subscriptions review-screenshots create: %w", verifyErr)
 			}
 
-			finalResp, err := client.GetSubscriptionAppStoreReviewScreenshot(requestCtx, screenshotID)
+			finalResp, err := client.GetSubscriptionAppStoreReviewScreenshot(verifyCtx, screenshotID)
 			if err != nil {
 				return fmt.Errorf("subscriptions review-screenshots create: failed to fetch: %w", err)
 			}
