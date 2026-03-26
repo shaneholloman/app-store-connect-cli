@@ -153,8 +153,7 @@ Examples:
 				Uploaded:           &uploaded,
 			}
 
-			commitResp, err := client.UpdateSubscriptionAppStoreReviewScreenshot(requestCtx, resp.Data.ID, updateAttrs)
-			if err != nil {
+			if _, err := client.UpdateSubscriptionAppStoreReviewScreenshot(requestCtx, resp.Data.ID, updateAttrs); err != nil {
 				return fmt.Errorf("subscriptions review-screenshots create: failed to commit upload: %w", err)
 			}
 
@@ -164,11 +163,12 @@ Examples:
 				return fmt.Errorf("subscriptions review-screenshots create: %w", verifyErr)
 			}
 
-			if commitResp != nil {
-				return shared.PrintOutput(commitResp, *output.Output, *output.Pretty)
+			finalResp, err := client.GetSubscriptionAppStoreReviewScreenshot(requestCtx, screenshotID)
+			if err != nil {
+				return fmt.Errorf("subscriptions review-screenshots create: failed to fetch: %w", err)
 			}
 
-			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+			return shared.PrintOutput(finalResp, *output.Output, *output.Pretty)
 		},
 	}
 }
