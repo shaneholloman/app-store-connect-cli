@@ -276,24 +276,58 @@ func TestUnknownCommandDoesNotSuggestHiddenDeprecatedRootCommands(t *testing.T) 
 	}
 }
 
-func TestBuildsInfoRequiresBuildID(t *testing.T) {
-	root := RootCommand("1.2.3")
+func TestBuildsInfoValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
 
-	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"builds", "info"}); err != nil {
-			t.Fatalf("parse error: %v", err)
-		}
-		err := root.Run(context.Background())
-		if !errors.Is(err, flag.ErrHelp) {
-			t.Fatalf("expected ErrHelp, got %v", err)
-		}
-	})
-
-	if stdout != "" {
-		t.Fatalf("expected empty stdout, got %q", stdout)
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing selector",
+			args:    []string{"builds", "info"},
+			wantErr: "--build-id or --app is required",
+		},
+		{
+			name:    "app missing selector",
+			args:    []string{"builds", "info", "--app", "APP_123"},
+			wantErr: "--build-id, --latest, or --build-number is required",
+		},
+		{
+			name:    "build-number missing app",
+			args:    []string{"builds", "info", "--build-number", "42"},
+			wantErr: "--build-id or --app is required",
+		},
+		{
+			name:    "invalid platform",
+			args:    []string{"builds", "info", "--app", "APP_123", "--build-number", "42", "--platform", "ANDROID"},
+			wantErr: "--platform must be one of",
+		},
 	}
-	if !strings.Contains(stderr, "--build-id is required") {
-		t.Fatalf("expected missing build error, got %q", stderr)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := RootCommand("1.2.3")
+			root.FlagSet.SetOutput(io.Discard)
+
+			stdout, stderr := captureOutput(t, func() {
+				if err := root.Parse(test.args); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				err := root.Run(context.Background())
+				if !errors.Is(err, flag.ErrHelp) {
+					t.Fatalf("expected ErrHelp, got %v", err)
+				}
+			})
+
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
+			}
+		})
 	}
 }
 
@@ -547,56 +581,6 @@ func TestBuildsWaitValidationErrors(t *testing.T) {
 			name:    "builds wait invalid since timestamp",
 			args:    []string{"builds", "wait", "--app", "APP_123", "--latest", "--since", "nope"},
 			wantErr: "--since must be an RFC3339 timestamp",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			root := RootCommand("1.2.3")
-			root.FlagSet.SetOutput(io.Discard)
-
-			stdout, stderr := captureOutput(t, func() {
-				if err := root.Parse(test.args); err != nil {
-					t.Fatalf("parse error: %v", err)
-				}
-				err := root.Run(context.Background())
-				if !errors.Is(err, flag.ErrHelp) {
-					t.Fatalf("expected ErrHelp, got %v", err)
-				}
-			})
-
-			if stdout != "" {
-				t.Fatalf("expected empty stdout, got %q", stdout)
-			}
-			if !strings.Contains(stderr, test.wantErr) {
-				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
-			}
-		})
-	}
-}
-
-func TestBuildsFindValidationErrors(t *testing.T) {
-	t.Setenv("ASC_APP_ID", "")
-
-	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
-	}{
-		{
-			name:    "builds find missing app",
-			args:    []string{"builds", "find", "--build-number", "42"},
-			wantErr: "--app is required",
-		},
-		{
-			name:    "builds find missing build-number",
-			args:    []string{"builds", "find", "--app", "APP_123"},
-			wantErr: "--build-number is required",
-		},
-		{
-			name:    "builds find invalid platform",
-			args:    []string{"builds", "find", "--app", "APP_123", "--build-number", "42", "--platform", "ANDROID"},
-			wantErr: "--platform must be one of",
 		},
 	}
 
