@@ -171,8 +171,12 @@ func TestBuildsSelectorAliasesWarnAndMatchCanonicalFetchPaths(t *testing.T) {
 			return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"buildBetaDetails","id":"detail-1"}}`), nil
 		case "/v1/builds/BUILD_123/relationships/app":
 			return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"apps","id":"app-1"}}`), nil
+		case "/v1/builds/BUILD_123/individualTesters":
+			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"betaTesters","id":"tester-1"}]}`), nil
 		case "/v1/builds/BUILD_123/metrics/betaBuildUsages":
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"betaBuildUsages","id":"usage-1"}]}`), nil
+		case "/v1/builds/BUILD_123/appEncryptionDeclaration":
+			return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"appEncryptionDeclarations","id":"enc-1"}}`), nil
 		default:
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 			return nil, nil
@@ -244,10 +248,22 @@ func TestBuildsSelectorAliasesWarnAndMatchCanonicalFetchPaths(t *testing.T) {
 			warning:       buildsLegacyBuildWarning,
 		},
 		{
+			name:          "individual-testers list build alias",
+			canonicalArgs: []string{"builds", "individual-testers", "list", "--build-id", "BUILD_123", "--output", "json"},
+			aliasArgs:     []string{"builds", "individual-testers", "list", "--build", "BUILD_123", "--output", "json"},
+			warning:       buildsLegacyBuildWarning,
+		},
+		{
 			name:          "metrics beta-usages build alias",
 			canonicalArgs: []string{"builds", "metrics", "beta-usages", "--build-id", "BUILD_123", "--output", "json"},
 			aliasArgs:     []string{"builds", "metrics", "beta-usages", "--build", "BUILD_123", "--output", "json"},
 			warning:       buildsLegacyBuildWarning,
+		},
+		{
+			name:          "app-encryption-declaration view id alias",
+			canonicalArgs: []string{"builds", "app-encryption-declaration", "view", "--build-id", "BUILD_123", "--output", "json"},
+			aliasArgs:     []string{"builds", "app-encryption-declaration", "view", "--id", "BUILD_123", "--output", "json"},
+			warning:       buildsLegacyIDWarning,
 		},
 	}
 

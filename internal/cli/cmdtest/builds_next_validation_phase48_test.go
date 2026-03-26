@@ -233,7 +233,7 @@ func TestBuildsIndividualTestersListPaginateFromNext(t *testing.T) {
 
 	runBuildsPaginateFromNext(
 		t,
-		[]string{"builds", "individual-testers", "list", "--build", "build-1"},
+		[]string{"builds", "individual-testers", "list", "--build-id", "build-1"},
 		firstURL,
 		secondURL,
 		firstBody,

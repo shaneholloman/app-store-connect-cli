@@ -415,7 +415,7 @@ Examples:
   asc builds upload --app "123456789" --pkg "app.pkg" --version "1.0.0" --build-number "1"
   asc builds uploads list --app "123456789"
   asc builds test-notes list --build-id "BUILD_ID"
-  asc builds individual-testers list --build "BUILD_ID"
+  asc builds individual-testers list --build-id "BUILD_ID"
   asc builds update --build "BUILD_ID" --uses-non-exempt-encryption=false
   asc builds add-groups --build "BUILD_ID" --group "GROUP_ID"
   asc builds add-groups --build "BUILD_ID" --group "GROUP_ID" --submit --confirm

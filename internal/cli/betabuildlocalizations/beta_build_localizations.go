@@ -13,8 +13,8 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
-// BetaBuildLocalizationsCommand returns the beta-build-localizations command group.
-func BetaBuildLocalizationsCommand() *ffcli.Command {
+// legacyBetaBuildLocalizationsCommand returns the former beta-build-localizations command group.
+func legacyBetaBuildLocalizationsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("beta-build-localizations", flag.ExitOnError)
 
 	return &ffcli.Command{
