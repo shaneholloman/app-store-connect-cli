@@ -180,6 +180,20 @@ func TestPricingScheduleCreateCommand_InvalidDate(t *testing.T) {
 	}
 }
 
+func TestPricingScheduleCreateCommand_HelpMentionsFreeExample(t *testing.T) {
+	cmd := PricingScheduleCreateCommand()
+
+	if !strings.Contains(cmd.LongHelp, "--free") {
+		t.Fatalf("expected --free example in long help, got %q", cmd.LongHelp)
+	}
+	if !strings.Contains(cmd.FlagSet.Lookup("tier").Usage, "--free") {
+		t.Fatalf("expected --tier help to mention --free, got %q", cmd.FlagSet.Lookup("tier").Usage)
+	}
+	if !strings.Contains(cmd.FlagSet.Lookup("price").Usage, "--free") {
+		t.Fatalf("expected --price help to mention --free, got %q", cmd.FlagSet.Lookup("price").Usage)
+	}
+}
+
 func TestPricingAvailabilityGetCommand_MissingAppAndID(t *testing.T) {
 	t.Setenv("ASC_APP_ID", "")
 	cmd := PricingAvailabilityGetCommand()
