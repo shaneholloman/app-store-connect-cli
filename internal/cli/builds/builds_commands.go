@@ -408,7 +408,7 @@ Examples:
   asc builds info --app "123456789" --latest
   asc builds info --app "123456789" --latest --version "1.2.3" --platform IOS
   asc builds info --app "123456789" --build-number "42"
-  asc builds next-number --app "123456789" --version "1.2.3" --platform IOS
+  asc builds next-build-number --app "123456789" --version "1.2.3" --platform IOS
   asc builds expire --build "BUILD_ID"
   asc builds expire-all --app "123456789" --older-than 90d --dry-run
   asc builds upload --app "123456789" --ipa "app.ipa"
@@ -433,7 +433,7 @@ Examples:
 		Subcommands: []*ffcli.Command{
 			listCmd,
 			BuildsCountCommand(),
-			BuildsNextNumberCommand(),
+			BuildsNextBuildNumberCommand(),
 			BuildsLatestCommand(),
 			BuildsWaitCommand(),
 			BuildsInfoCommand(),

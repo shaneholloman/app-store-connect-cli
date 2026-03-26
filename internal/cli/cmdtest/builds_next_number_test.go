@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func TestBuildsNextNumberUsesUploadsAndBuilds(t *testing.T) {
+func TestBuildsNextBuildNumberUsesUploadsAndBuilds(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
@@ -68,7 +68,7 @@ func TestBuildsNextNumberUsesUploadsAndBuilds(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"builds", "next-number", "--app", "100000001"}); err != nil {
+		if err := root.Parse([]string{"builds", "next-build-number", "--app", "100000001"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -107,7 +107,7 @@ func TestBuildsNextNumberUsesUploadsAndBuilds(t *testing.T) {
 	}
 }
 
-func TestBuildsNextNumberRejectsInvalidInitialBuildNumber(t *testing.T) {
+func TestBuildsNextBuildNumberRejectsInvalidInitialBuildNumber(t *testing.T) {
 	t.Setenv("ASC_APP_ID", "")
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 	t.Setenv("ASC_PROFILE", "")
@@ -122,7 +122,7 @@ func TestBuildsNextNumberRejectsInvalidInitialBuildNumber(t *testing.T) {
 
 	var runErr error
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"builds", "next-number", "--app", "100000001", "--initial-build-number", "0"}); err != nil {
+		if err := root.Parse([]string{"builds", "next-build-number", "--app", "100000001", "--initial-build-number", "0"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		runErr = root.Run(context.Background())
@@ -142,7 +142,7 @@ func TestBuildsNextNumberRejectsInvalidInitialBuildNumber(t *testing.T) {
 	}
 }
 
-func TestBuildsNextNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
+func TestBuildsNextBuildNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
@@ -215,7 +215,7 @@ func TestBuildsNextNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 
 	stdout, stderr := captureOutput(t, func() {
 		if err := root.Parse([]string{
-			"builds", "next-number",
+			"builds", "next-build-number",
 			"--app", "100000001",
 			"--version", "1.2.3",
 			"--platform", "ios",
@@ -252,7 +252,7 @@ func TestBuildsNextNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 	}
 }
 
-func TestBuildsNextNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t *testing.T) {
+func TestBuildsNextBuildNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
@@ -272,7 +272,7 @@ func TestBuildsNextNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t *test
 				t.Fatalf("expected filter[version]=1.1, got %q", query.Get("filter[version]"))
 			}
 			if query.Get("limit") != "200" {
-				t.Fatalf("expected limit=200 for version-only next-number lookup, got %q", query.Get("limit"))
+				t.Fatalf("expected limit=200 for version-only next-build-number lookup, got %q", query.Get("limit"))
 			}
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"preReleaseVersions","id":"prv-exact","attributes":{"version":"1.1","platform":"MAC_OS"}},{"type":"preReleaseVersions","id":"prv-near","attributes":{"version":"1.1.0","platform":"IOS"}}],"links":{"next":""}}`), nil
 
@@ -289,7 +289,7 @@ func TestBuildsNextNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t *test
 				t.Fatalf("expected filter[cfBundleShortVersionString]=1.1, got %q", query.Get("filter[cfBundleShortVersionString]"))
 			}
 			if query.Get("filter[platform]") != "" {
-				t.Fatalf("did not expect platform filter for version-only next-number lookup, got %q", query.Get("filter[platform]"))
+				t.Fatalf("did not expect platform filter for version-only next-build-number lookup, got %q", query.Get("filter[platform]"))
 			}
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"buildUploads","id":"upload-1","attributes":{"cfBundleVersion":"101"}}],"links":{"next":""}}`), nil
 
@@ -303,7 +303,7 @@ func TestBuildsNextNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t *test
 	root.FlagSet.SetOutput(io.Discard)
 
 	stdout, stderr := captureOutput(t, func() {
-		if err := root.Parse([]string{"builds", "next-number", "--app", "100000001", "--version", "1.1"}); err != nil {
+		if err := root.Parse([]string{"builds", "next-build-number", "--app", "100000001", "--version", "1.1"}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
 		if err := root.Run(context.Background()); err != nil {
@@ -334,7 +334,7 @@ func TestBuildsNextNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t *test
 	}
 }
 
-func TestBuildsLatestAliasWarnsAndMatchesCanonicalNextNumberOutput(t *testing.T) {
+func TestBuildsLatestAliasWarnsAndMatchesCanonicalNextBuildNumberOutput(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
@@ -381,13 +381,13 @@ func TestBuildsLatestAliasWarnsAndMatchesCanonicalNextNumberOutput(t *testing.T)
 		})
 	}
 
-	canonicalStdout, canonicalStderr := run([]string{"builds", "next-number", "--app", "100000001"})
+	canonicalStdout, canonicalStderr := run([]string{"builds", "next-build-number", "--app", "100000001"})
 	aliasStdout, aliasStderr := run([]string{"builds", "latest", "--app", "100000001", "--next"})
 
 	if canonicalStderr != "" {
 		t.Fatalf("expected canonical command to avoid warnings, got %q", canonicalStderr)
 	}
-	requireStderrContainsWarning(t, aliasStderr, "Warning: `asc builds latest --next` is deprecated. Use `asc builds next-number`.")
+	requireStderrContainsWarning(t, aliasStderr, "Warning: `asc builds latest --next` is deprecated. Use `asc builds next-build-number`.")
 	assertOnlyDeprecatedCommandWarnings(t, aliasStderr)
 	if canonicalStdout != aliasStdout {
 		t.Fatalf("expected canonical and alias output to match, canonical=%q alias=%q", canonicalStdout, aliasStdout)
@@ -471,10 +471,10 @@ func TestBuildsLatestAliasWarnsAndMatchesCanonicalInfoLatestOutput(t *testing.T)
 	}
 }
 
-func TestBuildsHelpShowsNextNumberAndHidesLatestAlias(t *testing.T) {
+func TestBuildsHelpShowsNextBuildNumberAndHidesLatestAlias(t *testing.T) {
 	usage := usageForCommand(t, "builds")
-	if !strings.Contains(usage, "\n  next-number") {
-		t.Fatalf("expected builds help to list next-number, got %q", usage)
+	if !strings.Contains(usage, "\n  next-build-number") {
+		t.Fatalf("expected builds help to list next-build-number, got %q", usage)
 	}
 	if strings.Contains(usage, "\n  latest\t") || strings.Contains(usage, "\n  latest ") {
 		t.Fatalf("expected deprecated latest alias to stay hidden from builds help, got %q", usage)

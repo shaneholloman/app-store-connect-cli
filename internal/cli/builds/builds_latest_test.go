@@ -165,8 +165,8 @@ func TestBuildsLatestCommand_HelpMentionsCanonicalReplacements(t *testing.T) {
 	if !strings.Contains(cmd.LongHelp, "asc builds info --latest") {
 		t.Fatalf("expected help text to mention asc builds info --latest")
 	}
-	if !strings.Contains(cmd.LongHelp, "asc builds next-number") {
-		t.Fatalf("expected help text to mention asc builds next-number")
+	if !strings.Contains(cmd.LongHelp, "asc builds next-build-number") {
+		t.Fatalf("expected help text to mention asc builds next-build-number")
 	}
 }
 

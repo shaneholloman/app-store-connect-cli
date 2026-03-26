@@ -20,7 +20,7 @@ func assertOnlyBuildsLatestFetchWarning(t *testing.T, stderr string) {
 
 func assertOnlyBuildsLatestNextWarning(t *testing.T, stderr string) {
 	t.Helper()
-	requireStderrContainsWarning(t, stderr, "Warning: `asc builds latest --next` is deprecated. Use `asc builds next-number`.")
+	requireStderrContainsWarning(t, stderr, "Warning: `asc builds latest --next` is deprecated. Use `asc builds next-build-number`.")
 	assertOnlyDeprecatedCommandWarnings(t, stderr)
 }
 

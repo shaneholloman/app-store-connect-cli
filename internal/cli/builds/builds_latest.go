@@ -18,7 +18,7 @@ import (
 
 const (
 	deprecatedBuildsLatestFetchWarning = "Warning: `asc builds latest` is deprecated. Use `asc builds info --latest`."
-	deprecatedBuildsLatestNextWarning  = "Warning: `asc builds latest --next` is deprecated. Use `asc builds next-number`."
+	deprecatedBuildsLatestNextWarning  = "Warning: `asc builds latest --next` is deprecated. Use `asc builds next-build-number`."
 )
 
 type latestBuildSelectionOptions struct {
@@ -59,8 +59,8 @@ func BuildsLatestCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "latest",
 		ShortUsage: "asc builds latest [flags]",
-		ShortHelp:  "DEPRECATED: use `asc builds info --latest` or `asc builds next-number`.",
-		LongHelp:   "Deprecated compatibility command for `asc builds info --latest` and `asc builds next-number`.",
+		ShortHelp:  "DEPRECATED: use `asc builds info --latest` or `asc builds next-build-number`.",
+		LongHelp:   "Deprecated compatibility command for `asc builds info --latest` and `asc builds next-build-number`.",
 		FlagSet:    fs,
 		UsageFunc:  shared.DeprecatedUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -107,9 +107,9 @@ func BuildsLatestCommand() *ffcli.Command {
 	}
 }
 
-// BuildsNextNumberCommand returns the canonical next build number subcommand.
-func BuildsNextNumberCommand() *ffcli.Command {
-	fs := flag.NewFlagSet("next-number", flag.ExitOnError)
+// BuildsNextBuildNumberCommand returns the canonical next build number subcommand.
+func BuildsNextBuildNumberCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("next-build-number", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID, bundle ID, or exact app name (required, or ASC_APP_ID env)")
 	version := fs.String("version", "", "Optional version filter for latest processed/uploaded build selection")
@@ -121,8 +121,8 @@ func BuildsNextNumberCommand() *ffcli.Command {
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
-		Name:       "next-number",
-		ShortUsage: "asc builds next-number --app APP [flags]",
+		Name:       "next-build-number",
+		ShortUsage: "asc builds next-build-number --app APP [flags]",
 		ShortHelp:  "Calculate the next build number for an app.",
 		LongHelp: `Calculate the next build number for an app.
 
@@ -130,10 +130,10 @@ This command compares the latest processed build and in-flight build uploads,
 then returns the next build number that should be safe to use.
 
 Examples:
-  asc builds next-number --app "123456789"
-  asc builds next-number --app "123456789" --version "1.2.3" --platform IOS
-  asc builds next-number --app "123456789" --version "1.2.3" --platform IOS --exclude-expired
-  asc builds next-number --app "123456789" --initial-build-number 7`,
+  asc builds next-build-number --app "123456789"
+  asc builds next-build-number --app "123456789" --version "1.2.3" --platform IOS
+  asc builds next-build-number --app "123456789" --version "1.2.3" --platform IOS --exclude-expired
+  asc builds next-build-number --app "123456789" --initial-build-number 7`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -148,7 +148,7 @@ Examples:
 
 			client, err := shared.GetASCClient()
 			if err != nil {
-				return fmt.Errorf("builds next-number: %w", err)
+				return fmt.Errorf("builds next-build-number: %w", err)
 			}
 
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
@@ -159,7 +159,7 @@ Examples:
 				InitialBuildNumber:          *initialBuildNumber,
 			})
 			if err != nil {
-				return fmt.Errorf("builds next-number: %w", err)
+				return fmt.Errorf("builds next-build-number: %w", err)
 			}
 			return shared.PrintOutput(result, *output.Output, *output.Pretty)
 		},
@@ -201,7 +201,7 @@ func resolveLatestBuild(ctx context.Context, client *asc.Client, opts latestBuil
 	return selection.LatestBuild, nil
 }
 
-func resolveNextBuildNumber(ctx context.Context, client *asc.Client, opts nextBuildNumberOptions) (*asc.BuildsNextNumberResult, error) {
+func resolveNextBuildNumber(ctx context.Context, client *asc.Client, opts nextBuildNumberOptions) (*asc.BuildsNextBuildNumberResult, error) {
 	if opts.InitialBuildNumber < 1 {
 		return nil, shared.UsageError("--initial-build-number must be >= 1")
 	}
@@ -266,7 +266,7 @@ func resolveNextBuildNumber(ctx context.Context, client *asc.Client, opts nextBu
 		nextBuildNumberValue = nextValue.String()
 	}
 
-	return &asc.BuildsNextNumberResult{
+	return &asc.BuildsNextBuildNumberResult{
 		LatestProcessedBuildNumber: latestProcessedNumber,
 		LatestUploadBuildNumber:    latestUploadNumber,
 		LatestObservedBuildNumber:  latestObservedNumber,
