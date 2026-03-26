@@ -129,6 +129,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6c/ce/a1/6ccea161-6da4-52c7-1260-f44955b0bc70/ConcertMemories2-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Connectarr",
+    "link": "https://apps.apple.com/us/app/connectarr/id6757109537?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/48/3c/75/483c7585-5910-ef5a-d037-9183b6beafed/Connectarr-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Constellation: Mind Atlas",
     "link": "https://apps.apple.com/us/app/constellation-mind-atlas/id6756132557?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/5d/39/50/5d3950a0-3c8d-f420-ab62-877c5b05e48f/AppIcon.lsr/512x512bb.jpg"
@@ -393,6 +398,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/bf/cf/5d/bfcf5d5a-2cd1-b41a-f65d-a751085736c5/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Long Distance: Couple & BFF",
+    "link": "https://apps.apple.com/us/app/long-distance-couple-bff/id6757593531?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d0/e1/3e/d0e13e2d-b2e9-70dd-538f-c8aa66ae7f54/AppIcon-0-1x_U007ephone-0-1-sRGB-85-220-0.png/512x512bb.jpg"
+  },
+  {
     "app": "Loverzz: Couples App & Widgets",
     "link": "https://apps.apple.com/us/app/loverzz-couples-app-widgets/id6744887601?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/34/14/b8/3414b8a0-0647-c6b2-550a-e2ca1eb28e77/AppIcon-0-1x_U007ephone-0-1-0-85-220-0.png/512x512bb.jpg"
@@ -441,6 +451,11 @@
     "app": "MileIO",
     "link": "https://apps.apple.com/app/id6758225631",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/09/0a/21/090a21e8-5b19-ec94-c5d0-6c2d0f5175bd/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Minimal Diary -  Life timeline",
+    "link": "https://apps.apple.com/us/app/minimal-diary-life-timeline/id1568936702?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/3d/26/b2/3d26b23e-3e10-76d2-ce22-6ac9d2094499/md-glass-icon-0-0-1x_U007epad-0-0-0-1-0-sRGB-85-220.png/512x512bb.jpg"
   },
   {
     "app": "minute cryptic • wordplay",
@@ -899,6 +914,11 @@
     "app": "XO: Have I Ever",
     "link": "https://apps.apple.com/us/app/xo-have-i-ever/id6757594745",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d7/4d/4c/d74d4c07-c147-fa7e-86fe-cff01727629b/XO-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Zen Flip Clock - Minimal Timer",
+    "link": "https://apps.apple.com/us/app/zen-flip-clock-minimal-timer/id1265404088?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/f4/13/4bf4138d-b804-9563-f684-92a9a2845b16/zfc-glass-icon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/512x512bb.jpg"
   },
   {
     "app": "ZenShelf",

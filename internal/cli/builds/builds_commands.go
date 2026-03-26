@@ -15,7 +15,10 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
-const buildWaitDefaultTimeout = 30 * time.Minute
+const (
+	buildWaitDefaultTimeout            = 30 * time.Minute
+	buildNumberSelectorDefaultPlatform = "IOS"
+)
 
 // BuildsUploadCommand returns a command to upload a build
 func BuildsUploadCommand() *ffcli.Command {
@@ -400,10 +403,11 @@ Examples:
   asc builds list --app "123456789"
   asc builds count --app "123456789"
   asc builds latest --app "123456789"
-  asc builds find --app "123456789" --build-number "42"
-  asc builds wait --build "BUILD_ID"
-  asc builds wait --app "123456789" --newest
-  asc builds info --build "BUILD_ID"
+  asc builds wait --build-id "BUILD_ID"
+  asc builds wait --app "123456789" --latest
+  asc builds info --build-id "BUILD_ID"
+  asc builds info --app "123456789" --latest
+  asc builds info --app "123456789" --build-number "42"
   asc builds expire --build "BUILD_ID"
   asc builds expire-all --app "123456789" --older-than 90d --dry-run
   asc builds upload --app "123456789" --ipa "app.ipa"
@@ -415,23 +419,23 @@ Examples:
   asc builds add-groups --build "BUILD_ID" --group "GROUP_ID"
   asc builds add-groups --build "BUILD_ID" --group "GROUP_ID" --submit --confirm
   asc builds remove-groups --build "BUILD_ID" --group "GROUP_ID"
-  asc builds app get --build "BUILD_ID"
-  asc builds pre-release-version get --build "BUILD_ID"
-  asc builds icons list --build "BUILD_ID"
-  asc builds beta-app-review-submission get --build "BUILD_ID"
-  asc builds build-beta-detail get --build "BUILD_ID"
-  asc builds links view --build "BUILD_ID" --type "app"
-  asc builds metrics beta-usages --build "BUILD_ID"
-  asc builds dsyms --build "BUILD_ID" --output-dir "./dsyms"`,
+  asc builds app view --build-id "BUILD_ID"
+  asc builds pre-release-version view --build-id "BUILD_ID"
+  asc builds icons list --build-id "BUILD_ID"
+  asc builds beta-app-review-submission view --build-id "BUILD_ID"
+  asc builds build-beta-detail view --build-id "BUILD_ID"
+  asc builds links view --build-id "BUILD_ID" --type "app"
+  asc builds metrics beta-usages --build-id "BUILD_ID"
+  asc builds dsyms --build-id "BUILD_ID" --output-dir "./dsyms"`,
 		FlagSet:   fs,
 		UsageFunc: shared.VisibleUsageFunc,
 		Subcommands: []*ffcli.Command{
 			listCmd,
 			BuildsCountCommand(),
 			BuildsLatestCommand(),
-			BuildsFindCommand(),
 			BuildsWaitCommand(),
 			BuildsInfoCommand(),
+			BuildsFindCommand(),
 			BuildsExpireCommand(),
 			BuildsExpireAllCommand(),
 			BuildsUploadCommand(),
@@ -739,23 +743,53 @@ func mergeBuildRelationship(relationships json.RawMessage, key string, value map
 func BuildsInfoCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("builds info", flag.ExitOnError)
 
-	buildID := fs.String("build", "", "Build ID")
+	buildID := fs.String("build-id", "", "Build ID")
+	legacyBuildID := bindHiddenStringFlag(fs, "build")
+	appID := fs.String("app", "", "App Store Connect app ID, bundle ID, or exact app name (required when --build-id is not provided)")
+	latest := fs.Bool("latest", false, "Show details for the latest build in --app context")
+	buildNumber := fs.String("build-number", "", "Build number (CFBundleVersion) for --app; defaults to IOS when --platform is omitted")
+	platform := fs.String("platform", "", "Optional platform filter for app-scoped selectors: IOS, MAC_OS, TV_OS, VISION_OS")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "info",
-		ShortUsage: "asc builds info --build BUILD_ID",
+		ShortUsage: "asc builds info [--build-id BUILD_ID | --app APP --latest | --app APP --build-number BUILD_NUMBER] [flags]",
 		ShortHelp:  "Show details for a specific build.",
 		LongHelp: `Show details for a specific build.
 
+Selector modes:
+  --build-id BUILD_ID
+  --app APP --latest
+  --app APP --build-number BUILD_NUMBER [--platform IOS]
+
+When using --app with --build-number, --platform defaults to IOS for
+backward-compatible lookup behavior. Pass --platform explicitly for other
+platforms.
+
 Examples:
-  asc builds info --build "BUILD_ID"`,
+  asc builds info --build-id "BUILD_ID"
+  asc builds info --app "123456789" --latest
+  asc builds info --app "123456789" --build-number "42"
+  asc builds info --app "123456789" --build-number "42" --platform IOS`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
-			if strings.TrimSpace(*buildID) == "" {
-				fmt.Fprintln(os.Stderr, "Error: --build is required")
-				return flag.ErrHelp
+			if err := applyLegacyBuildIDAlias(buildID, legacyBuildID); err != nil {
+				return err
+			}
+
+			resolveOpts := ResolveBuildOptions{
+				BuildID:     strings.TrimSpace(*buildID),
+				AppID:       strings.TrimSpace(*appID),
+				BuildNumber: strings.TrimSpace(*buildNumber),
+				Platform:    strings.TrimSpace(*platform),
+				Latest:      *latest,
+			}
+			if resolveOpts.BuildID == "" && !resolveOpts.Latest && resolveOpts.BuildNumber != "" && resolveOpts.Platform == "" {
+				resolveOpts.Platform = buildNumberSelectorDefaultPlatform
+			}
+			if err := validateResolveBuildOptions(resolveOpts); err != nil {
+				return err
 			}
 
 			client, err := shared.GetASCClient()
@@ -766,9 +800,9 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			build, err := client.GetBuild(requestCtx, strings.TrimSpace(*buildID))
+			build, err := ResolveBuild(requestCtx, client, resolveOpts)
 			if err != nil {
-				return fmt.Errorf("builds info: failed to fetch: %w", err)
+				return fmt.Errorf("builds info: %w", err)
 			}
 			if err := attachBuildInfoPreReleaseVersion(requestCtx, client, build); err != nil {
 				return fmt.Errorf("builds info: %w", err)
