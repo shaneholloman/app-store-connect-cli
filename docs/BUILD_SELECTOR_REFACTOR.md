@@ -20,11 +20,24 @@ preserving compatibility aliases until the broader `1.0.0` cleanup.
 - `--build` remains as a deprecated alias for `--build-id` during transition.
 - `--id` remains as a deprecated alias for `--build-id` on build-related read
   surfaces during transition.
+- `--app ... --build-number` is a unique-lookup selector, not a ranked
+  selector: after applying filters, zero matches is an error, more than one
+  match is an error, and only exactly one match succeeds.
+- `--app ... --latest` is the only ranked selector that may choose the newest
+  matching build automatically.
+- Implicit platform defaults for single-build lookup are removed from canonical
+  selector behavior; the caller must pass `--platform` explicitly when needed to
+  disambiguate results.
+- `asc builds wait` keeps `--since`, but only as a wait-specific freshness
+  constraint layered on top of `--latest` or `--build-number`, not as a
+  standalone selector mode.
+- `asc builds wait --app ... --version ...` without `--latest` or
+  `--build-number` is not part of the final selector model.
 - `asc builds latest` will be removed as a fetch command.
 - `asc builds find` becomes a deprecated alias for `asc builds info` once
   `builds info` can resolve by `--build-number`, and removal moves to a later
   cleanup PR.
-- `asc builds next-number` will replace current `asc builds latest --next`.
+- `asc builds next-build-number` will replace current `asc builds latest --next`.
 - `test-notes` becomes build-scoped plus `--locale`, not localization-ID-first.
 
 ## Non-Goals
@@ -50,8 +63,8 @@ Progress checklist:
 - [x] Keep legacy selector spellings as deprecated aliases that warn and forward
   to the canonical flags
 - [x] Update focused tests and command docs for the PR 1 slice
-- [ ] Decide whether `builds wait` should later reuse more of the shared
-  selector engine instead of only sharing vocabulary
+- [x] Defer deeper `builds wait` selector-engine sharing for now; current
+  shared vocabulary cleanup is sufficient without adding more internal coupling
 - [x] Extend `--build-id` vocabulary to the remaining read-oriented explicit
   build commands in `builds`
 
@@ -70,11 +83,11 @@ Commands in scope:
 - `asc builds wait`
 - `asc builds dsyms`
 - `asc builds info`
-- `asc builds app get`
-- `asc builds pre-release-version get`
+- `asc builds app view`
+- `asc builds pre-release-version view`
 - `asc builds icons list`
-- `asc builds beta-app-review-submission get`
-- `asc builds build-beta-detail get`
+- `asc builds beta-app-review-submission view`
+- `asc builds build-beta-detail view`
 - `asc builds links view`
 - `asc builds metrics beta-usages`
 - shared resolver helpers in `internal/cli/builds/resolve_build.go`
@@ -119,7 +132,7 @@ Design note:
 
 ### PR 2: Make `builds info` Canonical
 
-Status: in progress
+Status: complete
 
 Scope:
 
@@ -141,10 +154,11 @@ Design note:
    Canonical selector forms become:
    - `--build-id BUILD_ID`
    - `--app APP --latest`
-   - `--app APP --build-number NUM [--platform IOS]`
+   - `--app APP --build-number NUM [--platform PLATFORM]`
 
-   For backward compatibility with `asc builds find`, app-scoped
-   `--build-number` lookup defaults `--platform` to `IOS` when omitted.
+   `--app APP --build-number NUM` requires a unique match. When multiple
+   platforms can satisfy the lookup, callers must pass
+   `--platform PLATFORM` explicitly.
 
 4. Backward-compatibility / deprecation impact
    `asc builds find` remains available in this PR as a deprecated shim that
@@ -153,8 +167,9 @@ Design note:
    `asc builds find --app APP --build-number NUM`
    -> `asc builds info --app APP --build-number NUM`
 
-   `--build-number` lookup also preserves the historical implicit `IOS`
-   platform default unless the caller passes `--platform` explicitly.
+   The deprecated shim resolves app-scoped selectors with the same
+   unique-match semantics as `asc builds info`, including explicit
+   `--platform` disambiguation when needed.
 
 5. RED -> GREEN test plan
    - replace most `builds find` coverage with `builds info` selector coverage
@@ -163,38 +178,147 @@ Design note:
    - keep `builds find` hidden from canonical help while preserving execution
    - run focused selector tests, then full required checks
 
-### PR 3: Replace `builds latest` With `builds next-number`
+### PR 3: Replace `builds latest` With `builds next-build-number`
 
-Status: planned
+Status: complete
 
 Scope:
 
-- move `--next` behavior into `asc builds next-number`
+- move `--next` behavior into `asc builds next-build-number`
 - remove `asc builds latest` as a fetch command
+
+Design note:
+
+1. Command placement in taxonomy
+   Canonical "latest build details" lookup moves to `asc builds info --latest`.
+   Canonical next build number calculation moves to `asc builds next-build-number`.
+   `asc builds latest` stays only as a hidden deprecated compatibility shim
+   during the transition.
+
+2. OpenAPI / endpoint impact
+   Reuse the same `GET /v1/builds`, `GET /v1/preReleaseVersions`, and
+   `GET /v1/apps/{id}/buildUploads` calls already used by `builds latest`.
+   No new API surface is required; this PR only redistributes existing lookup
+   behavior across clearer CLI entry points.
+
+3. UX shape
+   Canonical commands become:
+   - `asc builds info --app APP --latest`
+   - `asc builds info --app APP --latest --version 1.2.3 --platform IOS`
+   - `asc builds next-build-number --app APP --version 1.2.3 --platform IOS`
+
+   `builds info --latest` should own latest-build fetch filters such as
+   `--version`, `--platform`, `--processing-state`, and
+   `--exclude-expired` / `--not-expired`.
+
+4. Backward-compatibility / deprecation impact
+   `asc builds latest` should stop being a canonical fetch command in help and
+   docs, but remain available as a hidden deprecated shim for one transition
+   cycle. Without `--next` it should warn toward `asc builds info --latest`;
+   with `--next` it should warn toward `asc builds next-build-number`.
+   Commands that resolve `--latest` through the shared build resolver now use
+   the stronger latest-selection semantics that previously only lived in
+   `asc builds latest`.
+
+5. RED -> GREEN test plan
+   - move latest-fetch coverage to `builds info --latest`
+   - move next-build-number coverage to `builds next-build-number`
+   - add deprecated alias coverage for `builds latest`
+   - update workflow/docs/help text to use `builds info --latest` and
+     `builds next-build-number`
+   - run focused latest/next-build-number tests, then full required checks
 
 ### PR 4: Redesign `builds test-notes`
 
-Status: planned
+Status: complete
 
 Scope:
 
 - make `test-notes` build-scoped plus `--locale`
 - replace build-related `--id` usage with `--build-id`
 - optionally keep `--localization-id` as a low-level escape hatch
+- keep hidden deprecated `--build` / `--id` flag aliases during the transition
 
 ### PR 5: Legacy Removal + Remaining Read Commands
 
-Status: planned
+Status: complete
 
 Scope:
 
-- delete `beta-build-localizations`
-- remove `builds test-notes get`
+- remove live `beta-build-localizations` behavior and leave removed-command guidance
+- remove live `builds test-notes get` behavior and leave removed-command guidance
 - standardize remaining read-oriented build commands on `--build-id`
+
+### PR 6: Mutating Command Selector Vocabulary
+
+Status: complete
+
+Scope:
+
+- standardize visible explicit selector naming to `--build-id` for mutating build commands
+- keep hidden deprecated `--build` aliases with warnings during the transition
+- leave inferred selector rollout for mutating commands to PR 7 so the final
+  selector contract can land in one pass
+
+### PR 7: Finalize Unified Build Selectors
+
+Status: complete
+
+Scope:
+
+- make the final selector contract true across build-targeting `asc builds`
+  commands
+- treat `--app ... --build-number` as exact-after-filtering unique lookup
+- remove implicit `IOS` defaulting from canonical build-number lookup
+- keep `--since` only as a `builds wait` freshness constraint on top of
+  `--latest` or `--build-number`
+- reject version-only or since-only `builds wait` selection
+- update tests, docs, and generated command docs to reflect the final model
+
+Design note:
+
+1. Command placement in taxonomy
+   Keep all single-build operations under `asc builds ...`. This PR finalizes
+   selector semantics rather than moving commands across command groups.
+
+2. OpenAPI / endpoint impact
+   Reuse the existing build lookup endpoints. The change is in selector
+   validation and client-side ambiguity handling, not in API shape.
+
+3. UX shape
+   The final selector contract for build-targeting commands is:
+   - `--build-id BUILD_ID` for direct identity
+   - `--app APP --latest [--version VER] [--platform PLATFORM]` for ranked
+     selection
+   - `--app APP --build-number NUM [--version VER] [--platform PLATFORM]` for
+     unique lookup
+
+   `--latest` is the only selector allowed to rank candidates and pick the most
+   recent build automatically. `--build-number` must resolve to exactly one
+   build after filters are applied, otherwise the CLI should return an
+   actionable ambiguity error. `builds wait` may additionally accept `--since`
+   as a freshness guard, but only together with `--latest` or `--build-number`.
+
+4. Backward-compatibility / deprecation impact
+   Keep existing hidden compatibility aliases (`--build`, `--id`, `--newest`,
+   deprecated command wrappers) during the transition, but move canonical help,
+   validation, and examples to the final selector contract.
+
+5. RED -> GREEN test plan
+   - add failing resolver tests for unique `--build-number` behavior
+   - add failing `builds wait` tests for invalid version-only and since-only
+     selection
+   - migrate remaining build-targeting commands in `asc builds` to the shared
+     selector contract
+   - update command docs/help snapshots and migration tests
+   - run focused selector tests, then full required checks
 
 ## Command Target Shape
 
 Examples for the end state:
+
+The `builds test-notes` examples below reflect the canonical selector shape
+after the later selector-unification work.
 
 ```bash
 asc builds info --build-id "BUILD_ID"
@@ -213,8 +337,8 @@ asc builds test-notes delete --app "123" --latest --locale "en-US" --confirm
 
 ## Notes
 
-- `builds latest` remains in the repo during PR 1 only to keep the change set
-  narrow.
-- Mutating commands like `expire`, `update`, `add-groups`, `remove-groups`, and
-  `individual-testers` should be reviewed separately before inheriting inferred
-  build selection.
+- `builds latest` remains in the repo after PR 3 as a hidden deprecated shim
+  that warns toward `builds info --latest` and `builds next-build-number`.
+- PR 6 standardized explicit `--build-id` for mutating commands as an
+  incremental step. The final target is now unified selectors across
+  build-targeting `asc builds` commands under the PR 7 contract above.

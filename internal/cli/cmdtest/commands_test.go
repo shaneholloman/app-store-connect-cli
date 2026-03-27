@@ -304,6 +304,26 @@ func TestBuildsInfoValidationErrors(t *testing.T) {
 			args:    []string{"builds", "info", "--app", "APP_123", "--build-number", "42", "--platform", "ANDROID"},
 			wantErr: "--platform must be one of",
 		},
+		{
+			name:    "processing-state requires latest",
+			args:    []string{"builds", "info", "--app", "APP_123", "--processing-state", "VALID"},
+			wantErr: "--processing-state requires --latest",
+		},
+		{
+			name:    "exclude-expired requires latest",
+			args:    []string{"builds", "info", "--app", "APP_123", "--exclude-expired"},
+			wantErr: "--exclude-expired and --not-expired require --latest",
+		},
+		{
+			name:    "not-expired requires latest",
+			args:    []string{"builds", "info", "--app", "APP_123", "--not-expired"},
+			wantErr: "--exclude-expired and --not-expired require --latest",
+		},
+		{
+			name:    "build-id conflicts with not-expired",
+			args:    []string{"builds", "info", "--build-id", "BUILD_123", "--not-expired"},
+			wantErr: "--build-id cannot be combined with --app, --latest, --build-number, --version, --platform, --processing-state, --exclude-expired, or --not-expired",
+		},
 	}
 
 	for _, test := range tests {
@@ -332,6 +352,8 @@ func TestBuildsInfoValidationErrors(t *testing.T) {
 }
 
 func TestBuildsExpireRequiresBuildID(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+
 	root := RootCommand("1.2.3")
 
 	stdout, stderr := captureOutput(t, func() {
@@ -347,7 +369,7 @@ func TestBuildsExpireRequiresBuildID(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "--build is required") {
+	if !strings.Contains(stderr, "--build-id or --app is required") {
 		t.Fatalf("expected missing build error, got %q", stderr)
 	}
 }
@@ -477,44 +499,46 @@ func TestBuildsExpireAllValidationErrors(t *testing.T) {
 }
 
 func TestBuildsGroupValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
 	}{
 		{
-			name:    "builds add-groups missing build",
+			name:    "builds add-groups missing build id",
 			args:    []string{"builds", "add-groups"},
-			wantErr: "Error: --build is required",
+			wantErr: "Error: --build-id or --app is required",
 		},
 		{
 			name:    "builds add-groups missing group",
-			args:    []string{"builds", "add-groups", "--build", "BUILD_123"},
+			args:    []string{"builds", "add-groups", "--build-id", "BUILD_123"},
 			wantErr: "Error: --group is required",
 		},
 		{
 			name:    "builds add-groups submit missing confirm",
-			args:    []string{"builds", "add-groups", "--build", "BUILD_123", "--group", "GROUP_123", "--submit"},
+			args:    []string{"builds", "add-groups", "--build-id", "BUILD_123", "--group", "GROUP_123", "--submit"},
 			wantErr: "Error: --confirm is required with --submit",
 		},
 		{
 			name:    "builds add-groups confirm requires submit",
-			args:    []string{"builds", "add-groups", "--build", "BUILD_123", "--group", "GROUP_123", "--confirm"},
+			args:    []string{"builds", "add-groups", "--build-id", "BUILD_123", "--group", "GROUP_123", "--confirm"},
 			wantErr: "Error: --confirm requires --submit",
 		},
 		{
-			name:    "builds remove-groups missing build",
+			name:    "builds remove-groups missing build id",
 			args:    []string{"builds", "remove-groups"},
-			wantErr: "Error: --build is required",
+			wantErr: "Error: --build-id or --app is required",
 		},
 		{
 			name:    "builds remove-groups missing group",
-			args:    []string{"builds", "remove-groups", "--build", "BUILD_123"},
+			args:    []string{"builds", "remove-groups", "--build-id", "BUILD_123"},
 			wantErr: "Error: --group is required",
 		},
 		{
 			name:    "builds remove-groups missing confirm",
-			args:    []string{"builds", "remove-groups", "--build", "BUILD_123", "--group", "GROUP_123"},
+			args:    []string{"builds", "remove-groups", "--build-id", "BUILD_123", "--group", "GROUP_123"},
 			wantErr: "Error: --confirm is required",
 		},
 	}
@@ -560,7 +584,7 @@ func TestBuildsWaitValidationErrors(t *testing.T) {
 		{
 			name:    "builds wait app missing selector hints",
 			args:    []string{"builds", "wait", "--app", "APP_123"},
-			wantErr: "provide at least one app-scoped selector: --latest, --version, --build-number, or --since",
+			wantErr: "--latest or --build-number is required when using --app",
 		},
 		{
 			name:    "builds wait selectors mutually exclusive",
@@ -610,19 +634,21 @@ func TestBuildsWaitValidationErrors(t *testing.T) {
 }
 
 func TestBuildsExpireValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
 	}{
 		{
-			name:    "builds expire missing build",
+			name:    "builds expire missing build id",
 			args:    []string{"builds", "expire"},
-			wantErr: "Error: --build is required",
+			wantErr: "Error: --build-id or --app is required",
 		},
 		{
 			name:    "builds expire missing confirm",
-			args:    []string{"builds", "expire", "--build", "BUILD_ID"},
+			args:    []string{"builds", "expire", "--build-id", "BUILD_ID"},
 			wantErr: "Error: --confirm is required to expire build",
 		},
 	}
@@ -660,7 +686,7 @@ func TestBuildsIndividualTestersValidationErrors(t *testing.T) {
 	}{
 		{
 			name:    "builds individual-testers remove missing confirm",
-			args:    []string{"builds", "individual-testers", "remove", "--build", "BUILD_ID", "--tester", "TESTER_ID"},
+			args:    []string{"builds", "individual-testers", "remove", "--build-id", "BUILD_ID", "--tester", "TESTER_ID"},
 			wantErr: "Error: --confirm is required",
 		},
 	}
@@ -1529,6 +1555,16 @@ func TestSubscriptionsValidationErrors(t *testing.T) {
 			name:    "subscriptions update invalid subscription period",
 			args:    []string{"subscriptions", "update", "--id", "SUB_ID", "--subscription-period", "BAD"},
 			wantErr: "--subscription-period must be one of",
+		},
+		{
+			name:    "subscriptions update invalid group-level zero",
+			args:    []string{"subscriptions", "update", "--id", "SUB_ID", "--group-level", "0"},
+			wantErr: "--group-level must be a positive integer",
+		},
+		{
+			name:    "subscriptions update invalid group-level negative",
+			args:    []string{"subscriptions", "update", "--id", "SUB_ID", "--group-level", "-1"},
+			wantErr: "--group-level must be a positive integer",
 		},
 		{
 			name:    "subscriptions delete missing confirm",
@@ -3498,49 +3534,61 @@ func TestBuildLocalizationsValidationErrors(t *testing.T) {
 }
 
 func TestBuildsTestNotesValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+
 	tests := []struct {
 		name    string
 		args    []string
 		wantErr string
 	}{
 		{
-			name:    "builds test-notes list missing build",
+			name:    "builds test-notes list missing build selector",
 			args:    []string{"builds", "test-notes", "list"},
-			wantErr: "--build is required",
+			wantErr: "--build-id or --app is required",
 		},
 		{
 			name:    "builds test-notes create missing locale",
-			args:    []string{"builds", "test-notes", "create", "--build", "BUILD_ID", "--whats-new", "Notes"},
+			args:    []string{"builds", "test-notes", "create", "--build-id", "BUILD_ID", "--whats-new", "Notes"},
 			wantErr: "--locale is required",
 		},
 		{
 			name:    "builds test-notes create missing whats-new",
-			args:    []string{"builds", "test-notes", "create", "--build", "BUILD_ID", "--locale", "en-US"},
+			args:    []string{"builds", "test-notes", "create", "--build-id", "BUILD_ID", "--locale", "en-US"},
 			wantErr: "--whats-new is required",
+		},
+		{
+			name:    "builds test-notes view missing selector",
+			args:    []string{"builds", "test-notes", "view"},
+			wantErr: "either --localization-id or (--locale and a build selector) is required",
+		},
+		{
+			name:    "builds test-notes view localization id conflicts with build selector",
+			args:    []string{"builds", "test-notes", "view", "--localization-id", "LOC_ID", "--build-id", "BUILD_ID", "--locale", "en-US"},
+			wantErr: "--localization-id cannot be combined with build selectors or --locale",
 		},
 		{
 			name:    "builds test-notes update missing selector",
 			args:    []string{"builds", "test-notes", "update", "--whats-new", "Notes"},
-			wantErr: "either --id or (--build and --locale) is required",
+			wantErr: "either --localization-id or (--locale and a build selector) is required",
 		},
 		{
-			name:    "builds test-notes update id conflicts with build locale",
-			args:    []string{"builds", "test-notes", "update", "--id", "LOC_ID", "--build", "BUILD_ID", "--locale", "en-US", "--whats-new", "Notes"},
-			wantErr: "--id cannot be combined with --build or --locale",
+			name:    "builds test-notes update localization id conflicts with build selector",
+			args:    []string{"builds", "test-notes", "update", "--localization-id", "LOC_ID", "--build-id", "BUILD_ID", "--locale", "en-US", "--whats-new", "Notes"},
+			wantErr: "--localization-id cannot be combined with build selectors or --locale",
 		},
 		{
 			name:    "builds test-notes update missing locale for build selector",
-			args:    []string{"builds", "test-notes", "update", "--build", "BUILD_ID", "--whats-new", "Notes"},
-			wantErr: "either --id or (--build and --locale) is required",
+			args:    []string{"builds", "test-notes", "update", "--build-id", "BUILD_ID", "--whats-new", "Notes"},
+			wantErr: "either --localization-id or (--locale and a build selector) is required",
 		},
 		{
 			name:    "builds test-notes update missing build for locale selector",
 			args:    []string{"builds", "test-notes", "update", "--locale", "en-US", "--whats-new", "Notes"},
-			wantErr: "either --id or (--build and --locale) is required",
+			wantErr: "either --localization-id or (--locale and a build selector) is required",
 		},
 		{
 			name:    "builds test-notes delete missing confirm",
-			args:    []string{"builds", "test-notes", "delete", "--id", "LOC_ID"},
+			args:    []string{"builds", "test-notes", "delete", "--localization-id", "LOC_ID"},
 			wantErr: "--confirm is required",
 		},
 	}
