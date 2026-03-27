@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import check_release_docs
+import check_repo_docs
+import check_website_docs
+
+
+class RepoDocsChecksTest(unittest.TestCase):
+    def test_repo_docs_accept_valid_local_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            docs = root / "docs"
+            docs.mkdir()
+            source = root / "README.md"
+            target = docs / "guide.md"
+            source.write_text("[Guide](docs/guide.md)\n[External](https://example.com)\n")
+            target.write_text("# Guide\n")
+
+            errors = check_repo_docs.check_files(root, [source])
+            self.assertEqual(errors, [])
+
+    def test_repo_docs_report_missing_local_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "README.md"
+            source.write_text("[Missing](docs/missing.md)\n")
+
+            errors = check_repo_docs.check_files(root, [source])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("missing local docs target", errors[0])
+
+
+class WebsiteDocsChecksTest(unittest.TestCase):
+    def test_website_docs_accept_valid_navigation_and_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            website = Path(tmpdir)
+            (website / "guides").mkdir()
+            (website / "docs.json").write_text(
+                json.dumps(
+                    {
+                        "navigation": {
+                            "tabs": [{"groups": [{"pages": ["index", "guides/test"]}]}]
+                        }
+                    }
+                )
+            )
+            (website / "index.mdx").write_text('[Guide](/guides/test)\n<a href="/guides/test">Guide</a>\n')
+            (website / "guides" / "test.mdx").write_text("# Test\n")
+
+            page_ids, routes = check_website_docs.collect_site_state(website)
+            self.assertEqual(check_website_docs.check_navigation(website, page_ids), [])
+            self.assertEqual(check_website_docs.check_internal_links(website, routes), [])
+
+    def test_website_docs_report_missing_navigation_page(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            website = Path(tmpdir)
+            (website / "docs.json").write_text(
+                json.dumps({"navigation": {"tabs": [{"groups": [{"pages": ["missing"]}]}]}})
+            )
+            (website / "index.mdx").write_text("# Home\n")
+
+            page_ids, _ = check_website_docs.collect_site_state(website)
+            errors = check_website_docs.check_navigation(website, page_ids)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("missing page", errors[0])
+
+    def test_website_docs_report_missing_route(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            website = Path(tmpdir)
+            (website / "docs.json").write_text(
+                json.dumps({"navigation": {"tabs": [{"groups": [{"pages": ["index"]}]}]}})
+            )
+            (website / "index.mdx").write_text("[Missing](/guides/unknown)\n")
+
+            _, routes = check_website_docs.collect_site_state(website)
+            errors = check_website_docs.check_internal_links(website, routes)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("missing website route", errors[0])
+
+
+class ReleaseDocsChecksTest(unittest.TestCase):
+    def test_release_docs_match_version_heading(self) -> None:
+        changelog = "## Changelog\n\n### v1.2.3\n"
+        self.assertTrue(check_release_docs.version_is_documented(changelog, "1.2.3"))
+        self.assertTrue(check_release_docs.version_is_documented(changelog, "v1.2.3"))
+        self.assertFalse(check_release_docs.version_is_documented(changelog, "1.2.4"))
+
+
+if __name__ == "__main__":
+    unittest.main()

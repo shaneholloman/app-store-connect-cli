@@ -72,7 +72,7 @@ Run this checklist before opening a PR:
 make tools               # Install gofumpt + golangci-lint
 make format              # Format code
 make lint                # Lint code
-make check-command-docs  # Verify command docs are up to date
+make check-docs          # Verify repository + website docs are up to date
 ASC_BYPASS_KEYCHAIN=1 make test  # Run tests (bypasses keychain)
 make build               # Build binary
 ./asc --help             # Smoke-test the binary

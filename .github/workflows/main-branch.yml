@@ -39,8 +39,11 @@ jobs:
       - name: Check Wall of Apps source
         run: make check-wall-of-apps
 
-      - name: Check command docs sync
-        run: make check-command-docs
+      - name: Self-test docs validators
+        run: python3 scripts/test_check_docs.py
+
+      - name: Check documentation
+        run: make check-docs
 
       - name: Run lint
         run: |
