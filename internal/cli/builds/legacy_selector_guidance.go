@@ -98,9 +98,10 @@ func flagWasProvided(fs *flag.FlagSet, name string) bool {
 }
 
 const (
-	legacyBuildIDWarning = "Warning: `--build` is deprecated. Use `--build-id`."
-	legacyIDWarning      = "Warning: `--id` as a build selector is deprecated. Use `--build-id`."
-	legacyNewestWarning  = "Warning: `--newest` is deprecated. Use `--latest`."
+	legacyBuildIDWarning                     = "Warning: `--build` is deprecated. Use `--build-id`."
+	legacyIDWarning                          = "Warning: `--id` as a build selector is deprecated. Use `--build-id`."
+	legacyNewestWarning                      = "Warning: `--newest` is deprecated. Use `--latest`."
+	legacyImplicitBuildNumberPlatformWarning = "Warning: omitting --platform with app-scoped --build-number selection is deprecated. Defaulting to IOS; pass --platform IOS explicitly."
 )
 
 func applyLegacyBuildIDAlias(buildID *string, legacyBuildID *trackedStringFlag) error {
@@ -141,4 +142,13 @@ func applyLegacyStringAlias(canonical *string, legacy *trackedStringFlag, legacy
 
 	fmt.Fprintln(os.Stderr, warning)
 	return nil
+}
+
+func applyLegacyImplicitBuildNumberPlatformDefault(buildNumber, platform string) string {
+	if strings.TrimSpace(buildNumber) == "" || strings.TrimSpace(platform) != "" {
+		return platform
+	}
+
+	fmt.Fprintln(os.Stderr, legacyImplicitBuildNumberPlatformWarning)
+	return "IOS"
 }

@@ -11,6 +11,8 @@ import (
 	"testing"
 )
 
+const deprecatedImplicitIOSBuildNumberPlatformWarning = "Warning: omitting --platform with app-scoped --build-number selection is deprecated. Defaulting to IOS; pass --platform IOS explicitly."
+
 func TestBuildsInfoByBuildNumberSuccess(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
@@ -34,8 +36,8 @@ func TestBuildsInfoByBuildNumberSuccess(t *testing.T) {
 			if query.Get("filter[version]") != "42" {
 				t.Fatalf("expected filter[version]=42, got %q", query.Get("filter[version]"))
 			}
-			if query.Get("filter[preReleaseVersion.platform]") != "" {
-				t.Fatalf("expected no implicit platform filter, got %q", query.Get("filter[preReleaseVersion.platform]"))
+			if query.Get("filter[preReleaseVersion.platform]") != "IOS" {
+				t.Fatalf("expected implicit IOS platform filter, got %q", query.Get("filter[preReleaseVersion.platform]"))
 			}
 			if query.Get("sort") != "-uploadedDate" {
 				t.Fatalf("expected sort=-uploadedDate, got %q", query.Get("sort"))
@@ -74,8 +76,8 @@ func TestBuildsInfoByBuildNumberSuccess(t *testing.T) {
 		}
 	})
 
-	if stderr != "" {
-		t.Fatalf("expected empty stderr, got %q", stderr)
+	if !strings.Contains(stderr, deprecatedImplicitIOSBuildNumberPlatformWarning) {
+		t.Fatalf("expected implicit IOS deprecation warning, got %q", stderr)
 	}
 	if !strings.Contains(stdout, `"id":"build-42"`) {
 		t.Fatalf("expected build output, got %q", stdout)
@@ -675,8 +677,8 @@ func TestBuildsFindAliasWarnsAndMatchesCanonicalInfoOutput(t *testing.T) {
 			if query.Get("filter[version]") != "42" {
 				t.Fatalf("expected filter[version]=42, got %q", query.Get("filter[version]"))
 			}
-			if query.Get("filter[preReleaseVersion.platform]") != "" {
-				t.Fatalf("expected no implicit platform filter, got %q", query.Get("filter[preReleaseVersion.platform]"))
+			if query.Get("filter[preReleaseVersion.platform]") != "IOS" {
+				t.Fatalf("expected implicit IOS platform filter, got %q", query.Get("filter[preReleaseVersion.platform]"))
 			}
 			if query.Get("limit") != "200" {
 				t.Fatalf("expected limit=200, got %q", query.Get("limit"))
@@ -717,11 +719,13 @@ func TestBuildsFindAliasWarnsAndMatchesCanonicalInfoOutput(t *testing.T) {
 	canonicalStdout, canonicalStderr := run([]string{"builds", "info", "--app", "123456789", "--build-number", "42", "--output", "json"})
 	aliasStdout, aliasStderr := run([]string{"builds", "find", "--app", "123456789", "--build-number", "42", "--output", "json"})
 
-	if canonicalStderr != "" {
-		t.Fatalf("expected canonical command to avoid warnings, got %q", canonicalStderr)
+	if !strings.Contains(canonicalStderr, deprecatedImplicitIOSBuildNumberPlatformWarning) {
+		t.Fatalf("expected canonical command to warn about implicit IOS fallback, got %q", canonicalStderr)
 	}
 	requireStderrContainsWarning(t, aliasStderr, "Warning: `asc builds find` is deprecated. Use `asc builds info`.")
-	assertOnlyDeprecatedCommandWarnings(t, aliasStderr)
+	if stripDeprecatedCommandWarnings(aliasStderr) != strings.TrimSpace(canonicalStderr) {
+		t.Fatalf("expected alias stderr to match canonical stderr apart from deprecation warning, canonical=%q alias=%q", canonicalStderr, aliasStderr)
+	}
 	if canonicalStdout != aliasStdout {
 		t.Fatalf("expected canonical and alias output to match, canonical=%q alias=%q", canonicalStdout, aliasStdout)
 	}

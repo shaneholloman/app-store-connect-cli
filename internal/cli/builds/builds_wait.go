@@ -143,14 +143,19 @@ Examples:
 					return fmt.Errorf("builds wait: %w", err)
 				}
 
-				buildResp, err = waitForBuildDiscovery(requestCtx, client, appBuildWaitSelector{
+				selector := appBuildWaitSelector{
 					Latest:      *latest,
 					AppID:       lookupAppID,
 					Version:     versionValue,
 					BuildNumber: buildNumberValue,
 					Platform:    normalizedPlatform,
 					Since:       sinceTime,
-				}, *pollInterval)
+				}
+				if !selector.Latest {
+					selector.Platform = applyLegacyImplicitBuildNumberPlatformDefault(selector.BuildNumber, selector.Platform)
+				}
+
+				buildResp, err = waitForBuildDiscovery(requestCtx, client, selector, *pollInterval)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
 						return fmt.Errorf("builds wait: timed out resolving build selector after %s", (*timeout).Round(time.Second))

@@ -477,6 +477,9 @@ func TestBuildsWaitByBuildNumberSinceFiltersBeforeUniqueness(t *testing.T) {
 	if waitResult.ProcessingState != "VALID" {
 		t.Fatalf("expected processingState=VALID, got %q", waitResult.ProcessingState)
 	}
+	if !strings.Contains(stderr, deprecatedImplicitIOSBuildNumberPlatformWarning) {
+		t.Fatalf("expected implicit IOS deprecation warning, got %q", stderr)
+	}
 	if !strings.Contains(stderr, "Waiting for build build-new... (VALID") {
 		t.Fatalf("expected wait progress output, got %q", stderr)
 	}
@@ -590,8 +593,8 @@ func TestBuildsWaitByBuildNumberRequiresUniqueMatch(t *testing.T) {
 		if query.Get("filter[version]") != "42" {
 			t.Fatalf("expected filter[version]=42, got %q", query.Get("filter[version]"))
 		}
-		if query.Get("filter[preReleaseVersion.platform]") != "" {
-			t.Fatalf("expected no implicit platform filter, got %q", query.Get("filter[preReleaseVersion.platform]"))
+		if query.Get("filter[preReleaseVersion.platform]") != "IOS" {
+			t.Fatalf("expected implicit IOS platform filter, got %q", query.Get("filter[preReleaseVersion.platform]"))
 		}
 		if query.Get("filter[processingState]") != "PROCESSING,FAILED,INVALID,VALID" {
 			t.Fatalf("expected wait processing-state filter, got %q", query.Get("filter[processingState]"))
@@ -639,14 +642,90 @@ func TestBuildsWaitByBuildNumberRequiresUniqueMatch(t *testing.T) {
 	if !strings.Contains(runErr.Error(), `multiple builds found for app 123456789 with build number "42"`) {
 		t.Fatalf("expected ambiguity error, got %v", runErr)
 	}
-	if !strings.Contains(runErr.Error(), "add --version and/or --platform, or use --build-id") {
+	if !strings.Contains(runErr.Error(), "add --version, or use --build-id") {
 		t.Fatalf("expected actionable ambiguity hint, got %v", runErr)
 	}
 	if stdout != "" {
 		t.Fatalf("expected empty stdout on ambiguity error, got %q", stdout)
 	}
-	if stderr != "" {
-		t.Fatalf("expected empty stderr on runtime ambiguity error, got %q", stderr)
+	if !strings.Contains(stderr, deprecatedImplicitIOSBuildNumberPlatformWarning) {
+		t.Fatalf("expected implicit IOS deprecation warning, got %q", stderr)
+	}
+}
+
+func TestBuildsWaitByBuildNumberDiscoveryWarnsOnlyOnce(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+	t.Setenv("ASC_APP_ID", "")
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	requestCount := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requestCount++
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/builds" {
+			t.Fatalf("expected path /v1/builds, got %s", req.URL.Path)
+		}
+
+		query := req.URL.Query()
+		if query.Get("filter[app]") != "123456789" {
+			t.Fatalf("expected filter[app]=123456789, got %q", query.Get("filter[app]"))
+		}
+		if query.Get("filter[version]") != "42" {
+			t.Fatalf("expected filter[version]=42, got %q", query.Get("filter[version]"))
+		}
+		if query.Get("filter[preReleaseVersion.platform]") != "IOS" {
+			t.Fatalf("expected implicit IOS platform filter, got %q", query.Get("filter[preReleaseVersion.platform]"))
+		}
+
+		body := `{"data":[]}`
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+		}, nil
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	var runErr error
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"builds", "wait",
+			"--app", "123456789",
+			"--build-number", "42",
+			"--poll-interval", "1ms",
+			"--timeout", "50ms",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if runErr == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(runErr.Error(), "timed out resolving build selector") {
+		t.Fatalf("expected selector timeout error, got %v", runErr)
+	}
+	if requestCount < 2 {
+		t.Fatalf("expected multiple discovery polls, got %d", requestCount)
+	}
+	if got := strings.Count(stderr, deprecatedImplicitIOSBuildNumberPlatformWarning); got != 1 {
+		t.Fatalf("expected one implicit IOS warning, got %d in %q", got, stderr)
+	}
+	if !strings.Contains(stderr, "Waiting for build discovery") {
+		t.Fatalf("expected discovery progress output, got %q", stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected empty stdout on timeout, got %q", stdout)
 	}
 }
 

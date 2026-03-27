@@ -140,7 +140,7 @@ func resolveBuildByNumberSelection(
 
 	buildNumber := strings.TrimSpace(opts.BuildNumber)
 	version := strings.TrimSpace(opts.Version)
-	platform := strings.TrimSpace(opts.Platform)
+	platform := applyLegacyImplicitBuildNumberPlatformDefault(buildNumber, strings.TrimSpace(opts.Platform))
 	if platform != "" {
 		normalized, err := shared.NormalizeAppStoreVersionPlatform(platform)
 		if err != nil {

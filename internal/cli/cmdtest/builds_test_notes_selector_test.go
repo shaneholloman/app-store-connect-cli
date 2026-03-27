@@ -179,8 +179,8 @@ func TestBuildsTestNotesUpdateByBuildNumberAndLocale(t *testing.T) {
 		}
 	})
 
-	if stderr != "" {
-		t.Fatalf("expected empty stderr, got %q", stderr)
+	if !strings.Contains(stderr, deprecatedImplicitIOSBuildNumberPlatformWarning) {
+		t.Fatalf("expected implicit IOS deprecation warning, got %q", stderr)
 	}
 	if !strings.Contains(stdout, `"id":"loc-42"`) {
 		t.Fatalf("expected updated localization output, got %q", stdout)
