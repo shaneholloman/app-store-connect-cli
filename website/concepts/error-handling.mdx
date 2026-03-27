@@ -285,8 +285,8 @@ asc auth status
 ### Permission Denied
 
 ```bash  theme={null}
-asc apps delete --id APP_ID --confirm
-# Error: forbidden: You don't have permission to delete apps
+asc apps update --id APP_ID --primary-locale "en-US"
+# Error: forbidden: You don't have permission to update this app
 # Exit code: 3
 ```
 

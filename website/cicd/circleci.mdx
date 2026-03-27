@@ -290,9 +290,13 @@ jobs:
       - run:
           name: Check Review Status
           command: |
-            asc review status \
+            VERSION_ID=$(asc versions list \
               --app "$ASC_APP_ID" \
               --version "$CIRCLE_TAG" \
+              --output json | jq -r '.data[0].id')
+
+            asc submit status \
+              --version-id "$VERSION_ID" \
               --output json > review-status.json
       
       - store_artifacts:
