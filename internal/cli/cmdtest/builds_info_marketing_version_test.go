@@ -236,8 +236,8 @@ func TestBuildsInfoBuildNumberRequiresUniqueMatch(t *testing.T) {
 	if runErr == nil {
 		t.Fatal("expected unique build-number lookup error")
 	}
-	if !strings.Contains(stderr, deprecatedImplicitIOSBuildNumberPlatformWarning) {
-		t.Fatalf("expected implicit IOS deprecation warning, got %q", stderr)
+	if got := strings.TrimSpace(stderr); got != deprecatedImplicitIOSBuildNumberPlatformWarning {
+		t.Fatalf("expected only the implicit IOS deprecation warning on stderr, got %q", stderr)
 	}
 	if !strings.Contains(runErr.Error(), `multiple builds found for app 123456789 with build number "42"`) {
 		t.Fatalf("expected ambiguity error, got %v", runErr)
@@ -247,8 +247,5 @@ func TestBuildsInfoBuildNumberRequiresUniqueMatch(t *testing.T) {
 	}
 	if stdout != "" {
 		t.Fatalf("expected empty stdout on ambiguity error, got %q", stdout)
-	}
-	if !strings.Contains(stderr, deprecatedImplicitIOSBuildNumberPlatformWarning) {
-		t.Fatalf("expected implicit IOS deprecation warning, got %q", stderr)
 	}
 }
