@@ -179,7 +179,9 @@ asc validate \
 # Submit for review
 asc submit create \
   --app "123456789" \
-  --version "1.2.3"
+  --version "1.2.3" \
+  --build "BUILD_ID" \
+  --confirm
 ```
 
 ### Metadata Updates
@@ -333,7 +335,7 @@ Detailed integration guides for each platform:
 
     ```bash  theme={null}
     asc validate --app "$APP_ID" --version "$VERSION" || exit 1
-    asc submit create --app "$APP_ID" --version "$VERSION"
+    asc submit create --app "$APP_ID" --version "$VERSION" --build "BUILD_ID" --confirm
     ```
   </Accordion>
 </AccordionGroup>

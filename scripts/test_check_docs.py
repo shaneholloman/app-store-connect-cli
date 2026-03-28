@@ -404,6 +404,38 @@ USAGE
             self.assertEqual(len(errors), 1)
             self.assertIn("unknown subcommand", errors[0])
 
+    def test_website_command_checks_require_submit_create_build_and_confirm(self) -> None:
+        index = {
+            (): check_website_commands.CommandSpec(
+                path=(),
+                usage="asc <subcommand> [flags]",
+                flags={},
+                subcommands={"submit"},
+            ),
+            ("submit",): check_website_commands.CommandSpec(
+                path=("submit",),
+                usage="asc submit <subcommand> [flags]",
+                flags={},
+                subcommands={"create"},
+            ),
+            ("submit", "create"): check_website_commands.CommandSpec(
+                path=("submit", "create"),
+                usage="asc submit create [flags]",
+                flags={"--app": False, "--version": False, "--build": False, "--confirm": True},
+                subcommands=set(),
+            ),
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            website = Path(tmpdir)
+            (website / "index.mdx").write_text(
+                "```bash\nasc submit create --app 123456789 --version 1.2.0\n```\n"
+            )
+            errors = check_website_commands.collect_errors(website, index)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("missing required flag", errors[0])
+            self.assertIn("--build", errors[0])
+            self.assertIn("--confirm", errors[0])
+
 
 class DocLinksTest(unittest.TestCase):
     def test_normalize_target_strips_angle_brackets_before_prefix_check(self) -> None:

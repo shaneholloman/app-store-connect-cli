@@ -279,7 +279,9 @@ jobs:
           command: |
             asc submit create \
               --app "$ASC_APP_ID" \
-              --version "$CIRCLE_TAG"
+              --version "$CIRCLE_TAG" \
+              --build "BUILD_ID" \
+              --confirm
   
   monitor:
     docker:
@@ -601,7 +603,7 @@ jobs:
             - run:
                 name: Deploy to Production
                 command: |
-                  asc submit create --app "$PROD_APP_ID" --version "$VERSION"
+                  asc submit create --app "$PROD_APP_ID" --version "$VERSION" --build "BUILD_ID" --confirm
       
       - when:
           condition:

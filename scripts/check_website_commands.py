@@ -24,6 +24,9 @@ PLACEHOLDER_PATTERNS = (
 META_TOKEN_RE = re.compile(r"^<[^>]+>$|^\[[^\]]+\]$")
 GENERIC_TOKENS = {"command", "subcommand", "subcmd"}
 SHELL_OPERATORS = {"|", ";", ">", "<"}
+REQUIRED_FLAGS_BY_COMMAND: dict[tuple[str, ...], set[str]] = {
+    ("submit", "create"): {"--build", "--confirm"},
+}
 
 
 @dataclass(frozen=True)
@@ -394,6 +397,7 @@ def validate_example(example: Example, index: dict[tuple[str, ...], CommandSpec]
         style = "positionals_and_flags"
     pending_value = False
     saw_positional = False
+    seen_flags: set[str] = set()
 
     while i < len(tokens):
         token = tokens[i]
@@ -408,6 +412,7 @@ def validate_example(example: Example, index: dict[tuple[str, ...], CommandSpec]
                         f"{example.path.relative_to(example.path.parents[1])}:{example.line_number}: "
                         f"flag {flag!r} appears after positional arguments in {example.raw!r}"
                     )
+                seen_flags.add(flag)
                 pending_value = "=" not in token and not current.flags.get(flag, False)
                 i += 1
                 continue
@@ -439,6 +444,13 @@ def validate_example(example: Example, index: dict[tuple[str, ...], CommandSpec]
             )
             return errors
         i += 1
+
+    missing_flags = sorted(REQUIRED_FLAGS_BY_COMMAND.get(current.path, set()) - seen_flags)
+    if missing_flags:
+        errors.append(
+            f"{example.path.relative_to(example.path.parents[1])}:{example.line_number}: "
+            f"missing required flag(s) {', '.join(missing_flags)!r} for {' '.join(current.path)!r} in {example.raw!r}"
+        )
 
     return errors
 

@@ -190,7 +190,9 @@ jobs:
         run: |
           asc submit create \
             --app "$ASC_APP_ID" \
-            --version "${{ inputs.version }}"
+            --version "${{ inputs.version }}" \
+            --build "BUILD_ID" \
+            --confirm
       
       - name: Notify on success
         if: success()

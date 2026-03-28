@@ -169,7 +169,9 @@ workflows:
                 echo "Submitting version $VERSION for review..."
                 asc submit create \
                   --app "$APP_ID" \
-                  --version "$VERSION"
+                  --version "$VERSION" \
+                  --build "BUILD_ID" \
+                  --confirm
                 
                 echo "Submission successful"
           is_always_run: false
@@ -340,7 +342,7 @@ workflows:
           inputs:
             - mode: run
             - command: |
-                asc submit create --app "$PROD_APP_ID" --version "$VERSION"
+                asc submit create --app "$PROD_APP_ID" --version "$VERSION" --build "BUILD_ID" --confirm
 
   deploy_staging:
     steps:

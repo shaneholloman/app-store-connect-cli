@@ -157,7 +157,9 @@ check:run:
       command: |
         asc submit create \
           --app "$APP_ID" \
-          --version "$CI_COMMIT_TAG"
+          --version "$CI_COMMIT_TAG" \
+          --build "BUILD_ID" \
+          --confirm
 
 release:run:
   needs:
@@ -400,7 +402,7 @@ include:
       asc_version: latest
       command: |
         echo "Submitting version $VERSION"
-        asc submit create --app "$APP_ID" --version "$VERSION"
+        asc submit create --app "$APP_ID" --version "$VERSION" --build "BUILD_ID" --confirm
 
 release:run:
   needs:
@@ -469,7 +471,9 @@ staging:run:
       command: |
         asc submit create \
           --app "$PRODUCTION_APP_ID" \
-          --version "$CI_COMMIT_TAG"
+          --version "$CI_COMMIT_TAG" \
+          --build "BUILD_ID" \
+          --confirm
 
 production:run:
   environment:

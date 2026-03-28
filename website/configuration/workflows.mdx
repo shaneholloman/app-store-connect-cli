@@ -30,7 +30,7 @@ Create a `.asc/workflow.json` file in your project root:
       "description": "Submit build for App Store review",
       "steps": [
         "asc validate --app $APP_ID --version $VERSION",
-        "asc submit create --app $APP_ID --version $VERSION"
+        "asc submit create --app $APP_ID --version $VERSION --build $BUILD_ID --confirm"
       ]
     }
   }
@@ -209,7 +209,7 @@ Use the `if` field to conditionally execute steps:
     },
     {
       "name": "Submit for review",
-      "run": "asc submit create --app $APP_ID --version $VERSION",
+      "run": "asc submit create --app $APP_ID --version $VERSION --build $BUILD_ID --confirm",
       "if": "test \"$AUTO_SUBMIT\" = \"true\""
     }
   ]
@@ -241,7 +241,7 @@ Call other workflows from within a workflow:
             "MESSAGE": "Build uploaded to TestFlight"
           }
         },
-        "asc submit create --app $APP_ID --version $VERSION",
+        "asc submit create --app $APP_ID --version $VERSION --build $BUILD_ID --confirm",
         {
           "workflow": "notify",
           "with": {
@@ -273,7 +273,7 @@ Example with Slack notifications:
     "release": {
       "steps": [
         "asc builds upload --app $APP_ID --ipa MyApp.ipa",
-        "asc submit create --app $APP_ID --version $VERSION"
+        "asc submit create --app $APP_ID --version $VERSION --build $BUILD_ID --confirm"
       ]
     }
   }
@@ -333,7 +333,7 @@ Here's a comprehensive workflow for a full release process:
         },
         {
           "name": "Submit for review",
-          "run": "asc submit create --app $APP_ID --version $VERSION"
+          "run": "asc submit create --app $APP_ID --version $VERSION --build $BUILD_ID --confirm"
         },
         {
           "name": "Notify team",
