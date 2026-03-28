@@ -57,7 +57,6 @@ type publishLocalBuildConfig struct {
 	ArchivePath           string
 	IPAPath               string
 	Clean                 bool
-	InitialBuildNumber    int
 	ArchiveXcodebuildArgs []string
 	ExportXcodebuildArgs  []string
 }
@@ -159,7 +158,6 @@ func resolveLocalBuildConfig(values *publishLocalBuildFlagValues, platform, vers
 		Scheme:                values.trimmedScheme(),
 		Configuration:         "Release",
 		Clean:                 values.clean != nil && *values.clean,
-		InitialBuildNumber:    *values.initialBuildNumber,
 		ArchiveXcodebuildArgs: append([]string(nil), values.archiveXcodebuildArg...),
 		ExportXcodebuildArgs:  append([]string(nil), values.exportXcodebuildArg...),
 	}
