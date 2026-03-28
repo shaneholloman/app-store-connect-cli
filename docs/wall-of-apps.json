@@ -224,6 +224,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/23/60/71/236071d7-7827-efd9-4c8f-03db0cee6aa9/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Expense Tracker: ExpenseKit",
+    "link": "https://apps.apple.com/us/app/expense-tracker-expensekit/id6756433597?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/a5/14/d8/a514d826-9475-8c8e-b4f5-6fe7b4fa660c/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "FaceScreen - Desktop Camera",
     "link": "https://apps.apple.com/us/app/facescreen-desktop-camera/id6702028512?mt=12&uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/79/71/89/797189ca-6bde-e2e0-9e24-99bd6593b928/AppIcon-0-0-85-220-0-5-0-2x-P3-0-0-0.png/512x512bb.png"
@@ -687,6 +692,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/2e/57/88/2e5788c4-8164-e931-a976-fba05975baac/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Reminders at a Glance",
+    "link": "https://apps.apple.com/us/app/reminders-at-a-glance/id6760935916?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/03/19/51/031951c7-0539-a87b-5569-b5b60a6581be/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Repetti",
     "link": "https://apps.apple.com/us/app/repetti-the-chores-list-app/id6758055413",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/e8/77/5c/e8775cab-2c64-3b11-e132-c636f3993a44/Icon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg"
@@ -752,6 +762,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/83/d3/34/83d334a4-f19b-047a-8d62-75f1866d1c37/snapop-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg"
   },
   {
+    "app": "SnapSong - AI Music from Photo",
+    "link": "https://apps.apple.com/us/app/snapsong-ai-music-from-photo/id6758351507?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/58/de/7b/58de7b85-a047-2d07-b570-acd38f6e873b/SnapSong-Icon-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "SnapVinyl",
     "link": "https://apps.apple.com/app/id6741057688",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/c3/87/7c/c3877c8c-bac8-537d-453e-98ba2e171fe1/AppIcon-0-1x_U007epad-0-1-0-85-220-0.png/512x512bb.jpg"
@@ -777,6 +792,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/90/bc/20/90bc2003-d998-ba7a-ce45-66d846d7685f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Step Counter: Steps App",
+    "link": "https://apps.apple.com/us/app/step-counter-steps-app/id6753876664?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/6e/08/ae/6e08ae21-ae96-34fb-44fc-62d0b99a802c/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Steps: Workout & Pedometer",
     "link": "https://apps.apple.com/us/app/steps-workout-pedometer/id6746096378",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/db/43/04/db430406-c791-e82a-1b4a-4283cca28b78/StepsIcon-0-1x_U007ephone-0-1-85-220-0.png/512x512bb.jpg"
@@ -785,6 +805,11 @@
     "app": "Sticky Widgets",
     "link": "https://apps.apple.com/us/app/sticky-widgets/id1533254320",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/1e/b8/78/1eb878a7-0955-eb1a-f55a-09b630362b71/sw-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220-0.png/512x512bb.jpg"
+  },
+  {
+    "app": "StrictBlock: App Blocker",
+    "link": "https://apps.apple.com/us/app/strictblock-app-blocker/id6749779711?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d8/18/fc/d818fc87-7a0e-8941-ed31-31321d7bd717/AppIcon-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg"
   },
   {
     "app": "Subbie - Money Calendar",
