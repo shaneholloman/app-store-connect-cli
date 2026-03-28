@@ -600,13 +600,22 @@ class ReleaseDocsChecksTest(unittest.TestCase):
 
 
 class HookChecksTest(unittest.TestCase):
+    def test_pre_commit_treats_root_level_mdx_and_mintlify_config_as_docs(self) -> None:
+        hook = (
+            Path(__file__).resolve().parents[1] / ".githooks" / "pre-commit"
+        ).read_text()
+        self.assertIn(
+            'docs.json|.mintignore|.mintlify/*|*.mdx|cicd/*|commands/*|concepts/*|configuration/*|guides/*|resources/*)',
+            hook,
+        )
+
     def test_pre_commit_treats_docs_go_files_as_code(self) -> None:
         hook = (
             Path(__file__).resolve().parents[1] / ".githooks" / "pre-commit"
         ).read_text()
         needs_code_case = hook.split('case "$path" in')[4]
         docs_case = needs_code_case.index(
-            'docs.json|authentication.mdx|index.mdx|installation.mdx|introduction.mdx|quickstart.mdx|cicd/*|commands/*|concepts/*|configuration/*|guides/*|resources/*|README.md|CONTRIBUTING.md|SUPPORT.md|docs/*|.github/PULL_REQUEST_TEMPLATE.md)'
+            'docs.json|.mintignore|.mintlify/*|*.mdx|cicd/*|commands/*|concepts/*|configuration/*|guides/*|resources/*|README.md|CONTRIBUTING.md|SUPPORT.md|docs/*|.github/PULL_REQUEST_TEMPLATE.md)'
         )
         go_case = needs_code_case.index("*.go|go.mod|go.sum|Makefile)")
         self.assertLess(go_case, docs_case)
