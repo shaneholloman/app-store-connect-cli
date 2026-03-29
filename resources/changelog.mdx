@@ -10,6 +10,24 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 ## Latest Releases
 
+### 0.47.1
+
+**Highlights**:
+
+* Improved high-level release and submission workflow reliability
+* Better status/watch behavior and review submission summaries
+* Expanded docs, release guardrails, and CI hardening for the new website split
+
+**Changes**:
+
+* `feat(release)`: Split shared release submission behavior across release, publish, submit, and status flows
+* `fix(status)`: Preserve watch timeout semantics while treating clean watch deadlines as expected exits
+* `fix(status)`: Summarize review submissions per platform and keep bounded watch polling consistent
+* `fix(submit)`: Preserve shared flow reuse semantics and surface preparation messaging more clearly
+* `fix(publish)`: Honor explicit submit timeout budgets while preserving default pipeline timeouts
+* `build(ci)`: Split CI, hook, and release hardening for docs-aware checks
+* `docs`: Split help taxonomy and recover Mintlify website content and workflows
+
 ### v0.36.3
 
 **Highlights**:
