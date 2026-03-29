@@ -134,11 +134,29 @@ func parseSubscriptionIntroductoryOffersImportCSVRow(record []string, columnIdx 
 		endDate = normalized
 	}
 
+	offerMode := get("offer_mode")
+	if offerMode != "" {
+		normalized, err := normalizeSubscriptionOfferMode(offerMode)
+		if err != nil {
+			return subscriptionIntroductoryOfferImportCSVRow{}, shared.UsageErrorf("row %d: %v", rowNumber, err)
+		}
+		offerMode = string(normalized)
+	}
+
+	offerDuration := get("offer_duration")
+	if offerDuration != "" {
+		normalized, err := normalizeSubscriptionOfferDuration(offerDuration)
+		if err != nil {
+			return subscriptionIntroductoryOfferImportCSVRow{}, shared.UsageErrorf("row %d: %v", rowNumber, err)
+		}
+		offerDuration = string(normalized)
+	}
+
 	return subscriptionIntroductoryOfferImportCSVRow{
 		row:             rowNumber,
 		territory:       get("territory"),
-		offerMode:       get("offer_mode"),
-		offerDuration:   get("offer_duration"),
+		offerMode:       offerMode,
+		offerDuration:   offerDuration,
 		numberOfPeriods: get("number_of_periods"),
 		startDate:       startDate,
 		endDate:         endDate,
