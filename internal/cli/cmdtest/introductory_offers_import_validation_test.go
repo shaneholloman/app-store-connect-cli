@@ -6,6 +6,7 @@ import (
 	"flag"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -192,5 +193,47 @@ func TestSubscriptionsIntroductoryOffersImport_InvalidDefaultOfferFlagsReturnUsa
 				t.Fatalf("expected %q in stderr, got %q", test.wantErr, stderr)
 			}
 		})
+	}
+}
+
+func TestSubscriptionsIntroductoryOffersImport_UnknownCSVColumnReturnsUsage(t *testing.T) {
+	setupAuth(t)
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("unexpected HTTP request: %s %s", req.Method, req.URL.String())
+		return nil, nil
+	})
+
+	csvPath := filepath.Join(t.TempDir(), "offers.csv")
+	if err := os.WriteFile(csvPath, []byte("territory,unknown\nUSA,value\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"subscriptions", "offers", "introductory", "import",
+			"--subscription-id", "SUB_ID",
+			"--input", csvPath,
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		err := root.Run(context.Background())
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected ErrHelp, got %v", err)
+		}
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "unknown CSV column") {
+		t.Fatalf("expected unknown column error, got %q", stderr)
 	}
 }

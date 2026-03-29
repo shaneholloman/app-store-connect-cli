@@ -78,6 +78,9 @@ Examples:
 					return flag.ErrHelp
 				}
 			}
+			if _, err := readSubscriptionIntroductoryOffersImportCSV(*inputPath); err != nil {
+				return fmt.Errorf("subscriptions introductory-offers import: %w", err)
+			}
 
 			return shared.UsageError("introductory-offers import is not implemented yet")
 		},
