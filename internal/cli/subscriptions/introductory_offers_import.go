@@ -35,9 +35,27 @@ func SubscriptionsIntroductoryOffersImportCommand() *ffcli.Command {
 		ShortHelp:  "Import introductory offers from a CSV file.",
 		LongHelp: `Import introductory offers from a CSV file.
 
+CSV is UTF-8 with a required header row.
+
+Required column:
+  territory
+
+Optional columns:
+  offer_mode, offer_duration, number_of_periods, start_date, end_date, price_point_id
+
+Header aliases:
+  price_point -> price_point_id
+
+Territory values:
+  3-letter ASC territory IDs, 2-letter country codes, and English territory names
+
+Precedence:
+  Row values override command-level defaults.
+
 Examples:
   asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv"
-  asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv" --offer-duration ONE_WEEK --offer-mode FREE_TRIAL --number-of-periods 1`,
+  asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv" --offer-duration ONE_WEEK --offer-mode FREE_TRIAL --number-of-periods 1
+  asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv" --dry-run --offer-duration ONE_WEEK --offer-mode FREE_TRIAL --number-of-periods 1`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
