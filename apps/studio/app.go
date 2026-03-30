@@ -571,43 +571,48 @@ func (a *App) GetPricingOverview(appID string) (PricingOverview, error) {
 			return
 		}
 		var priceInfo struct {
-			Territory string `json:"t"`
-			PriceID   string `json:"p"`
+			Territory  string `json:"t"`
+			PricePoint string `json:"p"`
 		}
 		if json.Unmarshal(decoded, &priceInfo) != nil {
 			priceCh <- priceResult{}
 			return
 		}
-		// Look up customer price from tiers for that territory
-		cmd2 := exec.CommandContext(ctx, ascPath, "pricing", "tiers", "--app", appID, "--territory", priceInfo.Territory, "--output", "json")
+		// Use price-points endpoint which includes the free tier ($0.00)
+		cmd2 := exec.CommandContext(ctx, ascPath, "pricing", "price-points", "--app", appID, "--territory", priceInfo.Territory, "--output", "json")
 		cmd2.Env = append(os.Environ(), "ASC_BYPASS_KEYCHAIN=1")
 		out2, err := cmd2.CombinedOutput()
 		if err != nil {
 			priceCh <- priceResult{}
 			return
 		}
-		type tierItem struct {
-			Tier          int    `json:"tier"`
-			PricePointID  string `json:"pricePointId"`
-			CustomerPrice string `json:"customerPrice"`
-			Proceeds      string `json:"proceeds"`
+		type rawPP struct {
+			ID         string `json:"id"`
+			Attributes struct {
+				CustomerPrice string `json:"customerPrice"`
+				Proceeds      string `json:"proceeds"`
+			} `json:"attributes"`
 		}
-		var tiers []tierItem
-		if json.Unmarshal(out2, &tiers) != nil {
+		var ppEnv struct {
+			Data []rawPP `json:"data"`
+		}
+		if json.Unmarshal(out2, &ppEnv) != nil {
 			priceCh <- priceResult{}
 			return
 		}
-		// Find matching tier by price point ID
-		for _, t := range tiers {
-			if t.PricePointID == env.Data[0].ID {
-				priceCh <- priceResult{price: t.CustomerPrice, proceeds: t.Proceeds, currency: "USD"}
+		// Match by decoding each price point's base64 ID to find matching "p" value
+		for _, pp := range ppEnv.Data {
+			ppDecoded, err := base64Decode(pp.ID)
+			if err != nil {
+				continue
+			}
+			var ppInfo struct {
+				PricePoint string `json:"p"`
+			}
+			if json.Unmarshal(ppDecoded, &ppInfo) == nil && ppInfo.PricePoint == priceInfo.PricePoint {
+				priceCh <- priceResult{price: pp.Attributes.CustomerPrice, proceeds: pp.Attributes.Proceeds, currency: "USD"}
 				return
 			}
-		}
-		// Fallback: first tier is usually the free tier
-		if len(tiers) > 0 {
-			priceCh <- priceResult{price: tiers[0].CustomerPrice, proceeds: tiers[0].Proceeds, currency: "USD"}
-			return
 		}
 		priceCh <- priceResult{}
 	}()
