@@ -106,7 +106,15 @@ export function TestFlightView({
             </thead>
             <tbody>
               {testflightData.groups.map((g) => (
-                <tr key={g.id} className="clickable-row" onClick={() => onSelectGroup(g.id)}>
+                <tr
+                  key={g.id}
+                  className="clickable-row"
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`View testers for ${g.name}`}
+                  onClick={() => onSelectGroup(g.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectGroup(g.id); } }}
+                >
                   <td style={{ fontWeight: 500 }}>{g.name}</td>
                   <td>{g.isInternal ? "Internal" : "External"}</td>
                   <td>{g.testerCount}</td>

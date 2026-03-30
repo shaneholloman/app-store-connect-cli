@@ -31,7 +31,7 @@ export function StatusView({ appStatus }: StatusViewProps) {
                 <div className="status-blockers" style={{ marginBottom: 16 }}>
                   {s.summary!.blockers!.map((b: string, i: number) => (
                     <div key={i} className="blocker-row">
-                      <span className="blocker-icon">!</span>
+                      <span className="blocker-icon" role="img" aria-label="Blocker">!</span>
                       <span>{b}</span>
                     </div>
                   ))}

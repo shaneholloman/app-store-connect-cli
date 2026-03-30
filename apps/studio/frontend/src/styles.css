@@ -389,6 +389,18 @@ textarea {
   color: var(--text-secondary);
 }
 
+.context-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.context-dot.state-ready {
+  background: var(--green);
+}
+
 .context-status {
   display: inline-flex;
   align-items: center;
@@ -397,27 +409,16 @@ textarea {
   font-weight: 500;
 }
 
-.context-status::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-.context-status.state-processing::before {
-  background: var(--orange);
-}
-
 .context-status.state-processing {
   color: var(--orange);
 }
 
-.context-status.state-ready::before {
-  background: var(--green);
-}
-
-.context-status.state-ready {
-  color: var(--green);
+.context-status.state-processing::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--orange);
 }
 
 .toolbar-right {
@@ -1610,4 +1611,94 @@ textarea {
   color: var(--text-primary);
   background: rgba(128, 128, 128, 0.14);
   border-color: rgba(128, 128, 128, 0.2);
+}
+
+/* ── Accessibility ─────────────────────────────── */
+
+.skip-nav {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 0 0 var(--radius-sm) 0;
+  text-decoration: none;
+}
+
+.skip-nav:focus {
+  left: 0;
+}
+
+.sheet-field input:focus,
+.sheet-field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.sheet-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.clickable-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.back-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.scope-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+
+.sidebar-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.app-picker-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.toolbar-btn:focus-visible,
+.settings-save:focus-visible,
+.submit-review-btn:focus-visible,
+.send-btn:focus-visible,
+.provider-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.composer-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

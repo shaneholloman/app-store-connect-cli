@@ -95,6 +95,7 @@ export function AppInfoView({
               <h3 className="section-label" style={{ margin: 0 }}>App Store Metadata</h3>
               <select
                 className="locale-picker"
+                aria-label="Select locale"
                 value={selectedLocale}
                 onChange={(e) => onLocaleChange(e.target.value)}
               >

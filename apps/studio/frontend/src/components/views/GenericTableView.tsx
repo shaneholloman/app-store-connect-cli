@@ -212,6 +212,7 @@ export function GenericTableView({
                     <button
                       type="button"
                       className="table-sort-button"
+                      aria-label={`Sort by platform, currently ${bundleIDsPlatformSort === "asc" ? "ascending" : "descending"}`}
                       onClick={onToggleBundleIDSort}
                     >
                       <span>{fieldLabels[col] ?? col}</span>

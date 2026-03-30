@@ -73,7 +73,7 @@ import App, { insightsWeekStart } from "./App";
 
 async function pickApp(name: string) {
   fireEvent.change(screen.getByLabelText("Search apps"), { target: { value: name } });
-  fireEvent.click(await screen.findByRole("button", { name: new RegExp(name, "i") }));
+  fireEvent.click(await screen.findByRole("option", { name: new RegExp(name, "i") }));
 }
 
 describe("App", () => {
@@ -150,15 +150,15 @@ describe("App", () => {
   it("renders and calls Bootstrap on mount", async () => {
     render(<App />);
 
-    // After bootstrap resolves, should show "Connected" status
-    expect(await screen.findByText("Connected")).toBeInTheDocument();
+    // After bootstrap resolves, should show auth storage badge
+    expect(await screen.findByText("System Keychain")).toBeInTheDocument();
     expect(screen.getByText("System Keychain")).toBeInTheDocument();
   });
 
   it("navigates to settings view", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
     fireEvent.click(screen.getByRole("button", { name: /settings/i }));
 
@@ -169,7 +169,7 @@ describe("App", () => {
   it("sends a chat message and expands the dock", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
     const textarea = screen.getByLabelText("Chat prompt");
     fireEvent.change(textarea, { target: { value: "list builds" } });
@@ -182,7 +182,7 @@ describe("App", () => {
   it("collapses the dock when chevron is clicked", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
     const textarea = screen.getByLabelText("Chat prompt");
     fireEvent.change(textarea, { target: { value: "test" } });
@@ -202,7 +202,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
     await pickApp("Test App");
 
@@ -251,7 +251,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
     await pickApp("First App");
     await pickApp("Second App");
@@ -277,7 +277,7 @@ describe("App", () => {
   it("includes required statuses when loading nominations", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
     await pickApp("Test App");
     await screen.findByText("Test App");
@@ -295,8 +295,8 @@ describe("App", () => {
   it("fetches all bundle IDs with pagination enabled", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
-    fireEvent.click(screen.getByRole("button", { name: "Signing" }));
+    await screen.findByText("System Keychain");
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
 
     await waitFor(() => {
       expect(mockRunASCCommand.mock.calls.map(([cmd]) => cmd)).toContain(
@@ -308,8 +308,8 @@ describe("App", () => {
   it("fetches all certificates and profiles with pagination enabled", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
-    fireEvent.click(screen.getByRole("button", { name: "Signing" }));
+    await screen.findByText("System Keychain");
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
     fireEvent.click(await screen.findByRole("button", { name: "Certificates" }));
     fireEvent.click(await screen.findByRole("button", { name: "Profiles" }));
 
@@ -330,19 +330,19 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
     fireEvent.change(screen.getByLabelText("Search apps"), { target: { value: "music" } });
 
-    expect(screen.getByRole("button", { name: /Music Box/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Test App/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Music Box/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Test App/i })).not.toBeInTheDocument();
   });
 
   it("loads signing sections without requiring an app selection", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
-    fireEvent.click(screen.getByRole("button", { name: "Signing" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
 
     await waitFor(() => {
       expect(mockRunASCCommand.mock.calls.map(([cmd]) => cmd)).toContain(
@@ -363,8 +363,8 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
-    fireEvent.click(screen.getByRole("button", { name: "Signing" }));
+    await screen.findByText("System Keychain");
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
 
     await waitFor(() => {
       expect(
@@ -372,7 +372,7 @@ describe("App", () => {
       ).toHaveLength(1);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "App" }));
+    fireEvent.click(screen.getByRole("tab", { name: "App" }));
     await pickApp("First App");
     await pickApp("Second App");
 
@@ -399,7 +399,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
     await pickApp("Quoted App");
 
     await waitFor(() => {
@@ -428,8 +428,8 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
-    fireEvent.click(screen.getByRole("button", { name: "Signing" }));
+    await screen.findByText("System Keychain");
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
 
     expect(await screen.findByText("com.example.ios")).toBeInTheDocument();
 
@@ -466,8 +466,8 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
-    fireEvent.click(screen.getByRole("button", { name: "Signing" }));
+    await screen.findByText("System Keychain");
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
     await screen.findByText("com.example.alpha");
 
     fireEvent.change(screen.getByLabelText("Bundle IDs search"), { target: { value: "beta" } });
@@ -505,8 +505,8 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
-    fireEvent.click(screen.getByRole("button", { name: "Signing" }));
+    await screen.findByText("System Keychain");
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
     await screen.findByText("com.example.existing");
 
     fireEvent.click(screen.getByRole("button", { name: /New Bundle ID/i }));
@@ -550,8 +550,8 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
-    fireEvent.click(screen.getByRole("button", { name: "Team" }));
+    await screen.findByText("System Keychain");
+    fireEvent.click(screen.getByRole("tab", { name: "Team" }));
     fireEvent.click(await screen.findByRole("button", { name: "Devices" }));
     await screen.findByText("Existing iPhone");
 
@@ -597,7 +597,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
     fireEvent.click(screen.getByRole("button", { name: /settings/i }));
     fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
 
@@ -654,7 +654,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
 
     expect(document.querySelector(".studio-shell")).toHaveAttribute("data-theme", "dark");
   });
@@ -666,7 +666,7 @@ describe("App", () => {
   it("loads offer codes only when the promo codes section is opened", async () => {
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
     await pickApp("Test App");
 
     expect(mockGetOfferCodes).not.toHaveBeenCalled();
@@ -728,7 +728,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
     await pickApp("First App");
     fireEvent.click(await screen.findByRole("button", { name: "Insights" }));
 
@@ -778,12 +778,12 @@ describe("App", () => {
 
     render(<App />);
 
-    await screen.findByText("Connected");
+    await screen.findByText("System Keychain");
     await pickApp("Test App");
     fireEvent.click(await screen.findByRole("button", { name: "Groups" }));
 
     fireEvent.click((await screen.findAllByText("Internal"))[0].closest("tr")!);
-    fireEvent.click(await screen.findByRole("button", { name: "← TestFlight" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Back to TestFlight groups" }));
     fireEvent.click((await screen.findAllByText("External"))[0].closest("tr")!);
 
     expect(await screen.findByText("second@example.com")).toBeInTheDocument();

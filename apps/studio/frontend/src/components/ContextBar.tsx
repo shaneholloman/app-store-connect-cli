@@ -23,11 +23,16 @@ export function ContextBar({
       <div className="context-app">
         {authConfigured ? (
           <>
+            <span
+              className="context-dot state-ready"
+              title="Connected"
+              role="img"
+              aria-label="Connected"
+            />
             <span className="context-badge">{authStatus.storage || "Authenticated"}</span>
             {authStatus.profile && (
               <span className="context-version">{authStatus.profile}</span>
             )}
-            <span className="context-status state-ready">Connected</span>
           </>
         ) : (
           <span className="context-status state-processing">Not authenticated</span>

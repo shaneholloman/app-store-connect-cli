@@ -68,11 +68,13 @@ export function SettingsView({
         <h3 className="section-label">ACP Provider</h3>
         <div className="settings-field">
           <label className="settings-label">Preferred preset</label>
-          <div className="segmented">
+          <div className="segmented" role="radiogroup" aria-label="Preferred preset">
             {["codex", "claude", "custom"].map((preset) => (
               <button
                 key={preset}
                 type="button"
+                role="radio"
+                aria-checked={studioSettings.preferredPreset === preset}
                 className={studioSettings.preferredPreset === preset ? "is-active" : ""}
                 onClick={() => updateSetting("preferredPreset", preset)}
               >

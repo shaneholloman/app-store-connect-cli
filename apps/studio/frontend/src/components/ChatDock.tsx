@@ -37,7 +37,7 @@ export function ChatDock({
 
         <div className="dock-body">
           {messages.length > 0 && (
-            <div className="message-list" aria-label="Chat messages">
+            <div className="message-list" role="log" aria-label="Chat messages" aria-live="polite">
               {messages.map((message) => (
                 <article key={message.id} className={`message-row role-${message.role}`}>
                   <p>{message.content}</p>
@@ -48,7 +48,14 @@ export function ChatDock({
         </div>
 
         <form className="composer" onSubmit={handleSubmit}>
-          <div className="composer-card" onClick={() => !dockExpanded && setDockExpanded(true)}>
+          <div
+            className="composer-card"
+            role={!dockExpanded ? "button" : undefined}
+            tabIndex={!dockExpanded ? 0 : undefined}
+            aria-label={!dockExpanded ? "Expand chat" : undefined}
+            onClick={() => !dockExpanded && setDockExpanded(true)}
+            onKeyDown={(e) => { if (!dockExpanded && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setDockExpanded(true); } }}
+          >
             <textarea
               aria-label="Chat prompt"
               value={draft}

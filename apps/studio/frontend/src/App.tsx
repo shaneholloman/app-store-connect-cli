@@ -1,4 +1,4 @@
-import { FormEvent, startTransition, useEffect, useEffectEvent, useRef, useState } from "react";
+import { FormEvent, startTransition, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import "./styles.css";
 import {
@@ -691,6 +691,43 @@ export default function App() {
       });
   }, [activeSection.id, sectionCache.insights, selectedAppId]);
 
+  // Focus trap for modal dialogs
+  const sheetOpen = showBundleIDSheet || showDeviceSheet;
+  const trapRef = useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const focusables = node.querySelectorAll<HTMLElement>(focusableSelector);
+    if (focusables.length > 0) focusables[0].focus();
+  }, [sheetOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!sheetOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        if (showBundleIDSheet) closeBundleIDSheet();
+        if (showDeviceSheet) closeDeviceSheet();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const panel = document.querySelector<HTMLElement>('.sheet-panel');
+      if (!panel) return;
+      const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+      const focusables = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector));
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sheetOpen, showBundleIDSheet, showDeviceSheet]);
+
   const authConfigured = authStatus.authenticated;
   const insightsWeek = insightsWeekStart(new Date());
   const insightsCache = sectionCache.insights;
@@ -793,7 +830,7 @@ export default function App() {
   function renderContent() {
     if (loading) {
       return (
-        <div className="empty-state">
+        <div className="empty-state" role="status">
           <p className="empty-hint">Loading…</p>
         </div>
       );
@@ -986,6 +1023,7 @@ export default function App() {
       {showBundleIDSheet && (
         <div className="sheet-backdrop" role="presentation" onClick={closeBundleIDSheet}>
           <section
+            ref={trapRef}
             className="sheet-panel"
             role="dialog"
             aria-modal="true"
@@ -1038,7 +1076,7 @@ export default function App() {
                 <code>{bundleIDCreateCommand}</code>
               </div>
 
-              {bundleIDCreateError && <p className="sheet-error">{bundleIDCreateError}</p>}
+              {bundleIDCreateError && <p className="sheet-error" role="alert">{bundleIDCreateError}</p>}
             </div>
 
             <div className="sheet-footer">
@@ -1061,6 +1099,7 @@ export default function App() {
       {showDeviceSheet && (
         <div className="sheet-backdrop" role="presentation" onClick={closeDeviceSheet}>
           <section
+            ref={trapRef}
             className="sheet-panel"
             role="dialog"
             aria-modal="true"
@@ -1113,7 +1152,7 @@ export default function App() {
                 <code>{deviceRegisterCommand}</code>
               </div>
 
-              {deviceCreateError && <p className="sheet-error">{deviceCreateError}</p>}
+              {deviceCreateError && <p className="sheet-error" role="alert">{deviceCreateError}</p>}
             </div>
 
             <div className="sheet-footer">

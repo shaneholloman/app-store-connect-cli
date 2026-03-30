@@ -24,7 +24,7 @@ export function ReviewsView({ reviews }: ReviewsViewProps) {
             {reviews.items.map((r, i) => (
               <div key={i} className="review-card">
                 <div className="review-header">
-                  <span className="review-stars">{"\u2605".repeat(r.rating)}{"\u2606".repeat(5 - r.rating)}</span>
+                  <span className="review-stars" role="img" aria-label={`${r.rating} out of 5 stars`}>{"\u2605".repeat(r.rating)}{"\u2606".repeat(5 - r.rating)}</span>
                   <span className="review-meta">{r.reviewerNickname} &middot; {r.territory} &middot; {fmt(r.createdDate)}</span>
                 </div>
                 {r.title && <p className="review-title">{r.title}</p>}
