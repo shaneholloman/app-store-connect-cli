@@ -154,6 +154,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4d/84/49/4d84498d-802a-03b0-262f-bc80aa2c0f1a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.jpeg/512x512bb.jpg"
   },
   {
+    "app": "Crunch: Compress & Convert",
+    "link": "https://apps.apple.com/us/app/crunch-compress-convert/id6748700457?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9e/88/85/9e888594-e92b-f739-c358-7fd083cae2f6/AppIcon-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Cubby",
     "link": "https://apps.apple.com/app/id6751732388",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/2b/cf/8b/2bcf8b94-8050-926d-bce1-b95266a061d0/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
@@ -341,6 +346,11 @@
     "app": "Habit Tracker - HabitMax",
     "link": "https://apps.apple.com/us/app/habit-tracker-habitmax/id6752316720?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/1c/5a/13/1c5a13a5-02e5-30c8-a359-e49972d11582/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Hands Time - Minimalist Widget",
+    "link": "https://apps.apple.com/us/app/hands-time-minimalist-widget/id6462440720?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ea/cd/e9/eacde9d6-4e33-e631-55fc-05aa961523a5/AppIcon-0-0-1x_U007ephone-0-0-0-1-0-0-85-220.png/512x512bb.jpg"
   },
   {
     "app": "HRM Battery",
@@ -934,6 +944,11 @@
     "app": "TV Show Tracker",
     "link": "https://apps.apple.com/us/app/tv-show-tracker-tv-club/id6497563903",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/43/b8/67/43b86702-f67b-c314-f65b-cd60980205b0/Icon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg"
+  },
+  {
+    "app": "TypeSafe: Verify & Protect",
+    "link": "https://apps.apple.com/us/app/typesafe-verify-protect/id6754827519?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5e/d6/b3/5ed6b308-6268-474d-1009-5ba153d05266/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
   },
   {
     "app": "ulives: Gamify Tasks & Habits",
