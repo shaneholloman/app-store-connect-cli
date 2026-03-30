@@ -1488,11 +1488,13 @@ func TestSubmitCreatePrintsHintsWhenAnotherSubmissionIsStillInProgress(t *testin
 		"Hint: Check the active submission: asc submit status --id active-submission-1",
 		"Hint: Inspect the active submission payload: asc review submissions-get --id active-submission-1",
 		"Hint: Re-run readiness validation: asc validate --app app-1 --version-id version-1",
-		"Hint: Re-run readiness validation: asc validate --app app-1 --version 1.0 --platform IOS",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
+	}
+	if strings.Contains(stderr, "Hint: Re-run readiness validation: asc validate --app app-1 --version 1.0 --platform IOS") {
+		t.Fatalf("did not expect duplicate version-string readiness hint, got %q", stderr)
 	}
 	foundCleanup := false
 	for _, req := range requests {
