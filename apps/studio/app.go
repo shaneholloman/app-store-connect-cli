@@ -720,15 +720,15 @@ func (a *App) GetSubscriptions(appID string) (SubscriptionsResponse, error) {
 	}
 	ctx, cancel := context.WithTimeout(a.contextOrBackground(), 30*time.Second)
 	defer cancel()
-	return a.loadSubscriptions(ctx, ascPath, appID)
+	return a.loadSubscriptions(ctx, ascPath, appID), nil
 }
 
-func (a *App) loadSubscriptions(ctx context.Context, ascPath string, appID string) (SubscriptionsResponse, error) {
+func (a *App) loadSubscriptions(ctx context.Context, ascPath string, appID string) SubscriptionsResponse {
 	// Step 1: get groups
 	cmd := a.newASCCommand(ctx, ascPath, "subscriptions", "groups", "list", "--app", appID, "--output", "json")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return SubscriptionsResponse{Error: strings.TrimSpace(string(out))}, nil
+		return SubscriptionsResponse{Error: strings.TrimSpace(string(out))}
 	}
 	type groupItem struct {
 		ID         string `json:"id"`
@@ -740,7 +740,7 @@ func (a *App) loadSubscriptions(ctx context.Context, ascPath string, appID strin
 		Data []groupItem `json:"data"`
 	}
 	if json.Unmarshal(out, &groupEnv) != nil {
-		return SubscriptionsResponse{Error: "failed to parse groups"}, nil
+		return SubscriptionsResponse{Error: "failed to parse groups"}
 	}
 
 	// Step 2: fetch subscriptions per group concurrently
@@ -797,7 +797,7 @@ func (a *App) loadSubscriptions(ctx context.Context, ascPath string, appID strin
 		r := <-ch
 		all = append(all, r.subs...)
 	}
-	return SubscriptionsResponse{Subscriptions: all}, nil
+	return SubscriptionsResponse{Subscriptions: all}
 }
 
 // GetPricingOverview fetches availability + subscription pricing summary in parallel.
@@ -1129,10 +1129,7 @@ func (a *App) GetOfferCodes(appID string) (OfferCodesResponse, error) {
 	defer cancel()
 
 	// First get subscriptions to know which sub IDs to query
-	subsResp, err := a.loadSubscriptions(ctx, ascPath, appID)
-	if err != nil {
-		return OfferCodesResponse{Error: err.Error()}, nil
-	}
+	subsResp := a.loadSubscriptions(ctx, ascPath, appID)
 	if subsResp.Error != "" {
 		return OfferCodesResponse{Error: subsResp.Error}, nil
 	}
@@ -1276,13 +1273,13 @@ func (a *App) GetAppDetail(appID string) (AppDetail, error) {
 				} `json:"attributes"`
 			} `json:"data"`
 		}
-			if json.Unmarshal(out, &env) != nil {
-				attrsCh <- attrsResult{err: errors.New("failed to parse app view")}
-				return
-			}
-			attrs := env.Data.Attributes
-			attrsCh <- attrsResult{name: attrs.Name, bundleID: attrs.BundleID, sku: attrs.SKU, primaryLocale: attrs.PrimaryLocale}
-		}()
+		if json.Unmarshal(out, &env) != nil {
+			attrsCh <- attrsResult{err: errors.New("failed to parse app view")}
+			return
+		}
+		attrs := env.Data.Attributes
+		attrsCh <- attrsResult{name: attrs.Name, bundleID: attrs.BundleID, sku: attrs.SKU, primaryLocale: attrs.PrimaryLocale}
+	}()
 
 	go func() {
 		cmd := a.newASCCommand(ctx, ascPath, "versions", "list", "--app", appID, "--output", "json")
