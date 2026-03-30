@@ -318,6 +318,55 @@ func TestCloseKillsProcess(t *testing.T) {
 	}
 }
 
+func TestReadLoopCleansPendingOnExit(t *testing.T) {
+	reader, writer := io.Pipe()
+	client := &Client{
+		stdout:  reader,
+		pending: make(map[int64]chan rpcResponse),
+		events:  make(chan Event, 32),
+	}
+
+	// Register a pending call
+	ch := make(chan rpcResponse, 1)
+	client.pending[42] = ch
+
+	done := make(chan struct{})
+	go func() {
+		client.readLoop()
+		close(done)
+	}()
+
+	// Close the writer to simulate process exit (EOF on stdout)
+	_ = writer.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("readLoop() did not finish")
+	}
+
+	// Pending entry should have received an error response
+	select {
+	case resp := <-ch:
+		if resp.Error == nil {
+			t.Fatal("expected error response for orphaned pending call")
+		}
+		if resp.Error.Message != "agent process exited" {
+			t.Fatalf("error message = %q, want 'agent process exited'", resp.Error.Message)
+		}
+	default:
+		t.Fatal("pending channel did not receive a response")
+	}
+
+	// pending map should be empty
+	client.mu.Lock()
+	remaining := len(client.pending)
+	client.mu.Unlock()
+	if remaining != 0 {
+		t.Fatalf("len(client.pending) = %d, want 0", remaining)
+	}
+}
+
 func TestDrainStderrHandlesNilPipe(t *testing.T) {
 	client := &Client{}
 	client.drainStderr()

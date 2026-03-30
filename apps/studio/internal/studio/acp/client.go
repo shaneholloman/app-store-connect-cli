@@ -278,4 +278,18 @@ func (c *Client) readLoop() {
 			responseCh <- response
 		}
 	}
+
+	// Scanner finished (EOF or error): the agent process has exited or the
+	// pipe broke. Send an error response to every pending caller so they
+	// unblock immediately instead of waiting for their context to expire.
+	c.mu.Lock()
+	stale := c.pending
+	c.pending = make(map[int64]chan rpcResponse)
+	c.mu.Unlock()
+
+	for _, ch := range stale {
+		ch <- rpcResponse{
+			Error: &rpcError{Code: -32000, Message: "agent process exited"},
+		}
+	}
 }
