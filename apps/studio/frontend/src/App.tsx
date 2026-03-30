@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, startTransition, useEffect, useEffectEvent, useState } from "react";
 
 import "./styles.css";
 import { ChatMessage, NavSection } from "./types";
@@ -180,6 +180,60 @@ const defaultSettings: StudioSettings = {
   showCommandPreviews: true,
 };
 
+type AuthState = {
+  authenticated: boolean;
+  storage: string;
+  profile: string;
+  rawOutput: string;
+};
+
+const emptyAuthStatus: AuthState = {
+  authenticated: false,
+  storage: "",
+  profile: "",
+  rawOutput: "",
+};
+
+function normalizeEnvSnapshot(snapshot?: Partial<EnvSnapshot>): EnvSnapshot {
+  return {
+    configPath: snapshot?.configPath || "",
+    configPresent: snapshot?.configPresent || false,
+    defaultAppId: snapshot?.defaultAppId || "",
+    keychainAvailable: snapshot?.keychainAvailable || false,
+    keychainBypassed: snapshot?.keychainBypassed || false,
+    workflowPath: snapshot?.workflowPath || "",
+  };
+}
+
+function normalizeStudioSettings(input?: Partial<StudioSettings>): StudioSettings {
+  return {
+    preferredPreset: input?.preferredPreset || "codex",
+    agentCommand: input?.agentCommand || "",
+    agentArgs: input?.agentArgs || [],
+    preferBundledASC: input?.preferBundledASC ?? true,
+    systemASCPath: input?.systemASCPath || "",
+    workspaceRoot: input?.workspaceRoot || "",
+    showCommandPreviews: input?.showCommandPreviews ?? true,
+  };
+}
+
+function normalizeAuthStatus(input?: Partial<AuthState>): AuthState {
+  return {
+    authenticated: input?.authenticated || false,
+    storage: input?.storage || "",
+    profile: input?.profile || "",
+    rawOutput: input?.rawOutput || "",
+  };
+}
+
+function mapAppList(apps?: { id: string; name: string; subtitle: string }[]) {
+  return (apps ?? []).map((app) => ({
+    id: app.id,
+    name: app.name,
+    subtitle: app.subtitle,
+  }));
+}
+
 export default function App() {
   const [activeSection, setActiveSection] = useState<NavSection>(allSections[0]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -191,9 +245,7 @@ export default function App() {
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [bootstrapError, setBootstrapError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [authStatus, setAuthStatus] = useState<{ authenticated: boolean; storage: string; profile: string; rawOutput: string }>({
-    authenticated: false, storage: "", profile: "", rawOutput: "",
-  });
+  const [authStatus, setAuthStatus] = useState<AuthState>(emptyAuthStatus);
   const [appList, setAppList] = useState<{ id: string; name: string; subtitle: string }[]>([]);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [appDetail, setAppDetail] = useState<{
@@ -227,54 +279,60 @@ export default function App() {
   const [selectedSub, setSelectedSub] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([Bootstrap(), CheckAuthStatus()])
-      .then(([data, auth]) => {
-        if (data.environment) {
-          setEnv({
-            configPath: data.environment.configPath || "",
-            configPresent: data.environment.configPresent || false,
-            defaultAppId: data.environment.defaultAppId || "",
-            keychainAvailable: data.environment.keychainAvailable || false,
-            keychainBypassed: data.environment.keychainBypassed || false,
-            workflowPath: data.environment.workflowPath || "",
+    let cancelled = false;
+
+    async function bootstrapStudio() {
+      try {
+        const [data, auth] = await Promise.all([Bootstrap(), CheckAuthStatus()]);
+        if (cancelled) return;
+
+        startTransition(() => {
+          setEnv(normalizeEnvSnapshot(data.environment));
+          setStudioSettings(normalizeStudioSettings(data.settings));
+          setAuthStatus(normalizeAuthStatus(auth));
+          setBootstrapError("");
+        });
+
+        if (!auth?.authenticated) {
+          if (cancelled) return;
+          startTransition(() => {
+            setAppList([]);
+            setAppsLoading(false);
           });
+          return;
         }
-        if (data.settings) {
-          setStudioSettings({
-            preferredPreset: data.settings.preferredPreset || "codex",
-            agentCommand: data.settings.agentCommand || "",
-            agentArgs: data.settings.agentArgs || [],
-            preferBundledASC: data.settings.preferBundledASC ?? true,
-            systemASCPath: data.settings.systemASCPath || "",
-            workspaceRoot: data.settings.workspaceRoot || "",
-            showCommandPreviews: data.settings.showCommandPreviews ?? true,
+
+        setAppsLoading(true);
+        try {
+          const res = await ListApps();
+          if (cancelled) return;
+          startTransition(() => {
+            setAppList(mapAppList(res.apps));
           });
-        }
-        if (auth) {
-          setAuthStatus({
-            authenticated: auth.authenticated || false,
-            storage: auth.storage || "",
-            profile: auth.profile || "",
-            rawOutput: auth.rawOutput || "",
+        } catch {
+          if (cancelled) return;
+          startTransition(() => {
+            setAppList([]);
           });
-          if (auth.authenticated) {
-            setAppsLoading(true);
-            ListApps()
-              .then((res) => {
-                if (res.apps) setAppList(res.apps.map((a: { id: string; name: string; subtitle: string }) => ({
-                  id: a.id, name: a.name, subtitle: a.subtitle,
-                })));
-              })
-              .catch(() => {})
-              .finally(() => setAppsLoading(false));
+        } finally {
+          if (!cancelled) {
+            setAppsLoading(false);
           }
         }
-        setLoading(false);
-      })
-      .catch((err) => {
+      } catch (err) {
+        if (cancelled) return;
         setBootstrapError(String(err));
-        setLoading(false);
-      });
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void bootstrapStudio();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function updateSetting<K extends keyof StudioSettings>(key: K, value: StudioSettings[K]) {
@@ -387,13 +445,17 @@ export default function App() {
   }
 
   function handleSelectApp(id: string) {
-    setSelectedAppId(id);
-    setAppDetail(null);
-    setAllLocalizations([]);
-    setSelectedLocale("");
-    setScreenshotSets([]);
-    setSectionCache({});
-    setDetailLoading(true);
+    startTransition(() => {
+      setSelectedAppId(id);
+      setAppDetail(null);
+      setAllLocalizations([]);
+      setSelectedLocale("");
+      setScreenshotSets([]);
+      setSectionCache({});
+      setSelectedGroup(null);
+      setSelectedSub(null);
+      setDetailLoading(true);
+    });
     // Fire all section prefetches in parallel
     prefetchSections(id);
     GetAppDetail(id)
@@ -466,14 +528,45 @@ export default function App() {
     setDockExpanded(true);
   }
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useEffectEvent(() => {
     if (selectedAppId) {
       handleSelectApp(selectedAppId);
     } else {
-      // Reload app list
-      window.location.reload();
+      setLoading(true);
+      setBootstrapError("");
+      startTransition(() => {
+        setAppList([]);
+      });
+      void Promise.all([Bootstrap(), CheckAuthStatus()])
+        .then(([data, auth]) => {
+          startTransition(() => {
+            setEnv(normalizeEnvSnapshot(data.environment));
+            setStudioSettings(normalizeStudioSettings(data.settings));
+            setAuthStatus(normalizeAuthStatus(auth));
+          });
+          if (!auth?.authenticated) {
+            startTransition(() => {
+              setAppsLoading(false);
+            });
+            return;
+          }
+          setAppsLoading(true);
+          return ListApps()
+            .then((res) => {
+              startTransition(() => {
+                setAppList(mapAppList(res.apps));
+              });
+            })
+            .finally(() => setAppsLoading(false));
+        })
+        .catch((err) => {
+          setBootstrapError(String(err));
+        })
+        .finally(() => {
+          setLoading(false);
+        });
     }
-  }, [selectedAppId]);
+  });
 
   // Cmd+R to refresh
   useEffect(() => {
@@ -485,7 +578,7 @@ export default function App() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleRefresh]);
+  }, []);
 
   const authConfigured = authStatus.authenticated;
 

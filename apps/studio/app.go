@@ -53,13 +53,13 @@ type agentClient interface {
 type BootstrapData struct {
 	AppName      string                    `json:"appName"`
 	Tagline      string                    `json:"tagline"`
-	GeneratedAt  time.Time                 `json:"generatedAt"`
+	GeneratedAt  string                    `json:"generatedAt"`
 	Sections     []WorkspaceSection        `json:"sections"`
 	Settings     settings.StudioSettings   `json:"settings"`
 	Presets      []settings.ProviderPreset `json:"presets"`
 	Environment  environment.Snapshot      `json:"environment"`
-	Threads      []threads.Thread          `json:"threads"`
-	Approvals    []approvals.Action        `json:"approvals"`
+	Threads      []StudioThread            `json:"threads"`
+	Approvals    []StudioApproval          `json:"approvals"`
 	WindowFlavor string                    `json:"windowFlavor"`
 }
 
@@ -75,7 +75,7 @@ type PromptRequest struct {
 }
 
 type PromptResponse struct {
-	Thread threads.Thread `json:"thread"`
+	Thread StudioThread `json:"thread"`
 }
 
 type ApprovalRequest struct {
@@ -89,6 +89,35 @@ type ApprovalRequest struct {
 type ResolutionResponse struct {
 	ascbin.Resolution
 	AvailablePresets []settings.ProviderPreset `json:"availablePresets"`
+}
+
+type StudioMessage struct {
+	ID        string       `json:"id"`
+	Role      threads.Role `json:"role"`
+	Kind      threads.Kind `json:"kind"`
+	Content   string       `json:"content"`
+	CreatedAt string       `json:"createdAt"`
+}
+
+type StudioThread struct {
+	ID        string          `json:"id"`
+	Title     string          `json:"title"`
+	SessionID string          `json:"sessionId,omitempty"`
+	CreatedAt string          `json:"createdAt"`
+	UpdatedAt string          `json:"updatedAt"`
+	Messages  []StudioMessage `json:"messages"`
+}
+
+type StudioApproval struct {
+	ID              string           `json:"id"`
+	ThreadID        string           `json:"threadId"`
+	Title           string           `json:"title"`
+	Summary         string           `json:"summary"`
+	CommandPreview  []string         `json:"commandPreview"`
+	MutationSurface string           `json:"mutationSurface"`
+	Status          approvals.Status `json:"status"`
+	CreatedAt       string           `json:"createdAt"`
+	ResolvedAt      string           `json:"resolvedAt,omitempty"`
 }
 
 type AuthStatus struct {
@@ -296,13 +325,13 @@ func (a *App) Bootstrap() (BootstrapData, error) {
 	return BootstrapData{
 		AppName:      "ASC Studio",
 		Tagline:      "The glassy desktop workspace for App Store Connect, powered by asc.",
-		GeneratedAt:  time.Now().UTC(),
+		GeneratedAt:  formatTimestamp(time.Now().UTC()),
 		Sections:     defaultSections(),
 		Settings:     cfg,
 		Presets:      settings.DefaultPresets(),
 		Environment:  snapshot,
-		Threads:      existingThreads,
-		Approvals:    a.approvals.Pending(),
+		Threads:      toStudioThreads(existingThreads),
+		Approvals:    toStudioApprovals(a.approvals.Pending()),
 		WindowFlavor: "translucent",
 	}, nil
 }
@@ -500,8 +529,10 @@ func (a *App) GetTestFlight(appID string) (TestFlightResponse, error) {
 	countCh := make(chan countResult, len(groupEnv.Data))
 	for i, g := range groupEnv.Data {
 		go func(idx int, groupID string) {
+			// Workaround for CLI bug #1292: use relationship URL via --next
+			relationshipURL := fmt.Sprintf("https://api.appstoreconnect.apple.com/v1/betaGroups/%s/betaTesters?limit=1", groupID)
 			cmd := a.newASCCommand(ctx, ascPath, "testflight", "testers", "list",
-				"--group", groupID, "--limit", "1", "--output", "json")
+				"--next", relationshipURL, "--output", "json")
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				countCh <- countResult{idx: idx, count: 0}
@@ -555,8 +586,11 @@ func (a *App) GetTestFlightTesters(groupID string) (TestFlightResponse, error) {
 	ctx, cancel := context.WithTimeout(a.contextOrBackground(), 30*time.Second)
 	defer cancel()
 
+	// Workaround for CLI bug #1292: --group filter fails with "Only one relationship filter".
+	// Use --next with the betaTesters relationship URL to fetch testers for a specific group.
+	relationshipURL := fmt.Sprintf("https://api.appstoreconnect.apple.com/v1/betaGroups/%s/betaTesters?limit=200", groupID)
 	cmd := a.newASCCommand(ctx, ascPath, "testflight", "testers", "list",
-		"--group", groupID, "--limit", "200", "--output", "json")
+		"--next", relationshipURL, "--output", "json")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return TestFlightResponse{Error: strings.TrimSpace(string(out))}, nil
@@ -1322,11 +1356,15 @@ func (a *App) resolveASCPath() (string, error) {
 	return resolution.Path, nil
 }
 
-func (a *App) ListThreads() ([]threads.Thread, error) {
-	return a.threads.LoadAll()
+func (a *App) ListThreads() ([]StudioThread, error) {
+	all, err := a.threads.LoadAll()
+	if err != nil {
+		return nil, err
+	}
+	return toStudioThreads(all), nil
 }
 
-func (a *App) CreateThread(title string) (threads.Thread, error) {
+func (a *App) CreateThread(title string) (StudioThread, error) {
 	if strings.TrimSpace(title) == "" {
 		title = "New Studio Thread"
 	}
@@ -1339,9 +1377,9 @@ func (a *App) CreateThread(title string) (threads.Thread, error) {
 		UpdatedAt: now,
 	}
 	if err := a.threads.SaveThread(thread); err != nil {
-		return threads.Thread{}, err
+		return StudioThread{}, err
 	}
-	return thread, nil
+	return toStudioThread(thread), nil
 }
 
 func (a *App) ResolveASC() (ResolutionResponse, error) {
@@ -1367,12 +1405,12 @@ func (a *App) ResolveASC() (ResolutionResponse, error) {
 	}, nil
 }
 
-func (a *App) QueueMutation(req ApprovalRequest) (approvals.Action, error) {
+func (a *App) QueueMutation(req ApprovalRequest) (StudioApproval, error) {
 	if strings.TrimSpace(req.ThreadID) == "" {
-		return approvals.Action{}, errors.New("thread ID is required")
+		return StudioApproval{}, errors.New("thread ID is required")
 	}
 	if strings.TrimSpace(req.Title) == "" {
-		return approvals.Action{}, errors.New("title is required")
+		return StudioApproval{}, errors.New("title is required")
 	}
 
 	action := approvals.Action{
@@ -1385,19 +1423,27 @@ func (a *App) QueueMutation(req ApprovalRequest) (approvals.Action, error) {
 		Status:          approvals.StatusPending,
 		CreatedAt:       time.Now().UTC(),
 	}
-	return a.approvals.Enqueue(action), nil
+	return toStudioApproval(a.approvals.Enqueue(action)), nil
 }
 
-func (a *App) ListApprovals() []approvals.Action {
-	return a.approvals.Pending()
+func (a *App) ListApprovals() []StudioApproval {
+	return toStudioApprovals(a.approvals.Pending())
 }
 
-func (a *App) ApproveAction(id string) (approvals.Action, error) {
-	return a.approvals.Approve(id)
+func (a *App) ApproveAction(id string) (StudioApproval, error) {
+	action, err := a.approvals.Approve(id)
+	if err != nil {
+		return StudioApproval{}, err
+	}
+	return toStudioApproval(action), nil
 }
 
-func (a *App) RejectAction(id string) (approvals.Action, error) {
-	return a.approvals.Reject(id)
+func (a *App) RejectAction(id string) (StudioApproval, error) {
+	action, err := a.approvals.Reject(id)
+	if err != nil {
+		return StudioApproval{}, err
+	}
+	return toStudioApproval(action), nil
 }
 
 func (a *App) SendPrompt(req PromptRequest) (PromptResponse, error) {
@@ -1459,7 +1505,7 @@ func (a *App) SendPrompt(req PromptRequest) (PromptResponse, error) {
 		return PromptResponse{}, err
 	}
 
-	return PromptResponse{Thread: thread}, nil
+	return PromptResponse{Thread: toStudioThread(thread)}, nil
 }
 
 func (a *App) ensureThread(id string) (threads.Thread, error) {
@@ -1518,6 +1564,65 @@ func defaultSections() []WorkspaceSection {
 		{ID: "submission", Label: "Submission", Description: "Preview validation and guarded mutation flows before publish."},
 		{ID: "assets", Label: "Assets", Description: "Track screenshots and localization surfaces for app store readiness."},
 		{ID: "threads", Label: "Threads", Description: "Keep ACP threads, approvals, and release history together."},
+	}
+}
+
+func formatTimestamp(ts time.Time) string {
+	if ts.IsZero() {
+		return ""
+	}
+	return ts.UTC().Format(time.RFC3339)
+}
+
+func toStudioThreads(items []threads.Thread) []StudioThread {
+	out := make([]StudioThread, 0, len(items))
+	for _, item := range items {
+		out = append(out, toStudioThread(item))
+	}
+	return out
+}
+
+func toStudioThread(item threads.Thread) StudioThread {
+	messages := make([]StudioMessage, 0, len(item.Messages))
+	for _, message := range item.Messages {
+		messages = append(messages, StudioMessage{
+			ID:        message.ID,
+			Role:      message.Role,
+			Kind:      message.Kind,
+			Content:   message.Content,
+			CreatedAt: formatTimestamp(message.CreatedAt),
+		})
+	}
+
+	return StudioThread{
+		ID:        item.ID,
+		Title:     item.Title,
+		SessionID: item.SessionID,
+		CreatedAt: formatTimestamp(item.CreatedAt),
+		UpdatedAt: formatTimestamp(item.UpdatedAt),
+		Messages:  messages,
+	}
+}
+
+func toStudioApprovals(items []approvals.Action) []StudioApproval {
+	out := make([]StudioApproval, 0, len(items))
+	for _, item := range items {
+		out = append(out, toStudioApproval(item))
+	}
+	return out
+}
+
+func toStudioApproval(item approvals.Action) StudioApproval {
+	return StudioApproval{
+		ID:              item.ID,
+		ThreadID:        item.ThreadID,
+		Title:           item.Title,
+		Summary:         item.Summary,
+		CommandPreview:  item.CommandPreview,
+		MutationSurface: item.MutationSurface,
+		Status:          item.Status,
+		CreatedAt:       formatTimestamp(item.CreatedAt),
+		ResolvedAt:      formatTimestamp(item.ResolvedAt),
 	}
 }
 
