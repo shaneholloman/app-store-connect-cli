@@ -49,37 +49,37 @@
 
 .studio-shell[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #111317;
+  --bg: #262624;
   --surface: rgba(255, 255, 255, 0);
-  --surface-secondary: rgba(255, 255, 255, 0.06);
-  --separator: rgba(255, 255, 255, 0.1);
+  --surface-secondary: rgba(255, 255, 255, 0.05);
+  --separator: rgba(255, 255, 255, 0.08);
   --text-primary: #f5f5f7;
-  --text-secondary: #9da3af;
-  --text-tertiary: #6f7682;
+  --text-secondary: #a1a1a6;
+  --text-tertiary: #6e6e73;
   --accent: #0a84ff;
-  --accent-bg: rgba(10, 132, 255, 0.18);
+  --accent-bg: rgba(10, 132, 255, 0.15);
   --green: #30d158;
   --orange: #ff9f0a;
   --red: #ff453a;
   --gray: #8e8e93;
   --focus-ring: rgba(10, 132, 255, 0.22);
-  --surface-hover: rgba(255, 255, 255, 0.06);
-  --surface-hover-strong: rgba(255, 255, 255, 0.1);
-  --context-bar-bg: rgba(255, 255, 255, 0.04);
-  --badge-bg: rgba(255, 255, 255, 0.08);
-  --sidebar-bg: rgb(28, 30, 36);
-  --main-bg: rgb(22, 24, 30);
-  --picker-bg: rgba(255, 255, 255, 0.06);
-  --dock-bg: rgb(32, 34, 40);
-  --dock-border: rgba(255, 255, 255, 0.14);
-  --dock-highlight: rgba(255, 255, 255, 0.1);
-  --dock-header-bg: rgba(255, 255, 255, 0.04);
-  --composer-meta-hover: rgba(255, 255, 255, 0.08);
-  --code-bg: rgba(255, 255, 255, 0.08);
-  --table-row-hover: rgba(255, 255, 255, 0.04);
-  --panel-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
-  --review-card-bg: rgba(255, 255, 255, 0.03);
-  --blocker-bg: rgba(255, 69, 58, 0.12);
+  --surface-hover: rgba(255, 255, 255, 0.05);
+  --surface-hover-strong: rgba(255, 255, 255, 0.08);
+  --context-bar-bg: rgba(255, 255, 255, 0.03);
+  --badge-bg: rgba(255, 255, 255, 0.07);
+  --sidebar-bg: #1e1e1c;
+  --main-bg: #262624;
+  --picker-bg: rgba(255, 255, 255, 0.05);
+  --dock-bg: #2c2c2a;
+  --dock-border: rgba(255, 255, 255, 0.1);
+  --dock-highlight: rgba(255, 255, 255, 0.08);
+  --dock-header-bg: rgba(255, 255, 255, 0.03);
+  --composer-meta-hover: rgba(255, 255, 255, 0.06);
+  --code-bg: rgba(255, 255, 255, 0.06);
+  --table-row-hover: rgba(255, 255, 255, 0.03);
+  --panel-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  --review-card-bg: rgba(255, 255, 255, 0.02);
+  --blocker-bg: rgba(255, 69, 58, 0.1);
 }
 
 * {
