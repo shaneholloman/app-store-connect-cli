@@ -33,6 +33,8 @@ export function RejectAction(arg1:string):Promise<approvals.Action>;
 
 export function ResolveASC():Promise<main.ResolutionResponse>;
 
+export function RunASCCommand(arg1:string):Promise<main.ASCCommandResponse>;
+
 export function SaveSettings(arg1:settings.StudioSettings):Promise<settings.StudioSettings>;
 
 export function SendPrompt(arg1:main.PromptRequest):Promise<main.PromptResponse>;

@@ -120,6 +120,11 @@ type AppDetail struct {
 	Error         string       `json:"error,omitempty"`
 }
 
+type ASCCommandResponse struct {
+	Data  string `json:"data"`
+	Error string `json:"error,omitempty"`
+}
+
 type AppLocalization struct {
 	LocalizationID  string `json:"localizationId"`
 	Locale          string `json:"locale"`
@@ -368,6 +373,31 @@ func (a *App) fetchSubtitle(ctx context.Context, ascPath, appID string) string {
 		return ""
 	}
 	return envelope.Data[0].Attributes.Subtitle
+}
+
+// RunASCCommand runs an arbitrary asc CLI command and returns the raw JSON output.
+// args is a space-separated command string, e.g. "reviews list --app 123 --limit 10 --output json".
+func (a *App) RunASCCommand(args string) (ASCCommandResponse, error) {
+	if strings.TrimSpace(args) == "" {
+		return ASCCommandResponse{Error: "args required"}, nil
+	}
+
+	ascPath, err := a.resolveASCPath()
+	if err != nil {
+		return ASCCommandResponse{Error: "Could not find asc binary: " + err.Error()}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(a.contextOrBackground(), 30*time.Second)
+	defer cancel()
+
+	parts := strings.Fields(args)
+	cmd := exec.CommandContext(ctx, ascPath, parts...)
+	cmd.Env = append(os.Environ(), "ASC_BYPASS_KEYCHAIN=1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return ASCCommandResponse{Error: strings.TrimSpace(string(out))}, nil
+	}
+	return ASCCommandResponse{Data: string(out)}, nil
 }
 
 func (a *App) GetAppDetail(appID string) (AppDetail, error) {

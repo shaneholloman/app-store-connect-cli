@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import "./styles.css";
 import { ChatMessage, NavSection } from "./types";
-import { Bootstrap, CheckAuthStatus, GetAppDetail, GetScreenshots, GetSettings, GetVersionMetadata, ListApps, SaveSettings } from "../wailsjs/go/main/App";
+import { Bootstrap, CheckAuthStatus, GetAppDetail, GetScreenshots, GetSettings, GetVersionMetadata, ListApps, RunASCCommand, SaveSettings } from "../wailsjs/go/main/App";
 import { environment, settings as settingsNS } from "../wailsjs/go/models";
 
 type SidebarGroup = { label: string; items: NavSection[] };
@@ -53,6 +53,37 @@ const sidebarGroups: SidebarGroup[] = [
 // Flatten for lookup
 const allSections: NavSection[] = sidebarGroups.flatMap((g) => g.items);
 allSections.push({ id: "settings", label: "Settings", description: "Studio preferences" });
+
+// Map section IDs to asc CLI commands. APP_ID is replaced at runtime.
+const sectionCommands: Record<string, string> = {
+  "app-review": "review submissions-list --app APP_ID --output json",
+  "history": "versions list --app APP_ID --output json",
+  "app-privacy": "age-rating view --app APP_ID --output json",
+  "app-accessibility": "accessibility list --app APP_ID --output json",
+  "ratings-reviews": "reviews list --app APP_ID --limit 20 --output json",
+  "in-app-events": "app-events list --app APP_ID --output json",
+  "custom-product-pages": "product-pages custom-pages list --app APP_ID --output json",
+  "ppo": "product-pages experiments list --app APP_ID --output json",
+  "promo-codes": "offercodes list --app APP_ID --output json",
+  "game-center": "game-center achievements list --app APP_ID --output json",
+  "pricing": "pricing schedule view --app APP_ID --output json",
+  "iap": "iap list --app APP_ID --output json",
+  "subscriptions": "subscriptions list --app APP_ID --output json",
+  "nominations": "nominations list --output json",
+};
+
+// Human-readable field labels for known attribute keys
+const fieldLabels: Record<string, string> = {
+  name: "Name", productId: "Product ID", inAppPurchaseType: "Type", state: "State",
+  rating: "Rating", title: "Title", body: "Review", reviewerNickname: "Reviewer",
+  createdDate: "Date", territory: "Territory", platform: "Platform",
+  versionString: "Version", appVersionState: "State", appStoreState: "Store State",
+  referenceName: "Reference Name", vendorId: "Vendor ID", points: "Points",
+  status: "Status", description: "Description", badge: "Badge",
+  advertisingIdDeclaration: "Ad ID Declaration", advertising: "Advertising",
+  gambling: "Gambling", lootBox: "Loot Box",
+  subscriptionGroupId: "Group ID", groupLevel: "Group Level",
+};
 
 type EnvSnapshot = {
   configPath: string;
@@ -126,6 +157,8 @@ export default function App() {
   }[]>([]);
   const [screenshotsLoading, setScreenshotsLoading] = useState(false);
   const [appsLoading, setAppsLoading] = useState(false);
+  // Cache of section data keyed by section ID. Prefetched in parallel on app select.
+  const [sectionCache, setSectionCache] = useState<Record<string, { loading: boolean; error?: string; items: Record<string, unknown>[] }>>({});
 
   useEffect(() => {
     Promise.all([Bootstrap(), CheckAuthStatus()])
@@ -201,13 +234,53 @@ export default function App() {
       .catch((err) => console.error("save settings:", err));
   }
 
+  // Prefetch all section data in parallel for an app
+  function prefetchSections(appId: string) {
+    const initial: Record<string, { loading: boolean; error?: string; items: Record<string, unknown>[] }> = {};
+    for (const sectionId of Object.keys(sectionCommands)) {
+      initial[sectionId] = { loading: true, items: [] };
+    }
+    setSectionCache(initial);
+
+    for (const [sectionId, cmdTemplate] of Object.entries(sectionCommands)) {
+      const cmd = cmdTemplate.replace(/APP_ID/g, appId);
+      RunASCCommand(cmd)
+        .then((res) => {
+          if (res.error) {
+            setSectionCache((prev) => ({ ...prev, [sectionId]: { loading: false, error: res.error, items: [] } }));
+            return;
+          }
+          try {
+            const parsed = JSON.parse(res.data);
+            const items: Record<string, unknown>[] = [];
+            if (Array.isArray(parsed?.data)) {
+              for (const item of parsed.data) {
+                items.push({ id: item.id, type: item.type, ...item.attributes });
+              }
+            } else if (parsed?.data?.attributes) {
+              items.push({ id: parsed.data.id, type: parsed.data.type, ...parsed.data.attributes });
+            }
+            setSectionCache((prev) => ({ ...prev, [sectionId]: { loading: false, items } }));
+          } catch {
+            setSectionCache((prev) => ({ ...prev, [sectionId]: { loading: false, error: "Failed to parse response", items: [] } }));
+          }
+        })
+        .catch((e) => {
+          setSectionCache((prev) => ({ ...prev, [sectionId]: { loading: false, error: String(e), items: [] } }));
+        });
+    }
+  }
+
   function handleSelectApp(id: string) {
     setSelectedAppId(id);
     setAppDetail(null);
     setAllLocalizations([]);
     setSelectedLocale("");
     setScreenshotSets([]);
+    setSectionCache({});
     setDetailLoading(true);
+    // Fire all section prefetches in parallel
+    prefetchSections(id);
     GetAppDetail(id)
       .then((d) => {
         const detail = {
@@ -284,9 +357,7 @@ export default function App() {
     <div className="studio-shell">
       {/* Sidebar */}
       <aside className="sidebar">
-        <div className="sidebar-header">
-          <span className="sidebar-title">ASC Studio</span>
-        </div>
+        <div className="sidebar-header" />
 
         {/* App picker dropdown */}
         <div className="sidebar-app-picker">
@@ -679,7 +750,63 @@ export default function App() {
               );
             })() : null}
           </div>
-        ) : (
+        ) : selectedAppId && sectionCommands[activeSection.id] ? (() => {
+          const cache = sectionCache[activeSection.id];
+          if (!cache || cache.loading) {
+            return (
+              <div className="app-detail-view">
+                <div className="app-detail-section">
+                  <h3 className="section-label">{activeSection.label}</h3>
+                  <p className="empty-hint">Loading…</p>
+                </div>
+              </div>
+            );
+          }
+          if (cache.error) {
+            return (
+              <div className="app-detail-view">
+                <div className="app-detail-section">
+                  <h3 className="section-label">{activeSection.label}</h3>
+                  <p className="empty-hint">{cache.error}</p>
+                </div>
+              </div>
+            );
+          }
+          if (cache.items.length === 0) {
+            return (
+              <div className="app-detail-view">
+                <div className="app-detail-section">
+                  <h3 className="section-label">{activeSection.label}</h3>
+                  <p className="empty-hint">No data found.</p>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div className="app-detail-view">
+              <div className="app-detail-section">
+                <h3 className="section-label">{activeSection.label}</h3>
+                <div className="section-data-list">
+                  {cache.items.map((item, idx) => {
+                    const attrs = Object.entries(item).filter(
+                      ([k, v]) => k !== "id" && k !== "type" && v !== null && v !== undefined && v !== ""
+                    );
+                    return (
+                      <div key={item.id as string ?? idx} className="section-data-card">
+                        {attrs.map(([key, val]) => (
+                          <div key={key} className="env-row">
+                            <span className="env-key">{fieldLabels[key] ?? key}</span>
+                            <span className="env-value">{typeof val === "object" ? JSON.stringify(val) : String(val)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })() : (
           <div className="empty-state">
             <p className="empty-title">
               {!selectedAppId && activeSection.id !== "settings" ? "Select an App" : activeSection.label}
@@ -687,7 +814,7 @@ export default function App() {
             <p className="empty-hint">
               {!selectedAppId && activeSection.id !== "settings"
                 ? "Use the dropdown in the sidebar to pick an app."
-                : "This workspace section is not wired to live data yet."}
+                : ""}
             </p>
           </div>
         )}

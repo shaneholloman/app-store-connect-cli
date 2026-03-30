@@ -1340,3 +1340,26 @@ textarea {
 .screenshot-thumb.landscape {
   height: 140px;
 }
+
+/* ── Section data cards ──────────────────────────── */
+
+.section-data-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-data-card {
+  padding: 10px 12px;
+  border: 1px solid var(--separator);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.section-data-card .env-row {
+  padding: 3px 0;
+}
+
+.section-data-card .env-key {
+  min-width: 140px;
+}

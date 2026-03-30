@@ -58,6 +58,10 @@ export function ResolveASC() {
   return window['go']['main']['App']['ResolveASC']();
 }
 
+export function RunASCCommand(arg1) {
+  return window['go']['main']['App']['RunASCCommand'](arg1);
+}
+
 export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
