@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -232,5 +233,126 @@ func TestSetMedicalDeviceDeclarationPrefersExactContentIDRequirements(t *testing
 	}
 	if got.Status != "COLLECTED" {
 		t.Fatalf("expected collected status, got %q", got.Status)
+	}
+}
+
+func TestNormalizeMedicalDeviceRegion(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "empty",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "whitespace only",
+			input: "   ",
+			want:  "",
+		},
+		{
+			name:  "eu normalizes to eea",
+			input: " eu ",
+			want:  "EEA",
+		},
+		{
+			name:  "already uppercase",
+			input: "USA",
+			want:  "USA",
+		},
+		{
+			name:  "lowercase value uppercased",
+			input: "gbr",
+			want:  "GBR",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeMedicalDeviceRegion(tc.input)
+			if got != tc.want {
+				t.Fatalf("normalizeMedicalDeviceRegion(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMedicalDeviceRegionsFromConstraintsCollectsUniqueNormalizedSortedRegions(t *testing.T) {
+	constraints := map[string]complianceConstraint{
+		"ignored": {
+			AttributeName: "somethingElse",
+			Options: []complianceConstraintOption{
+				{Value: "IGNORED"},
+			},
+		},
+		"regions": {
+			AttributeName: " countriesOrRegions ",
+			Options: []complianceConstraintOption{
+				{Value: "usa"},
+				{Value: " EU "},
+				{ListValues: []string{"GBR", "usa", "EEA", " "}},
+			},
+		},
+	}
+
+	got, err := medicalDeviceRegionsFromConstraints(constraints)
+	if err != nil {
+		t.Fatalf("medicalDeviceRegionsFromConstraints() error = %v", err)
+	}
+
+	want := []string{"EEA", "GBR", "USA"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("medicalDeviceRegionsFromConstraints() = %v, want %v", got, want)
+	}
+}
+
+func TestMedicalDeviceRegionsFromConstraintsErrorsForMissingMetadata(t *testing.T) {
+	tests := []struct {
+		name        string
+		constraints map[string]complianceConstraint
+		wantErr     string
+	}{
+		{
+			name:        "empty constraints",
+			constraints: nil,
+			wantErr:     "medical device form constraints are missing",
+		},
+		{
+			name: "no countriesOrRegions attribute",
+			constraints: map[string]complianceConstraint{
+				"other": {
+					AttributeName: "somethingElse",
+					Options:       []complianceConstraintOption{{Value: "USA"}},
+				},
+			},
+			wantErr: "medical device countries/regions are missing from form metadata",
+		},
+		{
+			name: "no region values",
+			constraints: map[string]complianceConstraint{
+				"regions": {
+					AttributeName: "countriesOrRegions",
+					Options: []complianceConstraintOption{
+						{Value: "   "},
+						{ListValues: []string{"", " "}},
+					},
+				},
+			},
+			wantErr: "medical device countries/regions are missing from form metadata",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := medicalDeviceRegionsFromConstraints(tc.constraints)
+			if err == nil {
+				t.Fatalf("expected error, got regions %v", got)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
+			}
+		})
 	}
 }
