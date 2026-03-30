@@ -320,6 +320,16 @@ func TestMedicalDeviceRegionsFromConstraintsErrorsForMissingMetadata(t *testing.
 			wantErr:     "medical device form constraints are missing",
 		},
 		{
+			name: "no countriesOrRegions attribute",
+			constraints: map[string]complianceConstraint{
+				"other": {
+					AttributeName: "somethingElse",
+					Options:       []complianceConstraintOption{{Value: "USA"}},
+				},
+			},
+			wantErr: "medical device countries/regions are missing from form metadata",
+		},
+		{
 			name: "no region values",
 			constraints: map[string]complianceConstraint{
 				"regions": {
