@@ -31,13 +31,12 @@ func (a *App) CheckAuthStatus() (AuthStatus, error) {
 		return status, nil
 	}
 
-	// Exit 0 means credentials exist. Try to parse JSON output.
-	status.Authenticated = true
-
 	var jsonStatus struct {
-		StorageBackend  string `json:"storageBackend"`
-		StorageLocation string `json:"storageLocation"`
-		Credentials     []struct {
+		StorageBackend                 string `json:"storageBackend"`
+		StorageLocation                string `json:"storageLocation"`
+		Profile                        string `json:"profile"`
+		EnvironmentCredentialsComplete bool   `json:"environmentCredentialsComplete"`
+		Credentials                    []struct {
 			Name      string `json:"name"`
 			KeyID     string `json:"keyId"`
 			IsDefault bool   `json:"isDefault"`
@@ -45,6 +44,8 @@ func (a *App) CheckAuthStatus() (AuthStatus, error) {
 	}
 	if json.Unmarshal([]byte(output), &jsonStatus) == nil {
 		status.Storage = jsonStatus.StorageBackend
+		status.Profile = jsonStatus.Profile
+		status.Authenticated = len(jsonStatus.Credentials) > 0 || jsonStatus.EnvironmentCredentialsComplete
 		for _, cred := range jsonStatus.Credentials {
 			if cred.IsDefault {
 				status.Profile = cred.Name
@@ -54,8 +55,12 @@ func (a *App) CheckAuthStatus() (AuthStatus, error) {
 		if status.Profile == "" && len(jsonStatus.Credentials) > 0 {
 			status.Profile = jsonStatus.Credentials[0].Name
 		}
+		return status, nil
 	}
 
+	// Older asc builds may still emit non-JSON output for auth status; preserve
+	// the prior success-path behavior in that fallback case.
+	status.Authenticated = true
 	return status, nil
 }
 

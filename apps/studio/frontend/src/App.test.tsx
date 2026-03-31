@@ -70,6 +70,9 @@ vi.mock("../wailsjs/go/models", () => ({
 }));
 
 import App, { insightsWeekStart } from "./App";
+import { appScopedSectionIDs, sectionCommands } from "./constants";
+import { appSectionPrefetchConcurrency } from "./hooks/appSelection/concurrency";
+import { commandForApp } from "./utils";
 
 async function pickApp(name: string) {
   fireEvent.change(screen.getByLabelText("Search apps"), { target: { value: name } });
@@ -437,6 +440,58 @@ describe("App", () => {
       expect(commands).toContain("status --app '1 2' --output json");
       expect(commands).toContain("reviews list --app '1 2' --limit 25 --output json");
     });
+  });
+
+  it("limits app-scoped section prefetch concurrency", async () => {
+    const trackedCommands = new Set(
+      appScopedSectionIDs.map((sectionId) => commandForApp(sectionCommands[sectionId], "1")),
+    );
+    const pendingResolvers: Array<() => void> = [];
+    let activePrefetches = 0;
+    let maxActivePrefetches = 0;
+    let seenPrefetches = 0;
+
+    mockRunASCCommand.mockImplementation((cmd: string) => {
+      if (!trackedCommands.has(cmd)) {
+        return Promise.resolve({ error: "", data: "{\"data\":[]}" });
+      }
+
+      seenPrefetches += 1;
+      activePrefetches += 1;
+      maxActivePrefetches = Math.max(maxActivePrefetches, activePrefetches);
+
+      return new Promise((resolve) => {
+        pendingResolvers.push(() => {
+          activePrefetches -= 1;
+          resolve({ error: "", data: "{\"data\":[]}" });
+        });
+      });
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+
+    await waitFor(() => {
+      expect(seenPrefetches).toBe(appSectionPrefetchConcurrency);
+    });
+    expect(activePrefetches).toBe(appSectionPrefetchConcurrency);
+    expect(maxActivePrefetches).toBe(appSectionPrefetchConcurrency);
+
+    const batches = Math.ceil(appScopedSectionIDs.length / appSectionPrefetchConcurrency);
+    for (let i = 0; i < batches; i += 1) {
+      const batch = pendingResolvers.splice(0);
+      expect(batch.length).toBeGreaterThan(0);
+      batch.forEach((resolve) => resolve());
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    await waitFor(() => {
+      expect(seenPrefetches).toBe(appScopedSectionIDs.length);
+    });
+    expect(maxActivePrefetches).toBeLessThanOrEqual(appSectionPrefetchConcurrency);
   });
 
   it("sorts bundle IDs by platform from the header control", async () => {

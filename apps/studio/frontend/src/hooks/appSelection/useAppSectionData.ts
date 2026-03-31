@@ -21,6 +21,7 @@ import {
   RunASCCommand,
 } from "../../../wailsjs/go/main/App";
 import { parseCommandItems } from "./commandItems";
+import { appSectionPrefetchConcurrency, runWithConcurrency } from "./concurrency";
 
 function emptyPricingOverview(): PricingOverviewState {
   return {
@@ -188,40 +189,44 @@ export function useAppSectionData(appSelectionRequestRef: MutableRefObject<numbe
 
     setOfferCodes(emptyOfferCodes());
 
-    for (const [sectionId, cmdTemplate] of Object.entries(sectionCommands)) {
-      if (!sectionRequiresApp(sectionId)) continue;
-      const cmd = commandForApp(cmdTemplate, appId);
-
-      RunASCCommand(cmd)
-        .then((res) => {
+    const sectionPrefetchTasks = Object.entries(sectionCommands)
+      .filter(([sectionId]) => sectionRequiresApp(sectionId))
+      .map(([sectionId, cmdTemplate]) => {
+        const cmd = commandForApp(cmdTemplate, appId);
+        return async () => {
           if (isStale()) return;
-          if (res.error) {
-            setSectionCache((prev) => ({
-              ...prev,
-              [sectionId]: { loading: false, error: res.error, items: [] },
-            }));
-            return;
-          }
           try {
+            const res = await RunASCCommand(cmd);
+            if (isStale()) return;
+            if (res.error) {
+              setSectionCache((prev) => ({
+                ...prev,
+                [sectionId]: { loading: false, error: res.error, items: [] },
+              }));
+              return;
+            }
+            try {
+              setSectionCache((prev) => ({
+                ...prev,
+                [sectionId]: { loading: false, items: parseCommandItems(res.data) },
+              }));
+            } catch {
+              setSectionCache((prev) => ({
+                ...prev,
+                [sectionId]: { loading: false, error: "Failed to parse response", items: [] },
+              }));
+            }
+          } catch (error) {
+            if (isStale()) return;
             setSectionCache((prev) => ({
               ...prev,
-              [sectionId]: { loading: false, items: parseCommandItems(res.data) },
-            }));
-          } catch {
-            setSectionCache((prev) => ({
-              ...prev,
-              [sectionId]: { loading: false, error: "Failed to parse response", items: [] },
+              [sectionId]: { loading: false, error: String(error), items: [] },
             }));
           }
-        })
-        .catch((error) => {
-          if (isStale()) return;
-          setSectionCache((prev) => ({
-            ...prev,
-            [sectionId]: { loading: false, error: String(error), items: [] },
-          }));
-        });
-    }
+        };
+      });
+
+    void runWithConcurrency(sectionPrefetchTasks, appSectionPrefetchConcurrency);
   }
 
   function loadStandaloneSection(sectionId: string, force = false) {
