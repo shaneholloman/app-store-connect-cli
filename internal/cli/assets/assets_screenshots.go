@@ -89,6 +89,68 @@ func focusedScreenshotSizeCatalog() []asc.ScreenshotSizeEntry {
 	return focused
 }
 
+// ExecuteScreenshotSetUpload validates flags/files and runs the shared
+// screenshot upload/sync flow for a localization-backed screenshot set.
+func ExecuteScreenshotSetUpload[T any](ctx context.Context, opts ScreenshotSetUploadOptions[T]) (T, error) {
+	var zero T
+
+	trimmedLocalizationID := strings.TrimSpace(opts.LocalizationID)
+	if trimmedLocalizationID == "" {
+		fmt.Fprintln(os.Stderr, "Error: --localization-id is required")
+		return zero, flag.ErrHelp
+	}
+	trimmedPath := strings.TrimSpace(opts.Path)
+	if trimmedPath == "" {
+		fmt.Fprintln(os.Stderr, "Error: --path is required")
+		return zero, flag.ErrHelp
+	}
+	trimmedDeviceType := strings.TrimSpace(opts.DeviceType)
+	if trimmedDeviceType == "" {
+		fmt.Fprintln(os.Stderr, "Error: --device-type is required")
+		return zero, flag.ErrHelp
+	}
+	if opts.ClientFactory == nil {
+		return zero, fmt.Errorf("client factory is required")
+	}
+	if opts.BuildResult == nil {
+		return zero, fmt.Errorf("build result function is required")
+	}
+
+	displayType, err := normalizeScreenshotDisplayType(trimmedDeviceType)
+	if err != nil {
+		if opts.InvalidDeviceTypeIsUsage {
+			return zero, shared.UsageError(err.Error())
+		}
+		return zero, err
+	}
+	files, err := CollectAssetFiles(trimmedPath)
+	if err != nil {
+		return zero, err
+	}
+	if err := ValidateScreenshotDimensions(files, displayType); err != nil {
+		return zero, err
+	}
+
+	client, err := opts.ClientFactory()
+	if err != nil {
+		return zero, err
+	}
+
+	return uploadScreenshotsWithConfig(ctx, screenshotUploadConfig[T]{
+		Client:         client,
+		LocalizationID: trimmedLocalizationID,
+		DisplayType:    displayType,
+		Files:          files,
+		Replace:        opts.Replace,
+		RequestContext: opts.RequestContext,
+		UploadContext:  opts.UploadContext,
+		Access:         opts.Access,
+		BuildResult: func(localizationID string, set asc.Resource[asc.AppScreenshotSetAttributes], _ bool, results []asc.AssetUploadResultItem) T {
+			return opts.BuildResult(localizationID, set, results)
+		},
+	})
+}
+
 // AssetsScreenshotsListCommand returns the screenshots list subcommand.
 func AssetsScreenshotsListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
