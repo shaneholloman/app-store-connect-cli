@@ -477,7 +477,7 @@ Examples:
 			timeoutOverride := *timeout > 0
 			var buildResp *asc.BuildResponse
 			uploaded := false
-			var mode asc.PublishMode
+			mode := asc.PublishModeIPAUpload
 			var localBuildResult *publishLocalBuildExecutionResult
 
 			if localBuildMode {
@@ -509,7 +509,6 @@ Examples:
 				versionValue = uploadResult.Version
 				buildNumberValue = uploadResult.BuildNumber
 				uploaded = true
-				mode = asc.PublishModeIPAUpload
 			}
 
 			if *wait {
