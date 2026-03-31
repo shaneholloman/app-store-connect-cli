@@ -605,13 +605,71 @@ USAGE
             original_hidden_alias,
         )
         check_website_commands.hidden_deprecated_alias_replacement = (
-            lambda _binary_path, _example: "asc release run"
+            lambda _binary_path, _example, _root_flags: "asc release run"
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             website = Path(tmpdir)
             (website / "index.mdx").write_text(
                 "```bash\nasc submit create --app 123456789 --version 1.2.0 --build 42 --confirm\n```\n"
+            )
+            errors = check_website_commands.collect_errors(
+                website,
+                index,
+                Path(tmpdir) / "asc-doc-check",
+            )
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("deprecated alias", errors[0])
+        self.assertIn("asc release run", errors[0])
+
+    def test_token_command_path_skips_root_flags_before_command_lookup(self) -> None:
+        path = check_website_commands.token_command_path(
+            (
+                "asc",
+                "--api-debug",
+                "--profile",
+                "ci",
+                "submit",
+                "create",
+                "--app",
+                "123456789",
+            ),
+            {"--api-debug": True, "--profile": False},
+        )
+        self.assertEqual(path, ("submit", "create"))
+
+    def test_website_command_checks_reject_hidden_deprecated_inline_alias_examples(self) -> None:
+        index = {
+            (): check_website_commands.CommandSpec(
+                path=(),
+                usage="asc <subcommand> [flags]",
+                flags={},
+                subcommands={"submit"},
+            ),
+            ("submit",): check_website_commands.CommandSpec(
+                path=("submit",),
+                usage="asc submit <subcommand> [flags]",
+                flags={},
+                subcommands={"preflight", "status", "cancel"},
+            ),
+        }
+
+        original_hidden_alias = check_website_commands.hidden_deprecated_alias_replacement
+        self.addCleanup(
+            setattr,
+            check_website_commands,
+            "hidden_deprecated_alias_replacement",
+            original_hidden_alias,
+        )
+        check_website_commands.hidden_deprecated_alias_replacement = (
+            lambda _binary_path, _example, _root_flags: "asc release run"
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            website = Path(tmpdir)
+            (website / "index.mdx").write_text(
+                "Run `asc submit create --app 123456789 --version 1.2.0 --build 42 --confirm` to submit.\n"
             )
             errors = check_website_commands.collect_errors(
                 website,

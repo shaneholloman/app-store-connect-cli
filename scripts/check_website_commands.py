@@ -400,15 +400,31 @@ def path_help(binary_path: Path, path: tuple[str, ...]) -> str:
     return proc.stderr or proc.stdout
 
 
-def hidden_deprecated_alias_replacement(binary_path: Path, example: Example) -> str | None:
-    return deprecation_replacement(path_help(binary_path, token_command_path(example.tokens)))
+def hidden_deprecated_alias_replacement(
+    binary_path: Path,
+    example: Example,
+    root_flags: dict[str, bool],
+) -> str | None:
+    return deprecation_replacement(path_help(binary_path, token_command_path(example.tokens, root_flags)))
 
 
-def token_command_path(tokens: tuple[str, ...]) -> tuple[str, ...]:
+def token_command_path(tokens: tuple[str, ...], root_flags: dict[str, bool]) -> tuple[str, ...]:
     path: list[str] = []
+    pending_root_flag: str | None = None
+    collecting = False
     for token in tokens[1:]:
+        if pending_root_flag is not None:
+            pending_root_flag = None
+            continue
         if token == "--help" or token.startswith("--"):
-            break
+            if collecting:
+                break
+            flag = token.split("=", 1)[0]
+            if flag not in root_flags:
+                break
+            pending_root_flag = flag if "=" not in token and not root_flags[flag] else None
+            continue
+        collecting = True
         path.append(token)
     return tuple(path)
 
@@ -451,7 +467,10 @@ def validate_example(
                 return errors
             pending_root_flag = flag if "=" not in token and not root.flags[flag] else None
             continue
-        if binary_path is not None and hidden_deprecated_alias_replacement(binary_path, example) is not None:
+        if (
+            binary_path is not None
+            and hidden_deprecated_alias_replacement(binary_path, example, root.flags) is not None
+        ):
             return errors
         errors.append(
             f"{example.path.relative_to(example.path.parents[1])}:{example.line_number}: "
@@ -486,7 +505,10 @@ def validate_example(
         i += 1
 
     if i < len(tokens) and current.subcommands and not tokens[i].startswith("--"):
-        if binary_path is not None and hidden_deprecated_alias_replacement(binary_path, example) is not None:
+        if (
+            binary_path is not None
+            and hidden_deprecated_alias_replacement(binary_path, example, root.flags) is not None
+        ):
             return errors
         errors.append(
             f"{example.path.relative_to(example.path.parents[1])}:{example.line_number}: "
@@ -592,8 +614,9 @@ def tokens_are_root_only_invocation(
 def validate_not_deprecated(
     example: Example,
     binary_path: Path,
+    root_flags: dict[str, bool],
 ) -> list[str]:
-    replacement = hidden_deprecated_alias_replacement(binary_path, example)
+    replacement = hidden_deprecated_alias_replacement(binary_path, example, root_flags)
     if replacement is None:
         return []
     return [
@@ -618,9 +641,7 @@ def collect_errors(
         errors.extend(example_errors)
         if example_errors or binary_path is None:
             continue
-        if example.source != "fenced":
-            continue
-        errors.extend(validate_not_deprecated(example, binary_path))
+        errors.extend(validate_not_deprecated(example, binary_path, index[()].flags))
     return errors
 
 
