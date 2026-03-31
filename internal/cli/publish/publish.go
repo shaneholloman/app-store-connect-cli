@@ -665,10 +665,6 @@ func contextWithPublishUploadTimeout(ctx context.Context, timeout time.Duration,
 	return shared.ContextWithUploadTimeout(ctx)
 }
 
-func validateIPAPath(ipaPath string) (os.FileInfo, error) {
-	return shared.ValidateIPAPath(ipaPath)
-}
-
 func wrapPublishTestFlightAddGroupsError(err error) error {
 	var partialErr *asc.BuildBetaGroupsPartialError
 	if errors.As(err, &partialErr) {

@@ -1,4 +1,4 @@
-package shared
+package xcode
 
 import (
 	"context"
@@ -7,28 +7,25 @@ import (
 	"time"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
 const buildUploadLookupLimit = 200
 
-// WaitForRecentBuildUploadID polls build uploads until an upload matching the
-// export window is associated with the requested version/build/platform tuple.
-func WaitForRecentBuildUploadID(ctx context.Context, client *asc.Client, appID, version, buildNumber, platform string, exportStartedAt, exportCompletedAt time.Time, pollInterval time.Duration) (string, error) {
+func waitForBuildUploadID(ctx context.Context, client *asc.Client, appID, version, buildNumber, platform string, exportStartedAt, exportCompletedAt time.Time, pollInterval time.Duration) (string, error) {
 	if client == nil {
 		return "", fmt.Errorf("client is required")
 	}
 	if pollInterval <= 0 {
-		pollInterval = PublishDefaultPollInterval
+		pollInterval = shared.PublishDefaultPollInterval
 	}
 
 	return asc.PollUntil(ctx, pollInterval, func(ctx context.Context) (string, bool, error) {
-		return FindRecentBuildUploadID(ctx, client, appID, version, buildNumber, platform, exportStartedAt, exportCompletedAt)
+		return findRecentBuildUploadID(ctx, client, appID, version, buildNumber, platform, exportStartedAt, exportCompletedAt)
 	})
 }
 
-// FindRecentBuildUploadID scans build uploads for the upload associated with
-// the current export window.
-func FindRecentBuildUploadID(ctx context.Context, client *asc.Client, appID, version, buildNumber, platform string, exportStartedAt, exportCompletedAt time.Time) (string, bool, error) {
+func findRecentBuildUploadID(ctx context.Context, client *asc.Client, appID, version, buildNumber, platform string, exportStartedAt, exportCompletedAt time.Time) (string, bool, error) {
 	if !exportStartedAt.IsZero() && !exportCompletedAt.IsZero() && exportCompletedAt.Before(exportStartedAt) {
 		exportCompletedAt = exportStartedAt
 	}

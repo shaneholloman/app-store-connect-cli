@@ -379,15 +379,6 @@ Examples:
 	}
 }
 
-func waitForBuildUploadID(ctx context.Context, client *asc.Client, appID, version, buildNumber, platform string, exportStartedAt, exportCompletedAt time.Time, pollInterval time.Duration) (string, error) {
-	return shared.WaitForRecentBuildUploadID(ctx, client, appID, version, buildNumber, platform, exportStartedAt, exportCompletedAt, pollInterval)
-}
-
-//nolint:unparam // kept as a thin wrapper for package-local tests around the shared helper
-func findRecentBuildUploadID(ctx context.Context, client *asc.Client, appID, version, buildNumber, platform string, exportStartedAt, exportCompletedAt time.Time) (string, bool, error) {
-	return shared.FindRecentBuildUploadID(ctx, client, appID, version, buildNumber, platform, exportStartedAt, exportCompletedAt)
-}
-
 func archiveResultRows(result *localxcode.ArchiveResult) [][]string {
 	rows := [][]string{
 		{"archive_path", result.ArchivePath},

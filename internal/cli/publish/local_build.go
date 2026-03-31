@@ -21,7 +21,7 @@ var (
 	runPublishArchiveFn             = localxcode.Archive
 	runPublishExportFn              = localxcode.Export
 	getPublishASCClientFn           = shared.GetASCClient
-	validatePublishIPAPathFn        = validateIPAPath
+	validatePublishIPAPathFn        = shared.ValidateIPAPath
 	resolvePublishNextBuildNumberFn = func(ctx context.Context, client *asc.Client, opts shared.NextBuildNumberOptions) (*asc.BuildsNextBuildNumberResult, error) {
 		return shared.ResolveNextBuildNumber(ctx, client, opts)
 	}
