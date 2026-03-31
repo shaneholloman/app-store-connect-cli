@@ -8040,7 +8040,8 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 	release := make(chan struct{})
 	started := make(chan struct{}, 2)
 	var requests atomic.Int32
-	remainingBudget := make(chan time.Duration, 1)
+	derivedDeadlineCh := make(chan time.Time, 1)
+	parentDeadlineCh := make(chan time.Time, 1)
 
 	client := &Client{
 		httpClient: &http.Client{
@@ -8056,7 +8057,7 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 					if !ok {
 						t.Fatal("expected queued mutating request to have a timeout")
 					}
-					remainingBudget <- time.Until(deadline)
+					derivedDeadlineCh <- deadline
 				}
 
 				return jsonResponse(http.StatusCreated, `{"data":{"type":"subscriptionAvailabilities","id":"avail-1","attributes":{"availableInNewTerritories":true}}}`), nil
@@ -8078,6 +8079,12 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 	go func() {
 		requestCtx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 		defer cancel()
+		deadline, ok := requestCtx.Deadline()
+		if !ok {
+			errCh <- fmt.Errorf("expected parent mutating request context to have a deadline")
+			return
+		}
+		parentDeadlineCh <- deadline
 
 		_, err := client.CreateSubscriptionAvailability(requestCtx, "sub-2", []string{"CAN"}, SubscriptionAvailabilityAttributes{})
 		errCh <- err
@@ -8097,8 +8104,14 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 		}
 	}
 
-	if budget := <-remainingBudget; budget < 65*time.Millisecond {
-		t.Fatalf("expected queued request to receive a refreshed timeout budget, got %s remaining", budget)
+	parentDeadline := <-parentDeadlineCh
+	derivedDeadline := <-derivedDeadlineCh
+	if !derivedDeadline.After(parentDeadline) {
+		t.Fatalf(
+			"expected queued request to receive a refreshed timeout deadline after %s, got %s",
+			parentDeadline.Format(time.RFC3339Nano),
+			derivedDeadline.Format(time.RFC3339Nano),
+		)
 	}
 
 	if requests.Load() != 2 {
