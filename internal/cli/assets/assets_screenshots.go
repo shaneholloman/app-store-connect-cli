@@ -822,10 +822,8 @@ func ensureScreenshotSetWithAccess(ctx context.Context, client *asc.Client, loca
 	if err != nil {
 		return asc.Resource[asc.AppScreenshotSetAttributes]{}, err
 	}
-	for _, set := range resp.Data {
-		if strings.EqualFold(set.Attributes.ScreenshotDisplayType, displayType) {
-			return set, nil
-		}
+	if set.ID != "" {
+		return set, nil
 	}
 	created, err := client.CreateAppScreenshotSet(ctx, localizationID, displayType)
 	if err != nil {
