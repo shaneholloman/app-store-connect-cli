@@ -30,6 +30,28 @@ REQUIRED_FLAGS_BY_COMMAND: dict[tuple[str, ...], set[str]] = {
     ("submit", "create"): {"--build", "--confirm"},
 }
 BOOLEAN_FLAG_OVERRIDES = {"--api-debug", "--debug", "--retry-log"}
+HIDDEN_DEPRECATED_ALIAS_FLAGS: dict[tuple[str, ...], dict[str, bool]] = {
+    # DeprecatedUsageFunc intentionally hides FLAGS in help output for
+    # compatibility aliases, but we still need accurate flag validation so docs
+    # examples fail on deprecations instead of bogus unknown-flag errors.
+    ("submit", "create"): {
+        "--app": False,
+        "--build": False,
+        "--confirm": True,
+        "--output": False,
+        "--platform": False,
+        "--pretty": True,
+        "--version": False,
+        "--version-id": False,
+    },
+    ("submit", "preflight"): {
+        "--app": False,
+        "--output": False,
+        "--platform": False,
+        "--pretty": True,
+        "--version": False,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -443,11 +465,14 @@ def hidden_deprecated_alias_spec(
 
     deprecated_help = path_help(binary_path, deprecated_path)
     deprecated_spec = parse_help_text(deprecated_help, is_root=False)
+    flags = dict(deprecated_spec.flags)
+    if not flags:
+        flags = dict(HIDDEN_DEPRECATED_ALIAS_FLAGS.get(deprecated_path, {}))
 
     return CommandSpec(
         path=deprecated_path,
         usage=deprecated_spec.usage,
-        flags=deprecated_spec.flags,
+        flags=flags,
         subcommands=deprecated_spec.subcommands,
     )
 
