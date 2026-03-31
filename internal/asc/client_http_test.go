@@ -4380,6 +4380,65 @@ func TestCreateAppScreenshotSetForCustomProductPageLocalization(t *testing.T) {
 	}
 }
 
+func TestCreateAppScreenshotSetForExperimentTreatmentLocalization(t *testing.T) {
+	response := jsonResponse(http.StatusCreated, `{"data":{"type":"appScreenshotSets","id":"SET_TREATMENT_123","attributes":{"screenshotDisplayType":"APP_IPHONE_65"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/appScreenshotSets" {
+			t.Fatalf("expected path /v1/appScreenshotSets, got %s", req.URL.Path)
+		}
+		assertAuthorized(t, req)
+
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+
+		data, ok := payload["data"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected object data payload, got %T", payload["data"])
+		}
+		relationships, ok := data["relationships"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected relationships payload, got %T", data["relationships"])
+		}
+		treatmentRel, ok := relationships["appStoreVersionExperimentTreatmentLocalization"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected appStoreVersionExperimentTreatmentLocalization relationship, got %+v", relationships)
+		}
+		treatmentData, ok := treatmentRel["data"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected appStoreVersionExperimentTreatmentLocalization.data object, got %T", treatmentRel["data"])
+		}
+		if treatmentData["type"] != "appStoreVersionExperimentTreatmentLocalizations" {
+			t.Fatalf("expected relationship type appStoreVersionExperimentTreatmentLocalizations, got %#v", treatmentData["type"])
+		}
+		if treatmentData["id"] != "TREATMENT_LOC_123" {
+			t.Fatalf("expected relationship id TREATMENT_LOC_123, got %#v", treatmentData["id"])
+		}
+		if _, exists := relationships["appStoreVersionLocalization"]; exists {
+			t.Fatalf("expected appStoreVersionLocalization to be omitted for treatment localization")
+		}
+		if _, exists := relationships["appCustomProductPageLocalization"]; exists {
+			t.Fatalf("expected appCustomProductPageLocalization to be omitted for treatment localization")
+		}
+	}, response)
+
+	result, err := client.CreateAppScreenshotSetForExperimentTreatmentLocalization(context.Background(), "TREATMENT_LOC_123", "APP_IPHONE_65")
+	if err != nil {
+		t.Fatalf("CreateAppScreenshotSetForExperimentTreatmentLocalization() error: %v", err)
+	}
+	if result.Data.ID != "SET_TREATMENT_123" {
+		t.Fatalf("expected set ID SET_TREATMENT_123, got %s", result.Data.ID)
+	}
+}
+
 func TestDeleteAppScreenshotSet(t *testing.T) {
 	response := jsonResponse(http.StatusNoContent, "")
 	client := newTestClient(t, func(req *http.Request) {
