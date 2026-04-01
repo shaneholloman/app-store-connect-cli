@@ -158,6 +158,19 @@ describe("App", () => {
     expect(screen.getByText("ASC Studio")).toBeInTheDocument();
   });
 
+  it("surfaces ListApps backend errors during bootstrap", async () => {
+    mockListApps.mockResolvedValue({
+      error: "auth expired",
+      apps: [],
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Failed to load apps")).toBeInTheDocument();
+    expect(screen.getAllByText("auth expired").length).toBeGreaterThan(0);
+    expect(screen.queryByText("No apps found")).not.toBeInTheDocument();
+  });
+
   it("navigates to settings view", async () => {
     render(<App />);
 
@@ -275,6 +288,28 @@ describe("App", () => {
       expect(screen.getByText("com.example.second")).toBeInTheDocument();
     });
     expect(screen.queryByText("com.example.first")).not.toBeInTheDocument();
+  });
+
+  it("renders an overview error state when app detail loading fails", async () => {
+    mockGetAppDetail.mockResolvedValue({
+      id: "1",
+      name: "",
+      subtitle: "",
+      bundleId: "",
+      sku: "",
+      primaryLocale: "",
+      versions: [],
+      error: "detail failed",
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+
+    expect(await screen.findByText("Overview unavailable")).toBeInTheDocument();
+    expect(screen.getByText("detail failed")).toBeInTheDocument();
+    expect(screen.queryByText("General")).not.toBeInTheDocument();
   });
 
   it("includes required statuses when loading nominations", async () => {

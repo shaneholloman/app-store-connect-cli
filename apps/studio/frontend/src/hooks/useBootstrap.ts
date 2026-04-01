@@ -14,6 +14,7 @@ export function useBootstrap() {
   const [authStatus, setAuthStatus] = useState<AuthState>(emptyAuthStatus as AuthState);
   const [appList, setAppList] = useState<AppListItem[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
+  const [appsError, setAppsError] = useState("");
   const requestRef = useRef(0);
 
   const loadStudioShell = useEffectEvent(async (options?: {
@@ -32,15 +33,15 @@ export function useBootstrap() {
         setStudioSettings(normalizeStudioSettings(data.settings));
         setAuthStatus(normalizeAuthStatus(auth));
         setBootstrapError("");
-        if (options?.clearApps) {
-          setAppList([]);
-        }
+        setAppsError("");
+        if (options?.clearApps) setAppList([]);
       });
 
       if (!auth?.authenticated) {
         if (isStale()) return;
         startTransition(() => {
           setAppList([]);
+          setAppsError("");
           setAppsLoading(false);
         });
         return;
@@ -51,37 +52,37 @@ export function useBootstrap() {
         const res = await ListApps();
         if (isStale()) return;
         startTransition(() => {
+          if (res.error) {
+            setAppList([]);
+            setAppsError(res.error);
+            return;
+          }
           setAppList(mapAppList(res.apps));
+          setAppsError("");
         });
-      } catch {
+      } catch (err) {
         if (isStale()) return;
         startTransition(() => {
           setAppList([]);
+          setAppsError(String(err));
         });
       } finally {
-        if (!isStale()) {
-          setAppsLoading(false);
-        }
+        if (!isStale()) setAppsLoading(false);
       }
     } catch (err) {
       if (isStale()) return;
       setBootstrapError(String(err));
     } finally {
-      if (!isStale()) {
-        setLoading(false);
-      }
+      if (!isStale()) setLoading(false);
     }
   });
 
+  // Sync with external system: Wails backend on app startup.
+  // No user action triggers this — the app just opened.
   useEffect(() => {
-    // Ignore superseded startup loads when refreshes race with the initial mount.
     const requestId = ++requestRef.current;
     void loadStudioShell({ requestId });
-    return () => {
-      if (requestRef.current === requestId) {
-        requestRef.current += 1;
-      }
-    };
+    return () => { if (requestRef.current === requestId) requestRef.current += 1; };
   }, []);
 
   function updateSetting<K extends keyof StudioSettings>(key: K, value: StudioSettings[K]) {
@@ -120,7 +121,7 @@ export function useBootstrap() {
 
   return {
     env, authStatus, studioSettings, settingsSaved, bootstrapError, loading,
-    appList, appsLoading,
+    appList, appsLoading, appsError,
     updateSetting, handleSaveSettings, handleRefresh,
   };
 }

@@ -6,6 +6,7 @@ export namespace environment {
 	    defaultAppId?: string;
 	    keychainAvailable: boolean;
 	    keychainBypassed: boolean;
+	    keychainWarning?: string;
 	    workflowPath: string;
 	
 	    static createFrom(source: any = {}) {
@@ -19,6 +20,7 @@ export namespace environment {
 	        this.defaultAppId = source["defaultAppId"];
 	        this.keychainAvailable = source["keychainAvailable"];
 	        this.keychainBypassed = source["keychainBypassed"];
+	        this.keychainWarning = source["keychainWarning"];
 	        this.workflowPath = source["workflowPath"];
 	    }
 	}
@@ -1067,4 +1069,3 @@ export namespace settings {
 	}
 
 }
-

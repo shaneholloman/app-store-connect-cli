@@ -430,6 +430,71 @@ func TestEnsureSessionSingleFlightsConcurrentCalls(t *testing.T) {
 	}
 }
 
+func TestEnsureSessionRecoversAfterPanicDuringInitialization(t *testing.T) {
+	tmp := t.TempDir()
+	settingsStore := settings.NewStore(tmp)
+	if err := settingsStore.Save(settings.StudioSettings{
+		AgentCommand:     "fake-agent",
+		WorkspaceRoot:    "/tmp/workspace",
+		PreferBundledASC: true,
+	}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	var startCalls atomic.Int32
+	app := &App{
+		rootDir:      tmp,
+		settings:     settingsStore,
+		threads:      threads.NewStore(tmp),
+		approvals:    approvals.NewQueue(),
+		sessions:     make(map[string]*threadSession),
+		sessionInits: make(map[string]chan struct{}),
+		startAgent: func(context.Context, acp.LaunchSpec) (agentClient, error) {
+			if startCalls.Add(1) == 1 {
+				panic("boom")
+			}
+			return &fakeAgentClient{}, nil
+		},
+	}
+
+	thread := threads.Thread{ID: "thread-panic"}
+
+	func() {
+		defer func() {
+			if recovered := recover(); recovered == nil {
+				t.Fatal("ensureSession() did not panic on the first initialization")
+			}
+		}()
+		_, _ = app.ensureSession(thread)
+	}()
+
+	done := make(chan *threadSession, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		session, err := app.ensureSession(thread)
+		errCh <- err
+		done <- session
+	}()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("ensureSession() error after panic recovery = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ensureSession() deadlocked after panic during initialization")
+	}
+
+	select {
+	case session := <-done:
+		if session == nil {
+			t.Fatal("ensureSession() returned nil session after panic recovery")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for recovered session")
+	}
+}
+
 func TestStartThreadSessionTimesOutBootstrap(t *testing.T) {
 	tmp := t.TempDir()
 	settingsStore := settings.NewStore(tmp)

@@ -61,6 +61,11 @@ export function SettingsView({
             Run <code>asc auth login</code> in your terminal to set up credentials, then relaunch Studio.
           </p>
         )}
+        {env.keychainWarning && (
+          <p className="settings-hint">
+            Keychain access warning: {env.keychainWarning}
+          </p>
+        )}
       </div>
 
       {/* ACP Provider */}

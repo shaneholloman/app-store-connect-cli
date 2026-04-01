@@ -31,6 +31,7 @@ export function normalizeEnvSnapshot(snapshot?: Partial<EnvSnapshot>): EnvSnapsh
     defaultAppId: snapshot?.defaultAppId || "",
     keychainAvailable: snapshot?.keychainAvailable || false,
     keychainBypassed: snapshot?.keychainBypassed || false,
+    keychainWarning: snapshot?.keychainWarning || "",
     workflowPath: snapshot?.workflowPath || "",
   };
 }

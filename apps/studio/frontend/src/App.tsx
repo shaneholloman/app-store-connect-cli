@@ -139,6 +139,22 @@ export default function App() {
         </div>
       );
     }
+    if (activeScope === "app" && !app.selectedAppId && bootstrap.appsError) {
+      return (
+        <div className="empty-state">
+          <p className="empty-title">Failed to load apps</p>
+          <p className="empty-hint">{bootstrap.appsError}</p>
+        </div>
+      );
+    }
+    if (activeSection.id === "overview" && app.appDetail?.error) {
+      return (
+        <div className="empty-state">
+          <p className="empty-title">Overview unavailable</p>
+          <p className="empty-hint">{app.appDetail.error}</p>
+        </div>
+      );
+    }
     if (activeSection.id === "overview" && app.appDetail) {
       return (
         <AppInfoView appDetail={app.appDetail} selectedAppId={app.selectedAppId} metadataLoading={app.metadataLoading}
@@ -194,7 +210,7 @@ export default function App() {
       <Sidebar
         activeScope={activeScope} selectedAppId={app.selectedAppId} appDetail={app.appDetail}
         appList={bootstrap.appList} appSearchTerm={appSearchTerm} activeSection={activeSection}
-        appsLoading={bootstrap.appsLoading} authAuthenticated={bootstrap.authStatus.authenticated}
+        appsLoading={bootstrap.appsLoading} appsError={bootstrap.appsError} authAuthenticated={bootstrap.authStatus.authenticated}
         filteredApps={filteredApps} onAppSearchChange={setAppSearchTerm}
         onSelectApp={app.handleSelectApp} onSetActiveSection={handleSetActiveSection}
       />

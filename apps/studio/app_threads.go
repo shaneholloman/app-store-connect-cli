@@ -188,16 +188,23 @@ func (a *App) ensureSession(thread threads.Thread) (*threadSession, error) {
 		a.sessionInits[thread.ID] = waitCh
 		a.mu.Unlock()
 
-		session, err := a.startThreadSession(thread)
+		session, err := func() (session *threadSession, err error) {
+			defer func() {
+				a.mu.Lock()
+				delete(a.sessionInits, thread.ID)
+				if err == nil && session != nil {
+					a.sessions[thread.ID] = session
+				}
+				close(waitCh)
+				a.mu.Unlock()
 
-		a.mu.Lock()
-		delete(a.sessionInits, thread.ID)
-		if err == nil {
-			a.sessions[thread.ID] = session
-		}
-		close(waitCh)
-		a.mu.Unlock()
+				if recovered := recover(); recovered != nil {
+					panic(recovered)
+				}
+			}()
 
+			return a.startThreadSession(thread)
+		}()
 		if err != nil {
 			return nil, err
 		}

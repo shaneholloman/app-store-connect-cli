@@ -20,6 +20,7 @@ export type EnvSnapshot = {
   defaultAppId: string;
   keychainAvailable: boolean;
   keychainBypassed: boolean;
+  keychainWarning?: string;
   workflowPath: string;
 };
 

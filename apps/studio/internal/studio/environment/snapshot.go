@@ -15,32 +15,37 @@ type Snapshot struct {
 	DefaultAppID      string `json:"defaultAppId,omitempty"`
 	KeychainAvailable bool   `json:"keychainAvailable"`
 	KeychainBypassed  bool   `json:"keychainBypassed"`
+	KeychainWarning   string `json:"keychainWarning,omitempty"`
 	WorkflowPath      string `json:"workflowPath"`
 }
 
 type Service struct{}
+
+var (
+	configPathFunc        = config.Path
+	configLoadFunc        = config.Load
+	keychainAvailableFunc = auth.KeychainAvailable
+	getwdFunc             = os.Getwd
+)
 
 func NewService() *Service {
 	return &Service{}
 }
 
 func (s *Service) Snapshot() (Snapshot, error) {
-	configPath, err := config.Path()
+	configPath, err := configPathFunc()
 	if err != nil {
 		return Snapshot{}, err
 	}
 
-	cfg, cfgErr := config.Load()
-	keychainAvailable, keychainErr := auth.KeychainAvailable()
-	if keychainErr != nil {
-		return Snapshot{}, keychainErr
-	}
+	cfg, cfgErr := configLoadFunc()
+	keychainAvailable, keychainErr := keychainAvailableFunc()
 	if cfgErr != nil && !errors.Is(cfgErr, config.ErrNotFound) {
 		return Snapshot{}, cfgErr
 	}
 
 	workflowPath := ""
-	if cwd, err := os.Getwd(); err == nil {
+	if cwd, err := getwdFunc(); err == nil {
 		workflowPath = filepath.Join(cwd, ".asc", "workflow.json")
 	}
 
@@ -49,10 +54,18 @@ func (s *Service) Snapshot() (Snapshot, error) {
 		ConfigPresent:     cfgErr == nil,
 		KeychainAvailable: keychainAvailable,
 		KeychainBypassed:  auth.ShouldBypassKeychain(),
+		KeychainWarning:   keychainWarningMessage(keychainErr),
 		WorkflowPath:      workflowPath,
 	}
 	if cfg != nil {
 		snapshot.DefaultAppID = cfg.AppID
 	}
 	return snapshot, nil
+}
+
+func keychainWarningMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

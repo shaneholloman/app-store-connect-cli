@@ -9,6 +9,7 @@ type SidebarProps = {
   appSearchTerm: string;
   activeSection: NavSection;
   appsLoading: boolean;
+  appsError: string;
   authAuthenticated: boolean;
   filteredApps: AppListItem[];
   onAppSearchChange: (term: string) => void;
@@ -24,6 +25,7 @@ export function Sidebar({
   appSearchTerm,
   activeSection,
   appsLoading,
+  appsError,
   authAuthenticated,
   filteredApps,
   onAppSearchChange,
@@ -71,7 +73,7 @@ export function Sidebar({
           </>
         ) : (
           <div className="app-picker-placeholder" role="status">
-            {authAuthenticated ? "No apps found" : "Not authenticated"}
+            {authAuthenticated ? (appsError || "No apps found") : "Not authenticated"}
           </div>
         )}
       </div>}

@@ -295,6 +295,7 @@ export const emptyEnv = {
   defaultAppId: "",
   keychainAvailable: false,
   keychainBypassed: false,
+  keychainWarning: "",
   workflowPath: "",
 } as const;
 
