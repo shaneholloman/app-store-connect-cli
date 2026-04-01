@@ -558,7 +558,7 @@ func buildSuggestedCommands(signals migrationSignals, resolver MigrationSuggesti
 	hasAppStoreSignal := containsAction(signals.detectedActions, "upload_to_app_store") || containsAction(signals.detectedActions, "precheck")
 	needsAppID := hasMetadataSignal || hasBuildSignal || hasTestflightSignal || hasAppStoreSignal
 	needsVersionString := hasAppStoreSignal
-	needsVersionID := hasMetadataSignal || (hasAppStoreSignal && !hasMetadataSignal)
+	needsVersionID := hasMetadataSignal || hasAppStoreSignal
 	needsBuildID := hasAppStoreSignal
 	values := resolveMigrationCommandValues(signals, resolver, needsAppID, needsVersionString, needsVersionID, needsBuildID)
 	values = fallbackMigrationCommandValues(values)
