@@ -11,10 +11,11 @@ LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DA
 GO := go
 GOMOD := go.mod
 GOBIN := $(shell $(GO) env GOPATH)/bin
+GO_TOOLCHAIN_VERSION := $(shell $(GO) env GOVERSION)
 GOLANGCI_LINT_TIMEOUT ?= 5m
 INSTALL_PREFIX ?= /usr/local/bin
 GOFUMPT_VERSION ?= v0.9.2
-GOLANGCI_LINT_VERSION ?= v1.64.8
+GOLANGCI_LINT_VERSION ?= v2.11.4
 
 # Directories
 SRC_DIR := .
@@ -86,7 +87,7 @@ lint:
 		golangci-lint run --timeout=$(GOLANGCI_LINT_TIMEOUT) ./...; \
 	else \
 		echo "$(YELLOW)golangci-lint not found; falling back to 'go vet ./...'.$(NC)"; \
-		echo "$(YELLOW)Install with: make tools (or: $(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)$(NC)"; \
+		echo "$(YELLOW)Install with: make tools (or: GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)$(NC)"; \
 		$(GO) vet ./...; \
 	fi
 
@@ -128,7 +129,7 @@ format-check:
 tools:
 	@echo "$(BLUE)Installing dev tools...$(NC)"
 	$(GO) install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
-	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	@echo "$(GREEN)✓ Tools installed$(NC)"
 	@echo "$(YELLOW)Make sure '$(GOBIN)' is on your PATH$(NC)"
 
@@ -146,6 +147,31 @@ deps:
 	@echo "$(BLUE)Installing dependencies...$(NC)"
 	$(GO) mod download
 	$(GO) mod tidy
+
+.PHONY: studio-frontend-install
+studio-frontend-install:
+	@echo "$(BLUE)Installing ASC Studio frontend dependencies...$(NC)"
+	cd apps/studio/frontend && npm install
+
+.PHONY: studio-frontend-test
+studio-frontend-test:
+	@echo "$(BLUE)Running ASC Studio frontend tests...$(NC)"
+	cd apps/studio/frontend && npm run test -- --run
+
+.PHONY: studio-frontend-build
+studio-frontend-build:
+	@echo "$(BLUE)Building ASC Studio frontend assets...$(NC)"
+	cd apps/studio/frontend && npm run build
+
+.PHONY: studio-test
+studio-test:
+	@echo "$(BLUE)Running ASC Studio Go tests...$(NC)"
+	$(GO) test ./apps/studio/...
+
+.PHONY: studio-build
+studio-build:
+	@echo "$(BLUE)Building ASC Studio bootstrap binary...$(NC)"
+	$(GO) build ./apps/studio
 
 # Update dependencies
 .PHONY: update-deps
@@ -258,6 +284,11 @@ help:
 	@echo "  tools          Install dev tools"
 	@echo "  install-hooks  Install local git hooks"
 	@echo "  deps           Install dependencies"
+	@echo "  studio-frontend-install  Install ASC Studio frontend dependencies"
+	@echo "  studio-frontend-test  Run ASC Studio frontend tests"
+	@echo "  studio-frontend-build  Build ASC Studio frontend assets"
+	@echo "  studio-test    Run ASC Studio Go tests"
+	@echo "  studio-build   Build ASC Studio bootstrap binary"
 	@echo "  update-deps    Update dependencies"
 	@echo "  update-openapi Update OpenAPI paths index"
 	@echo "  generate-command-docs Generate docs/COMMANDS.md from live CLI help"
