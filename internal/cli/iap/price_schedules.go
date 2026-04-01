@@ -101,9 +101,6 @@ Examples:
 				return fmt.Errorf("iap pricing schedules get: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			opts := make([]asc.IAPPriceScheduleOption, 0, 6)
 			if len(includeValues) > 0 {
 				opts = append(opts, asc.WithIAPPriceScheduleInclude(includeValues))
@@ -125,6 +122,9 @@ Examples:
 			}
 
 			if scheduleValue != "" {
+				requestCtx, cancel := shared.ContextWithTimeout(ctx)
+				defer cancel()
+
 				resp, err := client.GetInAppPurchasePriceScheduleByID(requestCtx, scheduleValue, opts...)
 				if err != nil {
 					return fmt.Errorf("iap pricing schedules get: failed to fetch: %w", err)
@@ -133,10 +133,13 @@ Examples:
 				return shared.PrintOutput(resp, *output.Output, *output.Pretty)
 			}
 
-			iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.GetInAppPurchasePriceSchedule(requestCtx, iapValue, opts...)
 			if err != nil {
@@ -303,13 +306,13 @@ Examples:
 				return fmt.Errorf("iap pricing schedules create: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			var priceEntries []asc.InAppPurchasePriceSchedulePrice
 

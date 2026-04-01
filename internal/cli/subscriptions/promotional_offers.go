@@ -83,15 +83,15 @@ Examples:
 				return fmt.Errorf("subscriptions promotional-offers list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+				id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.SubscriptionPromotionalOffersOption{
 				asc.WithSubscriptionPromotionalOffersLimit(*limit),
@@ -238,13 +238,13 @@ Examples:
 				return fmt.Errorf("subscriptions promotional-offers create: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+			id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			attrs := asc.SubscriptionPromotionalOfferCreateAttributes{
 				Duration:        duration,

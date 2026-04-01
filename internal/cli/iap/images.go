@@ -85,15 +85,15 @@ Examples:
 				return fmt.Errorf("iap images list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+				iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.IAPImagesOption{
 				asc.WithIAPImagesLimit(*limit),
@@ -216,13 +216,13 @@ Examples:
 				return fmt.Errorf("iap images create: %w", err)
 			}
 
-			requestCtx, cancel := contextWithAssetUploadTimeout(ctx)
-			defer cancel()
-
-			iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := contextWithAssetUploadTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.CreateInAppPurchaseImage(requestCtx, iapValue, info.Name(), info.Size())
 			if err != nil {

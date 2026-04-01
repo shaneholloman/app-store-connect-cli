@@ -82,9 +82,7 @@ Examples:
 				return shared.PrintOutput(resp, *output.Output, *output.Pretty)
 			}
 
-			resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
-			iapValue, err = resolveIAPLookupID(resolveCtx, client, *appID, iapValue)
-			resolveCancel()
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}

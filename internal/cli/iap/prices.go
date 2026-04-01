@@ -102,16 +102,18 @@ Examples:
 				return fmt.Errorf("iap prices: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			var iaps []asc.Resource[asc.InAppPurchaseV2Attributes]
 			if requestedIAPID != "" {
-				requestedIAPID, err = resolveIAPLookupID(requestCtx, client, requestedAppID, requestedIAPID)
+				requestedIAPID, err = resolveIAPLookupIDWithTimeout(ctx, client, requestedAppID, requestedIAPID)
 				if err != nil {
 					return err
 				}
+			}
 
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
+
+			if requestedIAPID != "" {
 				resp, err := client.GetInAppPurchaseV2(requestCtx, requestedIAPID)
 				if err != nil {
 					return fmt.Errorf("iap prices: failed to fetch IAP: %w", err)

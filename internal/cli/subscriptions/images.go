@@ -82,15 +82,15 @@ Examples:
 				return fmt.Errorf("subscriptions images list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+				id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.SubscriptionImagesOption{
 				asc.WithSubscriptionImagesLimit(*limit),
@@ -209,13 +209,13 @@ Examples:
 				return fmt.Errorf("subscriptions images create: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithUploadTimeout(ctx)
-			defer cancel()
-
-			id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+			id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithUploadTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.CreateSubscriptionImage(requestCtx, id, info.Name(), info.Size())
 			if err != nil {

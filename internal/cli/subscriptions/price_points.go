@@ -116,15 +116,15 @@ Examples:
 				return fmt.Errorf("subscriptions price-points list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+				id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.SubscriptionPricePointsOption{
 				asc.WithSubscriptionPricePointsTerritory(*territory),

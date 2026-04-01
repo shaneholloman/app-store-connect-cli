@@ -97,15 +97,15 @@ Examples:
 				return fmt.Errorf("iap price-points list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+				iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.IAPPricePointsOption{
 				asc.WithIAPPricePointsLimit(*limit),

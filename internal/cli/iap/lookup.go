@@ -21,3 +21,10 @@ func resolveIAPLookupID(ctx context.Context, client *asc.Client, appValue, selec
 	}
 	return shared.ResolveIAPID(ctx, client, resolvedAppID, selector)
 }
+
+func resolveIAPLookupIDWithTimeout(ctx context.Context, client *asc.Client, appValue, selector string) (string, error) {
+	lookupCtx, cancel := shared.ContextWithTimeout(ctx)
+	defer cancel()
+
+	return resolveIAPLookupID(lookupCtx, client, appValue, selector)
+}

@@ -477,15 +477,15 @@ Examples:
 				return fmt.Errorf("iap localizations list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				resolvedID, err = resolveIAPLookupID(requestCtx, client, *appID, resolvedID)
+				resolvedID, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, resolvedID)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.IAPLocalizationsOption{
 				asc.WithIAPLocalizationsLimit(*limit),

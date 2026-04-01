@@ -46,13 +46,13 @@ Examples:
 				return fmt.Errorf("subscriptions submit: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+			id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.CreateSubscriptionSubmission(requestCtx, id)
 			if err != nil {

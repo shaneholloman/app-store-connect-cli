@@ -236,6 +236,52 @@ func TestIAPContentGetFallsBackToNumericIDAfterLookupTimeout(t *testing.T) {
 	}
 }
 
+func TestIAPLocalizationsListFallsBackToNumericIDAfterLookupTimeout(t *testing.T) {
+	setupStableSelectorAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_TIMEOUT", "10ms")
+	t.Setenv("ASC_TIMEOUT_SECONDS", "")
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+
+	requests := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		switch req.URL.Path {
+		case "/v1/apps/app-123/inAppPurchasesV2":
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		case "/v2/inAppPurchases/2024/inAppPurchaseLocalizations":
+			if err := req.Context().Err(); err != nil {
+				t.Fatalf("expected fresh localizations context after lookup timeout, got %v", err)
+			}
+			return selectorJSONResponse(`{"data":[]}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	stdout, stderr, runErr := runRootCommand(t, []string{
+		"iap", "localizations", "list",
+		"--app", "app-123",
+		"--iap-id", "2024",
+	})
+	if runErr != nil {
+		t.Fatalf("expected nil error, got %v", runErr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if requests != 2 {
+		t.Fatalf("expected lookup timeout followed by localizations fetch, got %d requests", requests)
+	}
+	if !strings.Contains(stdout, `"data"`) {
+		t.Fatalf("expected JSON output, got %q", stdout)
+	}
+}
+
 func TestIAPLocalizationsListDoesNotSuppressNumericAmbiguity(t *testing.T) {
 	setupStableSelectorAuth(t)
 	t.Setenv("ASC_APP_ID", "")
@@ -339,6 +385,52 @@ func TestSubscriptionReviewScreenshotGetResolvesStableSelectorWithAppFlag(t *tes
 	}
 	if out.Data.ID != "shot-1" {
 		t.Fatalf("expected screenshot id shot-1, got %q", out.Data.ID)
+	}
+}
+
+func TestSubscriptionLocalizationsListFallsBackToNumericIDAfterLookupTimeout(t *testing.T) {
+	setupStableSelectorAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_TIMEOUT", "10ms")
+	t.Setenv("ASC_TIMEOUT_SECONDS", "")
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+
+	requests := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		switch req.URL.Path {
+		case "/v1/apps/app-123/subscriptionGroups":
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		case "/v1/subscriptions/2024/subscriptionLocalizations":
+			if err := req.Context().Err(); err != nil {
+				t.Fatalf("expected fresh localizations context after lookup timeout, got %v", err)
+			}
+			return selectorJSONResponse(`{"data":[]}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	stdout, stderr, runErr := runRootCommand(t, []string{
+		"subscriptions", "localizations", "list",
+		"--app", "app-123",
+		"--subscription-id", "2024",
+	})
+	if runErr != nil {
+		t.Fatalf("expected nil error, got %v", runErr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if requests != 2 {
+		t.Fatalf("expected lookup timeout followed by localizations fetch, got %d requests", requests)
+	}
+	if !strings.Contains(stdout, `"data"`) {
+		t.Fatalf("expected JSON output, got %q", stdout)
 	}
 }
 
@@ -462,6 +554,52 @@ func TestWinBackOffersLinksResolvesStableSelector(t *testing.T) {
 	}
 	if requests != 3 {
 		t.Fatalf("expected 3 requests, got %d", requests)
+	}
+	if !strings.Contains(stdout, `"data"`) {
+		t.Fatalf("expected JSON output, got %q", stdout)
+	}
+}
+
+func TestWinBackOffersLinksFallsBackToNumericIDAfterLookupTimeout(t *testing.T) {
+	setupStableSelectorAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_TIMEOUT", "10ms")
+	t.Setenv("ASC_TIMEOUT_SECONDS", "")
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+
+	requests := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		switch req.URL.Path {
+		case "/v1/apps/app-123/subscriptionGroups":
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		case "/v1/subscriptions/2024/relationships/winBackOffers":
+			if err := req.Context().Err(); err != nil {
+				t.Fatalf("expected fresh win-back request context after lookup timeout, got %v", err)
+			}
+			return selectorJSONResponse(`{"data":[]}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	stdout, stderr, runErr := runRootCommand(t, []string{
+		"subscriptions", "offers", "win-back", "links",
+		"--app", "app-123",
+		"--subscription-id", "2024",
+	})
+	if runErr != nil {
+		t.Fatalf("expected nil error, got %v", runErr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if requests != 2 {
+		t.Fatalf("expected lookup timeout followed by win-back fetch, got %d requests", requests)
 	}
 	if !strings.Contains(stdout, `"data"`) {
 		t.Fatalf("expected JSON output, got %q", stdout)

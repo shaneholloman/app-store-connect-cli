@@ -802,15 +802,15 @@ Examples:
 				return fmt.Errorf("subscriptions prices list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+				id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			if *resolved {
 				resp, err := fetchResolvedSubscriptionPrices(requestCtx, client, id, *limit, *next, time.Now().UTC())
@@ -913,13 +913,13 @@ Examples:
 				return fmt.Errorf("subscriptions prices add: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+			id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			if tierValue > 0 || priceValue != "" {
 				tiers, err := shared.ResolveSubscriptionTiers(requestCtx, client, id, territoryID, *refresh)
@@ -1089,10 +1089,10 @@ Examples:
 				return fmt.Errorf("subscriptions availability view: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if availabilityValue != "" {
+				requestCtx, cancel := shared.ContextWithTimeout(ctx)
+				defer cancel()
+
 				resp, err := client.GetSubscriptionAvailability(requestCtx, availabilityValue)
 				if err != nil {
 					return fmt.Errorf("subscriptions availability view: failed to fetch: %w", err)
@@ -1100,10 +1100,13 @@ Examples:
 				return shared.PrintOutput(resp, *output.Output, *output.Pretty)
 			}
 
-			subscriptionValue, err = resolveSubscriptionLookupID(requestCtx, client, *appID, subscriptionValue)
+			subscriptionValue, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, subscriptionValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.GetSubscriptionAvailabilityForSubscription(requestCtx, subscriptionValue)
 			if err != nil {
@@ -1232,13 +1235,13 @@ Examples:
 				return fmt.Errorf("subscriptions availability edit: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+			id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			attrs := asc.SubscriptionAvailabilityAttributes{
 				AvailableInNewTerritories: *availableInNew,

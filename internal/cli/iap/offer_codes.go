@@ -93,9 +93,7 @@ Examples:
 			}
 
 			if iapValue != "" && strings.TrimSpace(*next) == "" {
-				resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
-				iapValue, err = resolveIAPLookupID(resolveCtx, client, *appID, iapValue)
-				resolveCancel()
+				iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 				if err != nil {
 					return err
 				}
@@ -237,9 +235,7 @@ Examples:
 				return fmt.Errorf("iap offer-codes create: %w", err)
 			}
 
-			resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
-			iapValue, err = resolveIAPLookupID(resolveCtx, client, *appID, iapValue)
-			resolveCancel()
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}

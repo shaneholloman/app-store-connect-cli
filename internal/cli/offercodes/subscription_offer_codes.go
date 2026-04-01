@@ -224,17 +224,19 @@ Examples:
 				return fmt.Errorf("offer-codes create: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			resolvedAppID := shared.ResolveAppID(strings.TrimSpace(*appID))
 			if err := shared.RequireAppForStableSelector(resolvedAppID, subscription, "--subscription-id"); err != nil {
 				return err
 			}
-			subscription, err = shared.ResolveSubscriptionID(requestCtx, client, resolvedAppID, subscription)
+			resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
+			subscription, err = shared.ResolveSubscriptionID(resolveCtx, client, resolvedAppID, subscription)
+			resolveCancel()
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			attrs := asc.SubscriptionOfferCodeCreateAttributes{
 				Name:                  trimmedName,

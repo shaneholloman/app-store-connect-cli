@@ -66,13 +66,13 @@ Examples:
 				return fmt.Errorf("iap availability get: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.GetInAppPurchaseAvailability(requestCtx, iapValue)
 			if err != nil {
@@ -126,13 +126,13 @@ Examples:
 				return fmt.Errorf("iap availability set: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.CreateInAppPurchaseAvailability(requestCtx, iapValue, *availableInNew, territoryIDs)
 			if err != nil {

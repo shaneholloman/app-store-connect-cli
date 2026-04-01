@@ -64,13 +64,13 @@ Examples:
 				return fmt.Errorf("subscriptions app-store-review-screenshot get: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+			id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.GetSubscriptionAppStoreReviewScreenshotForSubscription(requestCtx, id)
 			if err != nil {

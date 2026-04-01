@@ -82,15 +82,15 @@ Examples:
 				return fmt.Errorf("subscriptions localizations list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
-				id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+				id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.SubscriptionLocalizationsOption{
 				asc.WithSubscriptionLocalizationsLimit(*limit),
@@ -211,13 +211,13 @@ Examples:
 				return fmt.Errorf("subscriptions localizations create: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			id, err = resolveSubscriptionLookupID(requestCtx, client, *appID, id)
+			id, err = resolveSubscriptionLookupIDWithTimeout(ctx, client, *appID, id)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			attrs := asc.SubscriptionLocalizationCreateAttributes{
 				Name:   nameValue,

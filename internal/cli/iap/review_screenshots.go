@@ -78,10 +78,10 @@ Examples:
 				return fmt.Errorf("iap review-screenshots get: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if screenshotValue != "" {
+				requestCtx, cancel := shared.ContextWithTimeout(ctx)
+				defer cancel()
+
 				resp, err := client.GetInAppPurchaseAppStoreReviewScreenshot(requestCtx, screenshotValue)
 				if err != nil {
 					return fmt.Errorf("iap review-screenshots get: failed to fetch: %w", err)
@@ -89,10 +89,13 @@ Examples:
 				return shared.PrintOutput(resp, *output.Output, *output.Pretty)
 			}
 
-			iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.GetInAppPurchaseAppStoreReviewScreenshotForIAP(requestCtx, iapValue)
 			if err != nil {
@@ -151,13 +154,13 @@ Examples:
 				return fmt.Errorf("iap review-screenshots create: %w", err)
 			}
 
-			requestCtx, cancel := contextWithAssetUploadTimeout(ctx)
-			defer cancel()
-
-			iapValue, err = resolveIAPLookupID(requestCtx, client, *appID, iapValue)
+			iapValue, err = resolveIAPLookupIDWithTimeout(ctx, client, *appID, iapValue)
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := contextWithAssetUploadTimeout(ctx)
+			defer cancel()
 
 			resp, err := client.CreateInAppPurchaseAppStoreReviewScreenshot(requestCtx, iapValue, info.Name(), info.Size())
 			if err != nil {

@@ -21,3 +21,10 @@ func resolveSubscriptionLookupID(ctx context.Context, client *asc.Client, appVal
 	}
 	return shared.ResolveSubscriptionID(ctx, client, resolvedAppID, selector)
 }
+
+func resolveSubscriptionLookupIDWithTimeout(ctx context.Context, client *asc.Client, appValue, selector string) (string, error) {
+	lookupCtx, cancel := shared.ContextWithTimeout(ctx)
+	defer cancel()
+
+	return resolveSubscriptionLookupID(lookupCtx, client, appValue, selector)
+}

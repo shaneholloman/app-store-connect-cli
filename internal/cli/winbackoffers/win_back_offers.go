@@ -191,19 +191,21 @@ Examples:
 				return fmt.Errorf("win-back-offers list: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
 				resolvedAppID := shared.ResolveAppID(strings.TrimSpace(*appID))
 				if err := shared.RequireAppForStableSelector(resolvedAppID, id, "--subscription-id"); err != nil {
 					return err
 				}
-				id, err = shared.ResolveSubscriptionID(requestCtx, client, resolvedAppID, id)
+				resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
+				id, err = shared.ResolveSubscriptionID(resolveCtx, client, resolvedAppID, id)
+				resolveCancel()
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			opts := []asc.WinBackOffersOption{
 				asc.WithWinBackOffersLimit(*limit),
@@ -441,17 +443,19 @@ Examples:
 				return fmt.Errorf("win-back-offers create: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			resolvedAppID := shared.ResolveAppID(strings.TrimSpace(*appID))
 			if err := shared.RequireAppForStableSelector(resolvedAppID, subscription, "--subscription-id"); err != nil {
 				return err
 			}
-			subscription, err = shared.ResolveSubscriptionID(requestCtx, client, resolvedAppID, subscription)
+			resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
+			subscription, err = shared.ResolveSubscriptionID(resolveCtx, client, resolvedAppID, subscription)
+			resolveCancel()
 			if err != nil {
 				return err
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			req := asc.WinBackOfferCreateRequest{
 				Data: asc.WinBackOfferCreateData{
@@ -855,19 +859,21 @@ Examples:
 				return fmt.Errorf("win-back-offers links: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
 			if strings.TrimSpace(*next) == "" {
 				resolvedAppID := shared.ResolveAppID(strings.TrimSpace(*appID))
 				if err := shared.RequireAppForStableSelector(resolvedAppID, id, "--subscription-id"); err != nil {
 					return err
 				}
-				id, err = shared.ResolveSubscriptionID(requestCtx, client, resolvedAppID, id)
+				resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
+				id, err = shared.ResolveSubscriptionID(resolveCtx, client, resolvedAppID, id)
+				resolveCancel()
 				if err != nil {
 					return err
 				}
 			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
 
 			fetchPage := func(ctx context.Context, perPage int, nextURL string) (asc.PaginatedResponse, error) {
 				opts := []asc.LinkagesOption{
