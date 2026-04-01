@@ -436,7 +436,7 @@ func TestDoctorMigrationHintsPrefillsVersionFromXcodeAndAppID(t *testing.T) {
 	if !sliceContains(report.Migration.SuggestedCommands, `asc versions create --app "123456789" --version "2.3.4"`) {
 		t.Fatalf("expected personalized version create command, got %#v", report.Migration.SuggestedCommands)
 	}
-	if !sliceContains(report.Migration.SuggestedCommands, `asc versions attach-build --version-id "VERSION_ID" --build "BUILD_ID"`) {
+	if !sliceContains(report.Migration.SuggestedCommands, `asc versions attach-build --version-id "VERSION_ID" --build "UPLOADED_BUILD_ID"`) {
 		t.Fatalf("expected personalized attach-build command, got %#v", report.Migration.SuggestedCommands)
 	}
 	if !sliceContains(report.Migration.SuggestedCommands, `asc review submissions-create --app "123456789"`) {
@@ -522,6 +522,29 @@ func TestDoctorMigrationHintsUsesResolvedIDsWhenLookupSucceeds(t *testing.T) {
 	}
 	if !sliceContains(report.Migration.SuggestedCommands, `asc release run --app "987654321" --version "4.5.6" --build "build-id-456" --metadata-dir "./metadata/version/4.5.6" --confirm`) {
 		t.Fatalf("expected personalized release command with resolved build ID, got %#v", report.Migration.SuggestedCommands)
+	}
+}
+
+func TestBuildSuggestedCommandsUploadOnlyUsesUploadedBuildPlaceholder(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+
+	commands := buildSuggestedCommands(migrationSignals{
+		detectedActions:  []string{"upload_to_app_store"},
+		marketingVersion: "1.2.3",
+	}, func(MigrationSuggestionResolverInput) MigrationSuggestionResolverOutput {
+		return MigrationSuggestionResolverOutput{
+			AppID:     "123456789",
+			VersionID: "version-id-123",
+			BuildID:   "build-id-456",
+		}
+	})
+
+	if !sliceContains(commands, `asc versions attach-build --version-id "version-id-123" --build "UPLOADED_BUILD_ID"`) {
+		t.Fatalf("expected attach-build guidance to use uploaded build placeholder, got %#v", commands)
+	}
+	if sliceContains(commands, `asc versions attach-build --version-id "version-id-123" --build "build-id-456"`) {
+		t.Fatalf("expected upload-only attach-build guidance to avoid stale resolved build ID, got %#v", commands)
 	}
 }
 

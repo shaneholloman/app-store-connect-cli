@@ -542,6 +542,7 @@ type migrationCommandValues struct {
 func buildSuggestedCommands(signals migrationSignals, resolver MigrationSuggestionResolver) []string {
 	var commands []string
 	seen := map[string]struct{}{}
+	const uploadedBuildIDPlaceholder = "UPLOADED_BUILD_ID"
 	add := func(cmd string) {
 		if _, ok := seen[cmd]; ok {
 			return
@@ -585,7 +586,7 @@ func buildSuggestedCommands(signals migrationSignals, resolver MigrationSuggesti
 			add(fmt.Sprintf(`asc builds upload --app %q --ipa app.ipa --version %q --build-number "BUILD_NUMBER" --wait`, values.appID, values.versionString))
 			add(fmt.Sprintf(`asc builds info --app %q --build-number "BUILD_NUMBER" --version %q`, values.appID, values.versionString))
 			add(fmt.Sprintf(`asc versions create --app %q --version %q`, values.appID, values.versionString))
-			add(fmt.Sprintf(`asc versions attach-build --version-id %q --build %q`, values.versionID, values.buildID))
+			add(fmt.Sprintf(`asc versions attach-build --version-id %q --build %q`, values.versionID, uploadedBuildIDPlaceholder))
 		}
 		add(fmt.Sprintf(`asc validate --app %q --version %q`, values.appID, values.versionString))
 		if !hasMetadataSignal {
