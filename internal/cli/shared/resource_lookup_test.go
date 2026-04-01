@@ -260,6 +260,29 @@ func TestResolveIAPID_WithAppContextFallsBackToNumericPassthroughWhenLookupError
 	}
 }
 
+func TestResolveIAPID_WithAppContextDoesNotSuppressNumericAmbiguity(t *testing.T) {
+	stub := &sequenceIAPLookupStub{
+		responses: []*asc.InAppPurchasesV2Response{
+			iapResponse(),
+			iapResponse(
+				iapLookupFixture{id: "iap-1", productID: "com.example.one", name: "2024"},
+				iapLookupFixture{id: "iap-2", productID: "com.example.two", name: "2024"},
+			),
+		},
+	}
+
+	_, err := ResolveIAPID(context.Background(), stub, "app-1", "2024")
+	if err == nil {
+		t.Fatal("expected ambiguous error")
+	}
+	if !errors.Is(err, errSelectorAmbiguous) {
+		t.Fatalf("expected ambiguous selector error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Use the explicit ASC ID to disambiguate") {
+		t.Fatalf("expected disambiguation guidance, got %v", err)
+	}
+}
+
 func TestResolveIAPID_FallsBackToFullScanForExactName(t *testing.T) {
 	stub := &sequenceIAPLookupStub{
 		responses: []*asc.InAppPurchasesV2Response{
@@ -409,5 +432,33 @@ func TestResolveSubscriptionID_WithAppContextFallsBackToNumericPassthroughWhenLo
 	}
 	if stub.groupCalls != 1 {
 		t.Fatalf("expected single lookup attempt before fallback, got %d", stub.groupCalls)
+	}
+}
+
+func TestResolveSubscriptionID_WithAppContextDoesNotSuppressNumericAmbiguity(t *testing.T) {
+	stub := &sequenceSubscriptionLookupStub{
+		groupResponses: []*asc.SubscriptionGroupsResponse{
+			subscriptionGroupsResponse("group-1"),
+		},
+		subscriptionResponses: map[string][]*asc.SubscriptionsResponse{
+			"group-1": {
+				subscriptionsResponse(),
+				subscriptionsResponse(
+					subscriptionLookupFixture{id: "sub-1", productID: "com.example.one", name: "2024"},
+					subscriptionLookupFixture{id: "sub-2", productID: "com.example.two", name: "2024"},
+				),
+			},
+		},
+	}
+
+	_, err := ResolveSubscriptionID(context.Background(), stub, "app-1", "2024")
+	if err == nil {
+		t.Fatal("expected ambiguous error")
+	}
+	if !errors.Is(err, errSelectorAmbiguous) {
+		t.Fatalf("expected ambiguous selector error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Use the explicit ASC ID to disambiguate") {
+		t.Fatalf("expected disambiguation guidance, got %v", err)
 	}
 }

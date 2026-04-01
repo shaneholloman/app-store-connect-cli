@@ -181,6 +181,58 @@ func TestIAPContentGetFallsBackToNumericIDWhenLookupErrors(t *testing.T) {
 	}
 }
 
+func TestIAPLocalizationsListDoesNotSuppressNumericAmbiguity(t *testing.T) {
+	setupStableSelectorAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+
+	requests := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		switch req.URL.Path {
+		case "/v1/apps/app-123/inAppPurchasesV2":
+			switch req.URL.Query().Get("filter[productId]") {
+			case "2024":
+				return selectorJSONResponse(`{"data":[]}`), nil
+			case "":
+				if req.URL.Query().Get("filter[name]") != "2024" {
+					t.Fatalf("expected name filter on second lookup request, got %q", req.URL.Query().Encode())
+				}
+				return selectorJSONResponse(`{"data":[
+					{"type":"inAppPurchases","id":"iap-1","attributes":{"name":"2024","productId":"com.example.one","inAppPurchaseType":"CONSUMABLE"}},
+					{"type":"inAppPurchases","id":"iap-2","attributes":{"name":"2024","productId":"com.example.two","inAppPurchaseType":"CONSUMABLE"}}
+				]}`), nil
+			default:
+				t.Fatalf("unexpected lookup query: %s", req.URL.RawQuery)
+				return nil, nil
+			}
+		case "/v2/inAppPurchases/2024/inAppPurchaseLocalizations":
+			t.Fatal("expected ambiguity to stop before direct numeric ID fetch")
+			return nil, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	_, _, runErr := runRootCommand(t, []string{
+		"iap", "localizations", "list",
+		"--app", "app-123",
+		"--iap-id", "2024",
+	})
+	if runErr == nil {
+		t.Fatal("expected ambiguity error")
+	}
+	if !strings.Contains(runErr.Error(), "Use the explicit ASC ID to disambiguate") {
+		t.Fatalf("expected disambiguation guidance, got %v", runErr)
+	}
+	if requests != 2 {
+		t.Fatalf("expected product-id and name lookup requests before error, got %d", requests)
+	}
+}
+
 func TestSubscriptionReviewScreenshotGetResolvesStableSelectorWithAppFlag(t *testing.T) {
 	setupStableSelectorAuth(t)
 	t.Setenv("ASC_APP_ID", "")

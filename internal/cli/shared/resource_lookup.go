@@ -10,7 +10,10 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
-var errSelectorNotFound = errors.New("selector not found")
+var (
+	errSelectorNotFound  = errors.New("selector not found")
+	errSelectorAmbiguous = errors.New("selector ambiguous")
+)
 
 type selectorNotFoundError struct {
 	resourceName string
@@ -24,6 +27,21 @@ func (e selectorNotFoundError) Error() string {
 
 func (e selectorNotFoundError) Is(target error) bool {
 	return target == errSelectorNotFound
+}
+
+type selectorAmbiguousError struct {
+	resourceName string
+	fieldName    string
+	selector     string
+	matches      []ExactSelectorCandidate
+}
+
+func (e selectorAmbiguousError) Error() string {
+	return fmt.Sprintf("%s\nUse the explicit ASC ID to disambiguate", formatAmbiguousSelectorError(e.resourceName, e.fieldName, e.selector, e.matches))
+}
+
+func (e selectorAmbiguousError) Is(target error) bool {
+	return target == errSelectorAmbiguous
 }
 
 // ExactSelectorCandidate is a resource that can be matched by ASC ID, product ID, or current name.
@@ -92,8 +110,9 @@ func ResolveIAPID(ctx context.Context, client iapSelectorClient, appID, selector
 	candidate, err := resolveIAPCandidate(ctx, client, resolvedAppID, selector)
 	if err != nil {
 		// Preserve legacy raw-ID behavior for numeric selectors when app-scoped lookup
-		// misses or fails; the direct resource request may still succeed.
-		if !needsLookup {
+		// misses or fails, but keep ambiguity errors so callers still get the
+		// disambiguation guidance for selector-shaped values like "2024".
+		if shouldFallbackToRawNumericSelector(needsLookup, err) {
 			return selector, nil
 		}
 		return "", err
@@ -122,8 +141,9 @@ func ResolveSubscriptionID(ctx context.Context, client subscriptionSelectorClien
 	candidate, err := resolveSubscriptionCandidate(ctx, client, resolvedAppID, selector)
 	if err != nil {
 		// Preserve legacy raw-ID behavior for numeric selectors when app-scoped lookup
-		// misses or fails; the direct resource request may still succeed.
-		if !needsLookup {
+		// misses or fails, but keep ambiguity errors so callers still get the
+		// disambiguation guidance for selector-shaped values like "2024".
+		if shouldFallbackToRawNumericSelector(needsLookup, err) {
 			return selector, nil
 		}
 		return "", err
@@ -405,8 +425,17 @@ func resolveUniqueSelectorCandidate(
 	case 1:
 		return matches[0], nil
 	default:
-		return ExactSelectorCandidate{}, fmt.Errorf("%s\nUse the explicit ASC ID to disambiguate", formatAmbiguousSelectorError(resourceName, fieldName, selector, matches))
+		return ExactSelectorCandidate{}, selectorAmbiguousError{
+			resourceName: resourceName,
+			fieldName:    fieldName,
+			selector:     selector,
+			matches:      matches,
+		}
 	}
+}
+
+func shouldFallbackToRawNumericSelector(needsLookup bool, err error) bool {
+	return !needsLookup && !errors.Is(err, errSelectorAmbiguous)
 }
 
 func formatAmbiguousSelectorError(resourceName, fieldName, selector string, matches []ExactSelectorCandidate) string {
