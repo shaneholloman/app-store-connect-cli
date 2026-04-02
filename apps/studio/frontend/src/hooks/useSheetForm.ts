@@ -1,4 +1,4 @@
-import { useReducer } from "react";
+import { useReducer, useRef } from "react";
 import { shellQuote } from "../utils";
 import { RunASCCommand } from "../../wailsjs/go/main/App";
 
@@ -38,10 +38,21 @@ function sheetReducer(state: SheetState, action: SheetAction): SheetState {
 
 export function useBundleIDSheet(onCreated: () => void) {
   const [state, dispatch] = useReducer(sheetReducer, initialState);
+  const createRequestRef = useRef(0);
   const quotedPlatform = shellQuote(state.platform);
 
   const commandPreview =
     `bundle-ids create --identifier ${shellQuote(state.identifier.trim())} --name ${shellQuote(state.name.trim())} --platform ${quotedPlatform} --output json`;
+
+  function openSheet() {
+    createRequestRef.current += 1;
+    dispatch({ type: "open" });
+  }
+
+  function closeSheet() {
+    createRequestRef.current += 1;
+    dispatch({ type: "close" });
+  }
 
   function handleCreate() {
     const trimmedName = state.name.trim();
@@ -50,6 +61,8 @@ export function useBundleIDSheet(onCreated: () => void) {
       dispatch({ type: "setError", value: "Name and identifier are required." });
       return;
     }
+    const createRequestID = createRequestRef.current + 1;
+    createRequestRef.current = createRequestID;
     dispatch({ type: "setCreating", value: true });
     dispatch({ type: "setError", value: "" });
 
@@ -57,23 +70,45 @@ export function useBundleIDSheet(onCreated: () => void) {
       `bundle-ids create --identifier ${shellQuote(trimmedIdentifier)} --name ${shellQuote(trimmedName)} --platform ${quotedPlatform} --output json`,
     )
       .then((res) => {
-        if (res.error) { dispatch({ type: "setError", value: res.error }); return; }
-        dispatch({ type: "close" });
+        if (res.error) {
+          if (createRequestRef.current !== createRequestID) return;
+          dispatch({ type: "setError", value: res.error });
+          return;
+        }
         onCreated();
+        if (createRequestRef.current !== createRequestID) return;
+        closeSheet();
       })
-      .catch((err) => { dispatch({ type: "setError", value: String(err) }); })
-      .finally(() => { dispatch({ type: "setCreating", value: false }); });
+      .catch((err) => {
+        if (createRequestRef.current !== createRequestID) return;
+        dispatch({ type: "setError", value: String(err) });
+      })
+      .finally(() => {
+        if (createRequestRef.current !== createRequestID) return;
+        dispatch({ type: "setCreating", value: false });
+      });
   }
 
-  return { state, dispatch, commandPreview, handleCreate };
+  return { state, dispatch, openSheet, closeSheet, commandPreview, handleCreate };
 }
 
 export function useDeviceSheet(onCreated: () => void) {
   const [state, dispatch] = useReducer(sheetReducer, initialState);
+  const createRequestRef = useRef(0);
   const quotedPlatform = shellQuote(state.platform);
 
   const commandPreview =
     `devices register --name ${shellQuote(state.name.trim())} --udid ${shellQuote(state.identifier.trim())} --platform ${quotedPlatform} --output json`;
+
+  function openSheet() {
+    createRequestRef.current += 1;
+    dispatch({ type: "open" });
+  }
+
+  function closeSheet() {
+    createRequestRef.current += 1;
+    dispatch({ type: "close" });
+  }
 
   function handleCreate() {
     const trimmedName = state.name.trim();
@@ -82,6 +117,8 @@ export function useDeviceSheet(onCreated: () => void) {
       dispatch({ type: "setError", value: "Name and UDID are required." });
       return;
     }
+    const createRequestID = createRequestRef.current + 1;
+    createRequestRef.current = createRequestID;
     dispatch({ type: "setCreating", value: true });
     dispatch({ type: "setError", value: "" });
 
@@ -89,13 +126,24 @@ export function useDeviceSheet(onCreated: () => void) {
       `devices register --name ${shellQuote(trimmedName)} --udid ${shellQuote(trimmedUDID)} --platform ${quotedPlatform} --output json`,
     )
       .then((res) => {
-        if (res.error) { dispatch({ type: "setError", value: res.error }); return; }
-        dispatch({ type: "close" });
+        if (res.error) {
+          if (createRequestRef.current !== createRequestID) return;
+          dispatch({ type: "setError", value: res.error });
+          return;
+        }
         onCreated();
+        if (createRequestRef.current !== createRequestID) return;
+        closeSheet();
       })
-      .catch((err) => { dispatch({ type: "setError", value: String(err) }); })
-      .finally(() => { dispatch({ type: "setCreating", value: false }); });
+      .catch((err) => {
+        if (createRequestRef.current !== createRequestID) return;
+        dispatch({ type: "setError", value: String(err) });
+      })
+      .finally(() => {
+        if (createRequestRef.current !== createRequestID) return;
+        dispatch({ type: "setCreating", value: false });
+      });
   }
 
-  return { state, dispatch, commandPreview, handleCreate };
+  return { state, dispatch, openSheet, closeSheet, commandPreview, handleCreate };
 }

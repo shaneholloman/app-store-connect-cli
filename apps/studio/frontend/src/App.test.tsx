@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 
 const {
@@ -70,9 +70,7 @@ vi.mock("../wailsjs/go/models", () => ({
 }));
 
 import App, { insightsWeekStart } from "./App";
-import { appScopedSectionIDs, sectionCommands } from "./constants";
-import { appSectionPrefetchConcurrency } from "./hooks/appSelection/concurrency";
-import { commandForApp } from "./utils";
+import { sectionCommands } from "./constants";
 
 async function pickApp(name: string) {
   fireEvent.change(screen.getByLabelText("Search apps"), { target: { value: name } });
@@ -290,6 +288,83 @@ describe("App", () => {
     expect(screen.queryByText("com.example.first")).not.toBeInTheDocument();
   });
 
+  it("loads app-scoped data lazily instead of fan-out prefetching on selection", async () => {
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+
+    await waitFor(() => {
+      expect(mockGetAppDetail).toHaveBeenCalledWith("1");
+    });
+
+    const commands = mockRunASCCommand.mock.calls.map(([cmd]) => cmd);
+    expect(commands).not.toContain("status --app '1' --output json");
+    expect(commands).not.toContain("reviews list --app '1' --limit 25 --output json");
+    expect(commands).not.toContain("builds list --app '1' --limit 20 --output json");
+    expect(mockGetPricingOverview).not.toHaveBeenCalled();
+    expect(mockGetSubscriptions).not.toHaveBeenCalled();
+    expect(mockGetFinanceRegions).not.toHaveBeenCalled();
+    expect(mockGetFeedback).not.toHaveBeenCalled();
+    expect(mockGetOfferCodes).not.toHaveBeenCalled();
+    expect(mockGetTestFlight).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Status" }));
+    await waitFor(() => {
+      expect(mockRunASCCommand).toHaveBeenCalledWith("status --app '1' --output json");
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pricing and Availability" }));
+    await waitFor(() => {
+      expect(mockGetPricingOverview).toHaveBeenCalledWith("1");
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Groups" }));
+    await waitFor(() => {
+      expect(mockGetTestFlight).toHaveBeenCalledWith("1");
+    });
+  });
+
+  it("switches back to overview before loading a different app", async () => {
+    mockListApps.mockResolvedValue({
+      apps: [
+        { id: "1", name: "First App", subtitle: "One" },
+        { id: "2", name: "Second App", subtitle: "Two" },
+      ],
+    });
+    mockGetAppDetail.mockImplementation((appID: string) => Promise.resolve({
+      id: appID,
+      name: appID === "1" ? "First App" : "Second App",
+      subtitle: appID === "1" ? "One" : "Two",
+      bundleId: appID === "1" ? "com.example.first" : "com.example.second",
+      sku: appID === "1" ? "FIRSTSKU" : "SECONDSKU",
+      primaryLocale: "en-US",
+      versions: [{ id: `version-${appID}`, platform: "IOS", version: appID === "1" ? "1.0" : "2.0", state: "READY_FOR_SALE" }],
+    }));
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("First App");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Insights" }));
+    await waitFor(() => {
+      expect(mockRunASCCommand).toHaveBeenCalledWith(
+        expect.stringContaining("insights weekly --app '1'"),
+      );
+    });
+
+    mockRunASCCommand.mockClear();
+
+    await pickApp("Second App");
+
+    expect(await screen.findByText("com.example.second")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "App Information" })).toHaveAttribute("aria-current", "page");
+    expect(
+      mockRunASCCommand.mock.calls.map(([cmd]) => cmd).filter((cmd) => cmd.includes("insights weekly")),
+    ).toHaveLength(0);
+  });
+
   it("renders an overview error state when app detail loading fails", async () => {
     mockGetAppDetail.mockResolvedValue({
       id: "1",
@@ -389,6 +464,27 @@ describe("App", () => {
     expect(screen.queryByText("Overview unavailable")).not.toBeInTheDocument();
   });
 
+  it("renders version badges safely when a version state is missing", async () => {
+    mockGetAppDetail.mockResolvedValue({
+      id: "1",
+      name: "Test App",
+      subtitle: "A great app",
+      bundleId: "com.example.test",
+      sku: "TESTSKU",
+      primaryLocale: "en-US",
+      versions: [{ id: "version-1", platform: "IOS", version: "1.0", state: null as unknown as string }],
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+
+    expect(await screen.findByText("com.example.test")).toBeInTheDocument();
+    expect(screen.getByText("1.0 Unknown State")).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+  });
+
   it("includes required statuses when loading nominations", async () => {
     render(<App />);
 
@@ -468,6 +564,41 @@ describe("App", () => {
     expect(screen.queryByText("Select an App")).not.toBeInTheDocument();
   });
 
+  it("retries standalone sections after a cached transient error when revisiting them", async () => {
+    mockRunASCCommand.mockImplementation((cmd: string) => {
+      if (cmd === "bundle-ids list --paginate --output json") {
+        return Promise.resolve(
+          mockRunASCCommand.mock.calls.filter(([calledCmd]) => calledCmd === cmd).length === 1
+            ? { error: "temporary failure", data: "" }
+            : {
+                error: "",
+                data: JSON.stringify({
+                  data: [
+                    { id: "bundle-1", type: "bundleIds", attributes: { identifier: "com.example.recovered", platform: "IOS", seedId: "AAA" } },
+                  ],
+                }),
+              },
+        );
+      }
+      return Promise.resolve({ error: "", data: "{\"data\":[]}" });
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
+
+    expect(await screen.findByText("temporary failure")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Team" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
+
+    expect(await screen.findByText("com.example.recovered")).toBeInTheDocument();
+    expect(
+      mockRunASCCommand.mock.calls.filter(([cmd]) => cmd === "bundle-ids list --paginate --output json"),
+    ).toHaveLength(2);
+  });
+
   it("renders top-level account status checks in the team scope", async () => {
     mockRunASCCommand.mockImplementation((cmd: string) => {
       if (cmd === "account status --output json") {
@@ -526,6 +657,160 @@ describe("App", () => {
     ).toHaveLength(1);
   });
 
+  it("refreshes bootstrap data and the visible standalone section even when an app is selected", async () => {
+    mockRunASCCommand.mockImplementation((cmd: string) => {
+      if (cmd === "bundle-ids list --paginate --output json") {
+        return Promise.resolve(
+          mockRunASCCommand.mock.calls.filter(([calledCmd]) => calledCmd === cmd).length === 1
+            ? {
+                error: "",
+                data: JSON.stringify({
+                  data: [
+                    { id: "bundle-1", type: "bundleIds", attributes: { identifier: "com.example.initial", platform: "IOS", seedId: "AAA" } },
+                  ],
+                }),
+              }
+            : {
+                error: "",
+                data: JSON.stringify({
+                  data: [
+                    { id: "bundle-2", type: "bundleIds", attributes: { identifier: "com.example.refreshed", platform: "IOS", seedId: "BBB" } },
+                  ],
+                }),
+              },
+        );
+      }
+      return Promise.resolve({ error: "", data: "{\"data\":[]}" });
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
+
+    expect(await screen.findByText("com.example.initial")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Refresh/i }));
+
+    expect(await screen.findByText("com.example.refreshed")).toBeInTheDocument();
+    expect(mockBootstrap).toHaveBeenCalledTimes(2);
+    expect(mockCheckAuthStatus).toHaveBeenCalledTimes(2);
+    expect(mockListApps).toHaveBeenCalledTimes(2);
+    expect(
+      mockRunASCCommand.mock.calls.filter(([cmd]) => cmd === "bundle-ids list --paginate --output json"),
+    ).toHaveLength(2);
+  });
+
+  it("keeps the latest app selection when refresh resolves after another app is chosen", async () => {
+    let resolveRefreshBootstrap: ((value: {
+      appName: string;
+      environment: {
+        configPath: string;
+        configPresent: boolean;
+        defaultAppId: string;
+        keychainAvailable: boolean;
+        keychainBypassed: boolean;
+        workflowPath: string;
+      };
+      settings: {
+        preferredPreset: string;
+        agentCommand: string;
+        agentArgs: string[];
+        agentEnv: Record<string, string>;
+        preferBundledASC: boolean;
+        systemASCPath: string;
+        workspaceRoot: string;
+        theme: string;
+        windowMaterial: string;
+        showCommandPreviews: boolean;
+      };
+      presets: unknown[];
+      threads: unknown[];
+      approvals: unknown[];
+    }) => void) | undefined;
+
+    const bootstrapPayload = {
+      appName: "ASC Studio",
+      environment: {
+        configPath: "/Users/test/.asc/config.json",
+        configPresent: true,
+        defaultAppId: "123456",
+        keychainAvailable: true,
+        keychainBypassed: false,
+        workflowPath: "",
+      },
+      settings: {
+        preferredPreset: "codex",
+        agentCommand: "",
+        agentArgs: [],
+        agentEnv: {},
+        preferBundledASC: true,
+        systemASCPath: "",
+        workspaceRoot: "",
+        theme: "glass-light",
+        windowMaterial: "translucent",
+        showCommandPreviews: true,
+      },
+      presets: [],
+      threads: [],
+      approvals: [],
+    };
+
+    mockListApps.mockResolvedValue({
+      apps: [
+        { id: "1", name: "First App", subtitle: "One" },
+        { id: "2", name: "Second App", subtitle: "Two" },
+      ],
+    });
+    mockBootstrap
+      .mockResolvedValueOnce(bootstrapPayload)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefreshBootstrap = resolve;
+          }),
+      );
+    mockGetAppDetail.mockImplementation((appID: string) =>
+      Promise.resolve({
+        id: appID,
+        name: appID === "1" ? "First App" : "Second App",
+        subtitle: appID === "1" ? "One" : "Two",
+        bundleId: appID === "1" ? "com.example.first" : "com.example.second",
+        sku: appID === "1" ? "FIRSTSKU" : "SECONDSKU",
+        primaryLocale: "en-US",
+        versions: [{ id: `version-${appID}`, platform: "IOS", version: "1.0", state: "READY_FOR_SALE" }],
+      }),
+    );
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("First App");
+    expect(await screen.findByText("com.example.first")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Refresh/i }));
+    await waitFor(() => {
+      expect(mockBootstrap).toHaveBeenCalledTimes(2);
+    });
+
+    await pickApp("Second App");
+    expect(screen.getByRole("option", { name: /Second App/i })).toHaveAttribute("aria-selected", "true");
+
+    await act(async () => {
+      resolveRefreshBootstrap?.(bootstrapPayload);
+    });
+
+    await waitFor(() => {
+      expect(mockGetAppDetail.mock.calls.at(-1)?.[0]).toBe("2");
+    });
+
+    expect(await screen.findByText("com.example.second")).toBeInTheDocument();
+    expect(mockGetAppDetail.mock.calls.filter(([appID]) => appID === "1")).toHaveLength(1);
+    expect(screen.getByText("com.example.second")).toBeInTheDocument();
+    expect(screen.queryByText("com.example.first")).not.toBeInTheDocument();
+  });
+
   it("quotes app IDs when running app-scoped commands", async () => {
     mockListApps.mockResolvedValue({
       apps: [
@@ -547,10 +832,37 @@ describe("App", () => {
     await screen.findByRole("img", { name: /Connected/i });
     await pickApp("Quoted App");
 
+    fireEvent.click(await screen.findByRole("button", { name: "Status" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Ratings and Reviews" }));
+
     await waitFor(() => {
       const commands = mockRunASCCommand.mock.calls.map(([cmd]) => cmd);
       expect(commands).toContain("status --app '1 2' --output json");
       expect(commands).toContain("reviews list --app '1 2' --limit 25 --output json");
+    });
+  });
+
+  it("does not rerun cached app-scoped table commands when revisiting a loaded section", async () => {
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Builds" }));
+
+    await waitFor(() => {
+      expect(
+        mockRunASCCommand.mock.calls.filter(([cmd]) => cmd === "builds list --app '1' --limit 20 --output json"),
+      ).toHaveLength(1);
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Status" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Builds" }));
+
+    await waitFor(() => {
+      expect(
+        mockRunASCCommand.mock.calls.filter(([cmd]) => cmd === "builds list --app '1' --limit 20 --output json"),
+      ).toHaveLength(1);
     });
   });
 
@@ -559,6 +871,7 @@ describe("App", () => {
 
     await screen.findByRole("img", { name: /Connected/i });
     await pickApp("Test App");
+    fireEvent.click(await screen.findByRole("button", { name: "Encryption" }));
 
     await waitFor(() => {
       expect(mockRunASCCommand).toHaveBeenCalledWith(
@@ -570,58 +883,6 @@ describe("App", () => {
     expect(commands).not.toContain("encryption list --app '1' --output json");
     expect(commands).not.toContain("localizations preview-sets list --app '1' --output json");
     expect(sectionCommands["video-previews"]).toBeUndefined();
-  });
-
-  it("limits app-scoped section prefetch concurrency", async () => {
-    const trackedCommands = new Set(
-      appScopedSectionIDs.map((sectionId) => commandForApp(sectionCommands[sectionId], "1")),
-    );
-    const pendingResolvers: Array<() => void> = [];
-    let activePrefetches = 0;
-    let maxActivePrefetches = 0;
-    let seenPrefetches = 0;
-
-    mockRunASCCommand.mockImplementation((cmd: string) => {
-      if (!trackedCommands.has(cmd)) {
-        return Promise.resolve({ error: "", data: "{\"data\":[]}" });
-      }
-
-      seenPrefetches += 1;
-      activePrefetches += 1;
-      maxActivePrefetches = Math.max(maxActivePrefetches, activePrefetches);
-
-      return new Promise((resolve) => {
-        pendingResolvers.push(() => {
-          activePrefetches -= 1;
-          resolve({ error: "", data: "{\"data\":[]}" });
-        });
-      });
-    });
-
-    render(<App />);
-
-    await screen.findByRole("img", { name: /Connected/i });
-    await pickApp("Test App");
-
-    await waitFor(() => {
-      expect(seenPrefetches).toBe(appSectionPrefetchConcurrency);
-    });
-    expect(activePrefetches).toBe(appSectionPrefetchConcurrency);
-    expect(maxActivePrefetches).toBe(appSectionPrefetchConcurrency);
-
-    const batches = Math.ceil(appScopedSectionIDs.length / appSectionPrefetchConcurrency);
-    for (let i = 0; i < batches; i += 1) {
-      const batch = pendingResolvers.splice(0);
-      expect(batch.length).toBeGreaterThan(0);
-      batch.forEach((resolve) => resolve());
-      await Promise.resolve();
-      await Promise.resolve();
-    }
-
-    await waitFor(() => {
-      expect(seenPrefetches).toBe(appScopedSectionIDs.length);
-    });
-    expect(maxActivePrefetches).toBeLessThanOrEqual(appSectionPrefetchConcurrency);
   });
 
   it("sorts bundle IDs by platform from the header control", async () => {
@@ -735,6 +996,69 @@ describe("App", () => {
         "bundle-ids create --identifier 'com.example.newapp' --name 'New App' --platform 'MAC_OS' --output json",
       );
     });
+  });
+
+  it("ignores stale bundle ID create completions after the sheet is reopened", async () => {
+    let resolveCreate: ((value: { error: string; data: string }) => void) | undefined;
+
+    mockRunASCCommand.mockImplementation((cmd: string) => {
+      if (cmd === "bundle-ids list --paginate --output json") {
+        return Promise.resolve({
+          error: "",
+          data: JSON.stringify({
+            data: [
+              { id: "bundle-1", type: "bundleIds", attributes: { identifier: "com.example.existing", platform: "IOS", seedId: "AAA" } },
+            ],
+          }),
+        });
+      }
+      if (cmd === "bundle-ids create --identifier 'com.example.newapp' --name 'New App' --platform 'IOS' --output json") {
+        return new Promise((resolve) => {
+          resolveCreate = resolve as (value: { error: string; data: string }) => void;
+        });
+      }
+      return Promise.resolve({ error: "", data: "{\"data\":[]}" });
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    fireEvent.click(screen.getByRole("tab", { name: "Signing" }));
+    await screen.findByText("com.example.existing");
+
+    fireEvent.click(screen.getByRole("button", { name: /New Bundle ID/i }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New App" } });
+    fireEvent.change(screen.getByLabelText("Identifier"), { target: { value: "com.example.newapp" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: /Create Bundle ID/i })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /New Bundle ID/i }));
+    expect(screen.getByRole("dialog", { name: /Create Bundle ID/i })).toBeInTheDocument();
+
+    await act(async () => {
+      resolveCreate?.({
+        error: "",
+        data: JSON.stringify({
+          data: {
+            id: "bundle-2",
+            type: "bundleIds",
+            attributes: { identifier: "com.example.newapp", name: "New App", platform: "IOS", seedId: "BBB" },
+          },
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: /Create Bundle ID/i })).toBeInTheDocument();
+    });
+
+    expect(
+      mockRunASCCommand.mock.calls.filter(([cmd]) => cmd === "bundle-ids list --paginate --output json"),
+    ).toHaveLength(2);
   });
 
   it("registers a device from the team devices sheet", async () => {
@@ -1259,5 +1583,88 @@ describe("App", () => {
 
     expect(await screen.findByText("auth expired")).toBeInTheDocument();
     expect(screen.queryByText("No testers in this group.")).not.toBeInTheDocument();
+  });
+
+  it("renders TestFlight views safely when optional fields are missing", async () => {
+    mockGetTestFlight.mockResolvedValue({
+      groups: [
+        { id: "group-1", name: "Internal", isInternal: true, publicLink: "", feedbackEnabled: false, createdDate: null as unknown as string, testerCount: 1 },
+      ],
+    });
+    mockGetTestFlightTesters.mockResolvedValue({
+      testers: [{ email: "", firstName: "", lastName: "", inviteType: null as unknown as string, state: null as unknown as string }],
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+    fireEvent.click(await screen.findByRole("button", { name: "Groups" }));
+
+    expect(await screen.findAllByText("Internal")).not.toHaveLength(0);
+
+    fireEvent.click((await screen.findAllByText("Internal"))[0].closest("tr")!);
+
+    expect((await screen.findAllByText("Unknown")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+  });
+
+  it("renders subscription views safely when status fields are missing", async () => {
+    mockGetSubscriptions.mockResolvedValue({
+      subscriptions: [
+        {
+          id: "sub-1",
+          groupName: "Main Group",
+          name: "Pro Monthly",
+          productId: "pro.monthly",
+          state: null as unknown as string,
+          subscriptionPeriod: null as unknown as string,
+          reviewNote: "",
+          groupLevel: 1,
+        },
+      ],
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+    fireEvent.click(await screen.findByRole("button", { name: "Subscriptions" }));
+
+    expect(await screen.findByText("Pro Monthly")).toBeInTheDocument();
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+  });
+
+  it("renders pricing subscription rows safely when status fields are missing", async () => {
+    mockGetPricingOverview.mockResolvedValue({
+      availableInNewTerritories: false,
+      currentPrice: "1.99",
+      currentProceeds: "1.39",
+      baseCurrency: "USD",
+      territories: [],
+      subscriptionPricing: [
+        {
+          name: "Pro Monthly",
+          productId: "pro.monthly",
+          subscriptionPeriod: "ONE_MONTH",
+          state: null as unknown as string,
+          groupName: "Main Group",
+          price: "1.99",
+          currency: "USD",
+          proceeds: "1.39",
+        },
+      ],
+    });
+
+    render(<App />);
+
+    await screen.findByRole("img", { name: /Connected/i });
+    await pickApp("Test App");
+    fireEvent.click(await screen.findByRole("button", { name: "Pricing and Availability" }));
+
+    expect(await screen.findByText("Pro Monthly")).toBeInTheDocument();
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
   });
 });

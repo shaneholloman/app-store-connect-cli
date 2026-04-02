@@ -2,6 +2,7 @@
 .githooks/
 .github/
 .wrangler/
+apps/
 cmd/
 docs/
 internal/

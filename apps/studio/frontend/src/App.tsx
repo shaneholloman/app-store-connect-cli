@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 
 import "./styles.css";
 import { NavSection } from "./types";
@@ -61,8 +61,9 @@ const toolViews: Record<string, { title: string; description: string; commandHin
 };
 
 export default function App() {
+  const overviewSection = allSections[0];
   const [activeScope, setActiveScope] = useState<string>("app");
-  const [activeSection, setActiveSection] = useState<NavSection>(allSections[0]);
+  const [activeSection, setActiveSection] = useState<NavSection>(overviewSection);
   const [appSearchTerm, setAppSearchTerm] = useState("");
   const [sectionSearchTerms, setSectionSearchTerms] = useState<Record<string, string>>({});
   const [bundleIDsPlatformSort, setBundleIDsPlatformSort] = useState<"asc" | "desc">("asc");
@@ -71,15 +72,21 @@ export default function App() {
   const app = useAppSelection();
   const chat = useChatDock();
   const { resolvedTheme } = useTheme(bootstrap.studioSettings.theme);
+  const refreshRequestRef = useRef(0);
+  const latestActiveSectionIdRef = useRef(activeSection.id);
+  const latestSelectedAppIdRef = useRef(app.selectedAppId);
+
+  latestActiveSectionIdRef.current = activeSection.id;
+  latestSelectedAppIdRef.current = app.selectedAppId;
 
   const bundleIDSheet = useBundleIDSheet(() => app.loadStandaloneSection("bundle-ids", true));
   const deviceSheet = useDeviceSheet(() => app.loadStandaloneSection("devices", true));
 
   const sheetOpen = bundleIDSheet.state.open || deviceSheet.state.open;
   const closeSheet = useCallback(() => {
-    if (bundleIDSheet.state.open) bundleIDSheet.dispatch({ type: "close" });
-    if (deviceSheet.state.open) deviceSheet.dispatch({ type: "close" });
-  }, [bundleIDSheet.state.open, deviceSheet.state.open]);
+    if (bundleIDSheet.state.open) bundleIDSheet.closeSheet();
+    if (deviceSheet.state.open) deviceSheet.closeSheet();
+  }, [bundleIDSheet.closeSheet, bundleIDSheet.state.open, deviceSheet.closeSheet, deviceSheet.state.open]);
   const { trapRef, onTrapKeyDown } = useFocusTrap(sheetOpen, closeSheet);
 
   const filteredApps = bootstrap.appList.filter((a) =>
@@ -89,21 +96,48 @@ export default function App() {
   const insightsWeek = insightsWeekStart(new Date());
   const insightsCache = app.sectionCache.insights;
 
+  useEffect(() => {
+    if (sectionCommands[activeSection.id] && !sectionRequiresApp(activeSection.id)) {
+      app.loadStandaloneSectionIfNeeded(activeSection.id);
+      return;
+    }
+    if (!app.selectedAppId) return;
+    if (activeSection.id === "testflight") {
+      app.loadTestFlightIfNeeded(app.selectedAppId);
+      return;
+    }
+    app.loadAppSectionIfNeeded(activeSection.id, app.selectedAppId);
+  }, [activeSection.id, app.selectedAppId, app.selectionVersion]);
+
   function handleSelectApp(id: string) {
-    app.handleSelectApp(id, activeSection.id);
+    setActiveSection(overviewSection);
+    app.handleSelectApp(id);
   }
 
   function handleSetActiveSection(section: NavSection) {
     setActiveSection(section);
-    if (sectionCommands[section.id] && !sectionRequiresApp(section.id)) {
-      app.loadStandaloneSectionIfNeeded(section.id);
-    }
-    app.loadOfferCodesIfNeeded(section.id, app.selectedAppId);
-    app.loadInsightsIfNeeded(section.id, app.selectedAppId);
   }
 
   function handleRefresh() {
-    bootstrap.handleRefresh(app.selectedAppId, handleSelectApp);
+    const refreshID = refreshRequestRef.current + 1;
+    refreshRequestRef.current = refreshID;
+
+    void bootstrap.handleRefresh().then(() => {
+      if (refreshRequestRef.current !== refreshID) {
+        return;
+      }
+
+      const activeSectionId = latestActiveSectionIdRef.current;
+      if (sectionCommands[activeSectionId] && !sectionRequiresApp(activeSectionId)) {
+        app.loadStandaloneSection(activeSectionId, true);
+        return;
+      }
+
+      const selectedAppId = latestSelectedAppIdRef.current;
+      if (selectedAppId) {
+        app.handleSelectApp(selectedAppId);
+      }
+    });
   }
 
   function renderContent() {
@@ -159,6 +193,9 @@ export default function App() {
         </div>
       );
     }
+    if (activeSection.id === "overview" && app.selectedAppId && !app.appDetail) {
+      return <ViewFallback />;
+    }
     if (activeSection.id === "overview" && app.appDetail) {
       return (
         <AppInfoView appDetail={app.appDetail} selectedAppId={app.selectedAppId} metadataLoading={app.metadataLoading}
@@ -198,8 +235,8 @@ export default function App() {
           bundleIDsPlatformSort={bundleIDsPlatformSort} activeSectionSearch={activeSectionSearch}
           onSetSectionSearch={(id, term) => setSectionSearchTerms((prev) => ({ ...prev, [id]: term }))}
           onToggleBundleIDSort={() => setBundleIDsPlatformSort((prev) => prev === "asc" ? "desc" : "asc")}
-          onOpenBundleIDSheet={() => bundleIDSheet.dispatch({ type: "open" })}
-          onOpenDeviceSheet={() => deviceSheet.dispatch({ type: "open" })} />
+          onOpenBundleIDSheet={bundleIDSheet.openSheet}
+          onOpenDeviceSheet={deviceSheet.openSheet} />
       );
     }
     return (
@@ -212,78 +249,80 @@ export default function App() {
 
   return (
     <div className="studio-shell" data-theme={resolvedTheme}>
-      <a href="#main-content" className="skip-nav">Skip to main content</a>
-      <Sidebar
-        activeScope={activeScope} selectedAppId={app.selectedAppId} appDetail={app.appDetail}
-        appList={bootstrap.appList} appSearchTerm={appSearchTerm} activeSection={activeSection}
-        appsLoading={bootstrap.appsLoading} appsError={bootstrap.appsError} authAuthenticated={bootstrap.authStatus.authenticated}
-        filteredApps={filteredApps} onAppSearchChange={setAppSearchTerm}
-        onSelectApp={handleSelectApp} onSetActiveSection={handleSetActiveSection}
-      />
-
-      <div className="shell-separator" />
-
-      <main id="main-content" className="main-area">
-        <ContextBar
-          authStatus={bootstrap.authStatus} activeScope={activeScope}
-          handleRefresh={handleRefresh} setActiveScope={setActiveScope}
-          setActiveSection={handleSetActiveSection}
+      <ErrorBoundary>
+        <a href="#main-content" className="skip-nav">Skip to main content</a>
+        <Sidebar
+          activeScope={activeScope} selectedAppId={app.selectedAppId} appDetail={app.appDetail}
+          appList={bootstrap.appList} appSearchTerm={appSearchTerm} activeSection={activeSection}
+          appsLoading={bootstrap.appsLoading} appsError={bootstrap.appsError} authAuthenticated={bootstrap.authStatus.authenticated}
+          filteredApps={filteredApps} onAppSearchChange={setAppSearchTerm}
+          onSelectApp={handleSelectApp} onSetActiveSection={handleSetActiveSection}
         />
 
-        <ErrorBoundary>
-          <Suspense fallback={<ViewFallback />}>
-            {renderContent()}
-          </Suspense>
-        </ErrorBoundary>
+        <div className="shell-separator" />
 
-        {activeSection.id !== "settings" && (
-          <ChatDock messages={chat.messages} draft={chat.draft} dockExpanded={chat.dockExpanded}
-            handleSubmit={chat.handleSubmit} setDraft={chat.setDraft} setDockExpanded={chat.setDockExpanded} />
-        )}
-      </main>
+        <main id="main-content" className="main-area">
+          <ContextBar
+            authStatus={bootstrap.authStatus} activeScope={activeScope}
+            handleRefresh={handleRefresh} setActiveScope={setActiveScope}
+            setActiveSection={handleSetActiveSection}
+          />
 
-      {bundleIDSheet.state.open && (
-        <div className="sheet-backdrop" role="presentation" onClick={() => bundleIDSheet.dispatch({ type: "close" })}>
-          <section ref={trapRef} className="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="bundle-id-sheet-title"
-            onKeyDown={onTrapKeyDown}
-            onClick={(e) => e.stopPropagation()}>
-            <div className="sheet-header">
-              <div>
-                <p className="sheet-eyebrow">Signing</p>
-                <h2 id="bundle-id-sheet-title" className="sheet-title">Create Bundle ID</h2>
+          <ErrorBoundary>
+            <Suspense fallback={<ViewFallback />}>
+              {renderContent()}
+            </Suspense>
+          </ErrorBoundary>
+
+          {activeSection.id !== "settings" && (
+            <ChatDock messages={chat.messages} draft={chat.draft} dockExpanded={chat.dockExpanded}
+              handleSubmit={chat.handleSubmit} setDraft={chat.setDraft} setDockExpanded={chat.setDockExpanded} />
+          )}
+        </main>
+
+          {bundleIDSheet.state.open && (
+          <div className="sheet-backdrop" role="presentation" onClick={bundleIDSheet.closeSheet}>
+            <section ref={trapRef} className="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="bundle-id-sheet-title"
+              onKeyDown={onTrapKeyDown}
+              onClick={(e) => e.stopPropagation()}>
+              <div className="sheet-header">
+                <div>
+                  <p className="sheet-eyebrow">Signing</p>
+                  <h2 id="bundle-id-sheet-title" className="sheet-title">Create Bundle ID</h2>
+                </div>
+                <button type="button" className="sheet-close" onClick={bundleIDSheet.closeSheet} aria-label="Close create bundle ID sheet">&times;</button>
               </div>
-              <button type="button" className="sheet-close" onClick={() => bundleIDSheet.dispatch({ type: "close" })} aria-label="Close create bundle ID sheet">&times;</button>
-            </div>
-            <div className="sheet-body">
-              <label className="sheet-field">
-                <span className="sheet-label">Name</span>
-                <input type="text" value={bundleIDSheet.state.name} onChange={(e) => bundleIDSheet.dispatch({ type: "setName", value: e.target.value })} placeholder="Example App" />
-              </label>
-              <label className="sheet-field">
-                <span className="sheet-label">Identifier</span>
-                <input type="text" value={bundleIDSheet.state.identifier} onChange={(e) => bundleIDSheet.dispatch({ type: "setIdentifier", value: e.target.value })} placeholder="com.example.app" />
-              </label>
-              <label className="sheet-field">
-                <span className="sheet-label">Platform</span>
-                <select value={bundleIDSheet.state.platform} onChange={(e) => bundleIDSheet.dispatch({ type: "setPlatform", value: e.target.value })}>
-                  <option value="IOS">iOS</option><option value="MAC_OS">macOS</option><option value="TV_OS">tvOS</option><option value="VISION_OS">visionOS</option>
-                </select>
-              </label>
-              <div className="sheet-preview"><p className="sheet-label">Command preview</p><code>{bundleIDSheet.commandPreview}</code></div>
-              {bundleIDSheet.state.error && <p className="sheet-error" role="alert">{bundleIDSheet.state.error}</p>}
-            </div>
-            <div className="sheet-footer">
-              <button type="button" className="toolbar-btn" onClick={() => bundleIDSheet.dispatch({ type: "close" })}>Cancel</button>
-              <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={bundleIDSheet.handleCreate} disabled={bundleIDSheet.state.creating}>
-                {bundleIDSheet.state.creating ? "Creating…" : "Create"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+              <div className="sheet-body">
+                <label className="sheet-field">
+                  <span className="sheet-label">Name</span>
+                  <input type="text" value={bundleIDSheet.state.name} onChange={(e) => bundleIDSheet.dispatch({ type: "setName", value: e.target.value })} placeholder="Example App" />
+                </label>
+                <label className="sheet-field">
+                  <span className="sheet-label">Identifier</span>
+                  <input type="text" value={bundleIDSheet.state.identifier} onChange={(e) => bundleIDSheet.dispatch({ type: "setIdentifier", value: e.target.value })} placeholder="com.example.app" />
+                </label>
+                <label className="sheet-field">
+                  <span className="sheet-label">Platform</span>
+                  <select value={bundleIDSheet.state.platform} onChange={(e) => bundleIDSheet.dispatch({ type: "setPlatform", value: e.target.value })}>
+                    <option value="IOS">iOS</option><option value="MAC_OS">macOS</option><option value="TV_OS">tvOS</option><option value="VISION_OS">visionOS</option>
+                  </select>
+                </label>
+                <div className="sheet-preview"><p className="sheet-label">Command preview</p><code>{bundleIDSheet.commandPreview}</code></div>
+                {bundleIDSheet.state.error && <p className="sheet-error" role="alert">{bundleIDSheet.state.error}</p>}
+              </div>
+              <div className="sheet-footer">
+                <button type="button" className="toolbar-btn" onClick={bundleIDSheet.closeSheet}>Cancel</button>
+                <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={bundleIDSheet.handleCreate} disabled={bundleIDSheet.state.creating}>
+                  {bundleIDSheet.state.creating ? "Creating…" : "Create"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+      </ErrorBoundary>
 
       {deviceSheet.state.open && (
-        <div className="sheet-backdrop" role="presentation" onClick={() => deviceSheet.dispatch({ type: "close" })}>
+        <div className="sheet-backdrop" role="presentation" onClick={deviceSheet.closeSheet}>
           <section ref={trapRef} className="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="device-sheet-title"
             onKeyDown={onTrapKeyDown}
             onClick={(e) => e.stopPropagation()}>
@@ -292,7 +331,7 @@ export default function App() {
                 <p className="sheet-eyebrow">Team</p>
                 <h2 id="device-sheet-title" className="sheet-title">Register Device</h2>
               </div>
-              <button type="button" className="sheet-close" onClick={() => deviceSheet.dispatch({ type: "close" })} aria-label="Close register device sheet">&times;</button>
+              <button type="button" className="sheet-close" onClick={deviceSheet.closeSheet} aria-label="Close register device sheet">&times;</button>
             </div>
             <div className="sheet-body">
               <label className="sheet-field">
@@ -313,7 +352,7 @@ export default function App() {
               {deviceSheet.state.error && <p className="sheet-error" role="alert">{deviceSheet.state.error}</p>}
             </div>
             <div className="sheet-footer">
-              <button type="button" className="toolbar-btn" onClick={() => deviceSheet.dispatch({ type: "close" })}>Cancel</button>
+              <button type="button" className="toolbar-btn" onClick={deviceSheet.closeSheet}>Cancel</button>
               <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={deviceSheet.handleCreate} disabled={deviceSheet.state.creating}>
                 {deviceSheet.state.creating ? "Registering…" : "Register"}
               </button>
