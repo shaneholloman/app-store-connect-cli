@@ -25,6 +25,14 @@ func TestAgeRatingCommandShape(t *testing.T) {
 		t.Fatal("expected Command wrapper to return command")
 	}
 	usage := cmd.UsageFunc(cmd)
+	for _, visible := range []string{
+		"\n  view  View an age rating declaration.",
+		"\n  edit  Update an age rating declaration.",
+	} {
+		if !strings.Contains(usage, visible) {
+			t.Fatalf("expected age-rating help to include canonical verb %q, got %q", strings.TrimSpace(visible), usage)
+		}
+	}
 	for _, hidden := range []string{"\n  get\t", "\n  set\t"} {
 		if strings.Contains(usage, hidden) {
 			t.Fatalf("expected age-rating help to hide legacy verb %q, got %q", strings.TrimSpace(hidden), usage)
@@ -56,8 +64,8 @@ func TestAgeRatingValidationErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("set missing id and app", func(t *testing.T) {
-		cmd := AgeRatingSetCommand()
+	t.Run("edit missing id and app", func(t *testing.T) {
+		cmd := AgeRatingEditCommand()
 		if err := cmd.FlagSet.Parse([]string{}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
