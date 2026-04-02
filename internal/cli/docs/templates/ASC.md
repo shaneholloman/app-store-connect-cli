@@ -47,10 +47,10 @@ Do not memorize flags. Always use `--help` for the current interface.
 | List TestFlight groups | `asc testflight groups list --app "APP_ID"` |
 | List internal TestFlight groups | `asc testflight groups list --app "APP_ID" --internal` |
 | Stage a release (pre-submit) | `asc release stage --app "APP_ID" --version "VERSION" --build "BUILD_ID" --copy-metadata-from "PREVIOUS_VERSION" --dry-run` |
-| Release (full pipeline) | `asc release run --app "APP_ID" --version "VERSION" --build "BUILD_ID" --metadata-dir "./metadata/version/VERSION" --dry-run` |
+| Publish to App Store (canonical) | `asc publish appstore --app "APP_ID" --ipa "./App.ipa" --version "VERSION" --submit --confirm` |
 | Review status | `asc review status --app "APP_ID"` |
 | Review blockers | `asc review doctor --app "APP_ID"` |
-| Submit for review (low-level) | `asc submit create --app "APP_ID" --version "VERSION" --build "BUILD_ID" --confirm` |
+| Submission readiness (canonical) | `asc validate --app "APP_ID" --version "VERSION"` |
 | Apply metadata | `asc metadata apply --app "APP_ID" --version "VERSION" --dir "./metadata" --dry-run` |
 | Weekly insights summary | `asc insights weekly --app "APP_ID" --source analytics --week "YYYY-MM-DD"` |
 | Download localizations | `asc localizations download --version "VERSION_ID" --path "./localizations"` |
@@ -74,28 +74,37 @@ asc release stage --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --copy-met
 asc release stage --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --copy-metadata-from "0.9.0" --confirm
 ```
 
-### Release (high-level: ensure version + apply metadata + attach + validate + submit)
+### Publish to the App Store (canonical upload + submit flow)
 
 ```bash
-# Dry-run first to preview all planned steps
-asc release run --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --metadata-dir "./metadata/version/1.0.0" --dry-run
+# Optionally stage metadata/build prep without submitting yet
+asc release stage --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --copy-metadata-from "0.9.0" --dry-run
 
-# Run the full pipeline
-asc release run --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --metadata-dir "./metadata/version/1.0.0" --confirm
+# Upload, attach, and submit from an IPA
+asc publish appstore --app "APP_ID" --ipa "./App.ipa" --version "1.0.0" --submit --confirm
 
 # Monitor status after submission
 asc status --app "APP_ID" --watch
 ```
 
-Lower-level alternatives for scripting or partial workflows:
+`asc release run` remains available as a deprecated compatibility pipeline when
+you still want the older one-command stage + submit flow:
 
 ```bash
-# Canonical readiness check before submission
-asc versions list --app "APP_ID"
-asc versions attach-build --version-id "VERSION_ID" --build "BUILD_ID"
-asc validate --app "APP_ID" --version "1.0.0"
-asc submit create --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --confirm
+asc release run --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --metadata-dir "./metadata/version/1.0.0" --dry-run
+asc release run --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --metadata-dir "./metadata/version/1.0.0" --confirm
 ```
+
+Canonical readiness and lower-level submission lifecycle commands remain available for debugging or partial workflows:
+
+```bash
+asc validate --app "APP_ID" --version "1.0.0"
+asc submit status --version-id "VERSION_ID"
+asc submit cancel --version-id "VERSION_ID" --confirm
+```
+
+`asc submit preflight` remains available as a deprecated compatibility wrapper
+for older scripts that still expect the legacy preflight text/json output.
 
 ### Distribute to TestFlight Group
 
@@ -159,7 +168,7 @@ Use `asc <command> --help` for subcommands and flags.
 - `testflight` - Manage TestFlight workflows.
 - `builds` - Manage builds (TestFlight/App Store).
 - `build-bundles` - Manage build bundles and App Clip data.
-- `publish` - End-to-end publish workflows for TestFlight and App Store.
+- `publish` - High-level publish workflows; use `publish testflight` for TestFlight.
 - `release` - Run high-level App Store release workflows.
 - `workflow` - Run multi-step automation workflows.
 - `xcode` - Produce deterministic `.xcarchive` and `.ipa` artifacts with local Xcode build/export helpers (macOS only).
@@ -182,7 +191,7 @@ Use `asc <command> --help` for subcommands and flags.
 - `iap` - Manage in-app purchases.
 - `app-events` - Manage App Store in-app events.
 - `subscriptions` - Manage subscription groups and subscriptions.
-- `submit` - Submit builds for App Store review.
+- `submit` - Submission lifecycle tools; use `validate` for readiness and `publish appstore --submit` to ship.
 - `xcode-cloud` - Trigger and monitor Xcode Cloud workflows.
 - `categories` - Manage App Store categories.
 - `age-rating` - Manage App Store age rating declarations.

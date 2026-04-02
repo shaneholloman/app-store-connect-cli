@@ -1,97 +1,84 @@
 # submit
 
-> Submit builds for App Store review
+> Submission lifecycle tools; use `publish appstore --submit` to ship
 
-The `submit` command submits an App Store version for review.
+The `submit` command is for lower-level App Store submission lifecycle work.
+For the canonical high-level App Store publish flow, use `asc publish appstore --submit`.
 
 ## Usage
 
 ```bash  theme={null}
-asc submit create [flags]
+asc submit <subcommand> [flags]
 ```
 
-## Submit a version
+## Canonical paths
 
-Submit a version for App Store review:
+Use these commands deliberately:
+
+* `asc publish appstore --submit` - canonical App Store publish path
+* `asc validate` - canonical readiness check before submission
+* `asc submit status` - inspect submission or version review state
+* `asc submit cancel` - cancel an active submission
+
+`asc submit preflight` remains available only as a deprecated compatibility path
+for older scripts that still expect preflight-style text/json output.
+
+`asc submit create` remains available only as a deprecated compatibility path
+for older automation that already prepared the version and only needs the final
+submission step.
+
+## Submission lifecycle
+
+### Validate readiness
+
+Check readiness before you ship:
 
 ```bash  theme={null}
-asc submit create --app APP_ID --version VERSION_STRING --build BUILD_ID --confirm
-asc submit create --app 123456789 --version 1.2.0 --build BUILD_ID --confirm
+asc validate --app APP_ID --version VERSION_STRING
 ```
 
-<Warning>
-  Always run `asc validate` before submitting to catch issues early.
-</Warning>
+### Check status
 
-## Submission process
-
-When you run `asc submit create --app APP_ID --version VERSION_STRING --build BUILD_ID --confirm`, the CLI:
-
-1. Validates the version is ready
-2. Creates an App Store review submission
-3. Adds the version to the submission
-4. Submits for review
-
-## Output
-
-```
-Version 1.2.0 submitted for App Store review
-Submission ID: submission-id-here
-```
-
-## Flags
-
-<ParamField path="--app" type="string" required>
-  App ID to submit
-</ParamField>
-
-<ParamField path="--version" type="string" required>
-  Version string to submit (e.g., `1.2.0`)
-</ParamField>
-
-<ParamField path="--build" type="string" required>
-  Build ID to attach before creating the submission
-</ParamField>
-
-<ParamField path="--confirm" type="boolean" required>
-  Required confirmation flag to actually submit the version
-</ParamField>
-
-<ParamField path="--output" type="string">
-  Output format: `json`, `table`, or `markdown`
-</ParamField>
-
-## Example workflows
-
-### Validate and submit
+Inspect a submission by submission ID or version ID:
 
 ```bash  theme={null}
-# Validate first
-asc validate --app 123456789 --version 1.2.0
-
-# If validation passes, submit
-if [ $? -eq 0 ]; then
-  asc submit create --app 123456789 --version 1.2.0 --build BUILD_ID --confirm
-fi
+asc submit status --id SUBMISSION_ID
+asc submit status --version-id VERSION_ID
 ```
 
-### CI/CD submission
+### Cancel a submission
 
-```yaml  theme={null}
-# GitHub Actions
-- name: Submit for App Store review
-  run: |
-    asc validate --app ${{ secrets.APP_ID }} --version ${{ github.ref_name }}
-    asc submit create --app ${{ secrets.APP_ID }} --version ${{ github.ref_name }} --build "${{ env.BUILD_ID }}" --confirm
-```
-
-### Check submission status
-
-After submission, check the status:
+Cancel an active review submission:
 
 ```bash  theme={null}
-asc status --app 123456789 --output table
+asc submit cancel --id SUBMISSION_ID --confirm
 ```
+
+## Canonical publish workflow
+
+Ship to the App Store with the canonical high-level publish command:
+
+```bash  theme={null}
+asc publish appstore \
+  --app APP_ID \
+  --ipa /path/to/MyApp.ipa \
+  --version VERSION_STRING \
+  --submit \
+  --confirm
+```
+
+That flow uploads the IPA, finds or creates the matching version, attaches the
+build, and submits for review when `--submit` is present.
+
+## Deprecated direct submission path
+
+If you still maintain older automation that already prepared the version, the
+deprecated compatibility path remains available through the hidden
+`submit create` alias for older scripts that only need the final review
+submission step.
+
+Prefer migrating that workflow to the canonical `publish appstore` flow or the
+explicit review submission subcommands.
 
 ## Common errors
 
@@ -101,11 +88,8 @@ asc status --app 123456789 --output table
 Error: Version 1.2.0 has no build attached
 ```
 
-**Solution:** Attach a build to the version:
-
-```bash  theme={null}
-asc versions attach-build --version-id "VERSION_ID" --build "BUILD_ID"
-```
+**Solution:** Use `asc release stage` or `asc publish appstore` to attach the build as
+part of the release pipeline.
 
 ### Missing metadata
 
@@ -113,15 +97,8 @@ asc versions attach-build --version-id "VERSION_ID" --build "BUILD_ID"
 Error: Missing required metadata for version 1.2.0
 ```
 
-**Solution:** Complete all required fields:
-
-```bash  theme={null}
-asc apps info edit --app 123456789 --version 1.2.0 --platform IOS --locale "en-US" \
-  --description "App description" \
-  --keywords "keyword1,keyword2" \
-  --support-url "https://example.com/support" \
-  --whats-new "Bug fixes and improvements"
-```
+**Solution:** Complete the metadata, then retry `asc publish appstore --submit` or re-check
+with `asc validate`.
 
 ### Already in review
 
@@ -129,16 +106,7 @@ asc apps info edit --app 123456789 --version 1.2.0 --platform IOS --locale "en-U
 Error: Version 1.2.0 is already in review
 ```
 
-You cannot submit a version that's already in review. Wait for the current review to complete.
-
-## Exit codes
-
-| Code    | Description              |
-| ------- | ------------------------ |
-| `0`     | Submission successful    |
-| `1`     | Submission failed        |
-| `10-59` | HTTP client errors (4xx) |
-| `60-99` | HTTP server errors (5xx) |
+Use `asc submit status` to inspect the current submission before retrying.
 
 ## Related
 
@@ -147,11 +115,11 @@ You cannot submit a version that's already in review. Wait for the current revie
     Validate before submission
   </Card>
 
-  <Card title="Review command" icon="eye" href="/commands/review">
-    Manage App Store review details
+  <Card title="Publish command" icon="rocket" href="/commands/publish">
+    Canonical TestFlight publish path
   </Card>
 
   <Card title="Submission guide" icon="book-open" href="/guides/app-store-submission">
-    Complete submission guide
+    Complete App Store submission workflow
   </Card>
 </CardGroup>

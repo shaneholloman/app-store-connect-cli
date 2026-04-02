@@ -25,7 +25,11 @@ release stage prepares a version for review without submitting it. It orchestrat
   3. Attach selected build
   4. Run readiness checks
 
-release run is the canonical path for shipping to the App Store. It orchestrates:
+For the canonical App Store shipping command, use:
+  asc publish appstore --app "APP_ID" --ipa app.ipa --version "VERSION" --submit --confirm
+
+release run remains available as a deprecated compatibility pipeline when you
+still want one command to prepare and submit a release. It orchestrates:
   1. Ensure/create version
   2. Apply metadata and localizations
   3. Attach selected build
@@ -35,12 +39,17 @@ release run is the canonical path for shipping to the App Store. It orchestrates
 After submission, monitor progress with:
   asc status --app "APP_ID"
 
-For lower-level control, use:
+For lower-level submission lifecycle control, use:
   asc validate --app "APP_ID" --version "VERSION"
-  asc submit create --app "APP_ID" --version "VERSION" --build "BUILD_ID" --confirm
+  asc submit status --version-id "VERSION_ID"
+  asc submit cancel --version-id "VERSION_ID" --confirm
+
+` + "`asc submit preflight`" + ` remains available as a deprecated compatibility
+wrapper when you need the older preflight-style text/json output.
 
 Examples:
   asc release stage --app "APP_ID" --version "2.4.0" --build "BUILD_ID" --copy-metadata-from "2.3.2" --dry-run
+  asc publish appstore --app "APP_ID" --ipa app.ipa --version "2.4.0" --submit --confirm
   asc release run --app "APP_ID" --version "2.4.0" --build "BUILD_ID" --metadata-dir "./metadata/version/2.4.0" --dry-run
   asc release run --app "APP_ID" --version "2.4.0" --build "BUILD_ID" --metadata-dir "./metadata/version/2.4.0" --confirm
   asc status --app "APP_ID"`,

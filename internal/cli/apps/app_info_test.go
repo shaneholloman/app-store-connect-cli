@@ -1,6 +1,7 @@
 package apps
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
@@ -47,5 +48,18 @@ func TestSelectLatestAppStoreVersionFallsBackToFirst(t *testing.T) {
 	selected := selectLatestAppStoreVersion(versions)
 	if selected.ID != "first" {
 		t.Fatalf("expected fallback to the first version, got %q", selected.ID)
+	}
+}
+
+func TestWarnAppInfoSetSubmitIncompleteLocaleMentionsCanonicalPublishFlow(t *testing.T) {
+	stderr := captureAppsCreateOutput(t, func() {
+		warnAppInfoSetSubmitIncompleteLocale("en-US", asc.AppStoreVersionLocalizationAttributes{})
+	})
+
+	if !strings.Contains(stderr, "`asc publish appstore --submit`") {
+		t.Fatalf("expected canonical publish guidance in warning, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "deprecated compatibility pipeline `asc release run`") {
+		t.Fatalf("expected deprecated compatibility pipeline note in warning, got %q", stderr)
 	}
 }

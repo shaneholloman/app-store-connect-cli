@@ -25,15 +25,22 @@ func PublishCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "publish",
 		ShortUsage: "asc publish <subcommand> [flags]",
-		ShortHelp:  "End-to-end publish workflows for TestFlight and App Store.",
-		LongHelp: `End-to-end publish workflows.
+		ShortHelp:  "High-level publish workflows for TestFlight and App Store.",
+		LongHelp: `High-level publish workflows.
 
-Combines upload, distribution, and submission into single commands.
+Use:
+  - asc publish testflight for TestFlight distribution
+  - asc publish appstore for the canonical App Store upload + submit flow
+  - asc release stage to prepare an App Store version without submitting it
+
+` + "`asc release run`" + ` remains available as a deprecated compatibility
+pipeline for older automation that still expects one command to stage and
+submit a release.
 
 Examples:
   asc publish testflight --app APP_ID --ipa app.ipa --group GROUP_ID
   asc publish appstore --app APP_ID --ipa app.ipa --version 1.2.3 --submit --confirm`,
-		UsageFunc: shared.DefaultUsageFunc,
+		UsageFunc: shared.VisibleUsageFunc,
 		Subcommands: []*ffcli.Command{
 			PublishTestFlightCommand(),
 			PublishAppStoreCommand(),
@@ -350,7 +357,7 @@ Examples:
 	}
 }
 
-// PublishAppStoreCommand uploads an IPA and submits it for App Store review.
+// PublishAppStoreCommand uploads an IPA, attaches it to an App Store version, and optionally submits it.
 func PublishAppStoreCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("publish appstore", flag.ExitOnError)
 
@@ -370,15 +377,21 @@ func PublishAppStoreCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "appstore",
 		ShortUsage: "asc publish appstore [flags]",
-		ShortHelp:  "Upload and submit to App Store.",
-		LongHelp: `Upload or local-build a binary, attach it to a version, and optionally submit for review.
+		ShortHelp:  "Canonical App Store upload + submit workflow.",
+		LongHelp: `Use this as the canonical high-level App Store publish command.
 
-Steps:
+Workflow:
 1. Build locally with Xcode or upload an IPA
-2. Wait for processing (if --wait)
-3. Find or create App Store version
-4. Attach build to version
-5. Submit for review (if --submit --confirm)
+2. Wait for build processing (if --wait)
+3. Find or create the App Store version
+4. Attach the build to the version
+5. Optionally submit for review with --submit --confirm
+
+Use ` + "`asc release stage`" + ` when you want metadata-driven preparation without
+submission. Use ` + "`asc validate`" + ` to run readiness checks before you add
+` + "`--submit`" + `. Use the deprecated ` + "`asc release run`" + ` compatibility
+pipeline only for older automation that still expects a single stage+submit
+command with ` + "`--metadata-dir`" + `.
 
 Examples:
   asc publish appstore --app "123" --ipa app.ipa --version 1.2.3

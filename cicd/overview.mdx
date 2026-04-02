@@ -176,11 +176,12 @@ asc validate \
   --app "123456789" \
   --version "1.2.3"
 
-# Submit for review
-asc submit create \
+# Run the canonical App Store publish command
+asc publish appstore \
   --app "123456789" \
+  --ipa "./MyApp.ipa" \
   --version "1.2.3" \
-  --build "BUILD_ID" \
+  --submit \
   --confirm
 ```
 
@@ -335,7 +336,7 @@ Detailed integration guides for each platform:
 
     ```bash  theme={null}
     asc validate --app "$APP_ID" --version "$VERSION" || exit 1
-    asc submit create --app "$APP_ID" --version "$VERSION" --build "BUILD_ID" --confirm
+    asc publish appstore --app "$APP_ID" --ipa "./MyApp.ipa" --version "$VERSION" --submit --confirm
     ```
   </Accordion>
 </AccordionGroup>
