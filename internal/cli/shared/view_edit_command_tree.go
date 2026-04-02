@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -48,6 +50,7 @@ func NormalizeViewEditCommandTree(root *ffcli.Command, editPaths map[string]stru
 	}
 
 	replacements := make([]commandTextReplacement, 0)
+	removedChildren := make(map[string]map[string]string)
 	changed := false
 
 	var walk func(parent, current *ffcli.Command, path string)
@@ -71,6 +74,16 @@ func NormalizeViewEditCommandTree(root *ffcli.Command, editPaths map[string]stru
 			return
 		}
 
+		if legacyName, ok := legacyVerbForCanonicalLeaf(path, current.Name, editPaths); ok && parent != nil {
+			parentPath := strings.TrimSpace(strings.TrimSuffix(path, " "+strings.TrimSpace(current.Name)))
+			if parentPath != "" && findSubcommandByName(parent, legacyName) == nil {
+				if removedChildren[parentPath] == nil {
+					removedChildren[parentPath] = make(map[string]string)
+				}
+				removedChildren[parentPath][legacyName] = path
+			}
+		}
+
 		newName := ""
 		switch strings.TrimSpace(current.Name) {
 		case "get":
@@ -84,9 +97,17 @@ func NormalizeViewEditCommandTree(root *ffcli.Command, editPaths map[string]stru
 			return
 		}
 
+		oldName := strings.TrimSpace(current.Name)
 		pathReplacements := renameLeafVerb(current, path, newName)
 		if len(pathReplacements) == 0 {
 			return
+		}
+		parentPath := strings.TrimSpace(strings.TrimSuffix(path, " "+oldName))
+		if parentPath != "" {
+			if removedChildren[parentPath] == nil {
+				removedChildren[parentPath] = make(map[string]string)
+			}
+			removedChildren[parentPath][oldName] = replaceLastPathSegment(path, newName)
 		}
 
 		replacements = append(replacements, pathReplacements...)
@@ -94,15 +115,82 @@ func NormalizeViewEditCommandTree(root *ffcli.Command, editPaths map[string]stru
 	}
 
 	walk(nil, root, "asc "+rootName)
-	if !changed {
+	if !changed && len(removedChildren) == 0 {
 		return root
 	}
 
-	sortCommandTextReplacements(replacements)
-	rewriteCommandStrings(root, replacements)
-	rewriteCommandErrors(root, replacements)
+	if changed {
+		sortCommandTextReplacements(replacements)
+		rewriteCommandStrings(root, replacements)
+		rewriteCommandErrors(root, replacements)
+	}
+	wrapRemovedViewEditCommandExecs(root, "asc "+rootName, removedChildren)
 	wrapUsageFuncsToHideDeprecatedAliases(root)
 	return root
+}
+
+func wrapRemovedViewEditCommandExecs(cmd *ffcli.Command, path string, removedChildren map[string]map[string]string) {
+	if cmd == nil {
+		return
+	}
+
+	if replacements := removedChildren[path]; len(replacements) > 0 {
+		originalExec := cmd.Exec
+		if originalExec == nil {
+			originalExec = func(ctx context.Context, args []string) error {
+				return flag.ErrHelp
+			}
+		}
+
+		cmd.Exec = func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				if replacement, ok := replacements[strings.TrimSpace(args[0])]; ok {
+					fmt.Fprintf(os.Stderr, "Error: `%s %s` was removed. Use `%s` instead.\n", path, strings.TrimSpace(args[0]), replacement)
+					return flag.ErrHelp
+				}
+			}
+			return originalExec(ctx, args)
+		}
+	}
+
+	for _, sub := range cmd.Subcommands {
+		if sub == nil || isDeprecatedCompatibilityAliasCommand(sub) {
+			continue
+		}
+		childName := strings.TrimSpace(sub.Name)
+		if childName == "" {
+			continue
+		}
+		wrapRemovedViewEditCommandExecs(sub, strings.TrimSpace(path+" "+childName), removedChildren)
+	}
+}
+
+func legacyVerbForCanonicalLeaf(path, currentName string, editPaths map[string]struct{}) (string, bool) {
+	switch strings.TrimSpace(currentName) {
+	case "view":
+		return "get", true
+	case "edit":
+		if _, ok := editPaths[replaceLastPathSegment(path, "set")]; ok {
+			return "set", true
+		}
+	}
+
+	return "", false
+}
+
+func findSubcommandByName(cmd *ffcli.Command, name string) *ffcli.Command {
+	if cmd == nil {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(name)
+	for _, sub := range cmd.Subcommands {
+		if sub != nil && strings.TrimSpace(sub.Name) == trimmed {
+			return sub
+		}
+	}
+
+	return nil
 }
 
 func renameLeafVerb(cmd *ffcli.Command, oldPath, newName string) []commandTextReplacement {
@@ -120,18 +208,12 @@ func renameLeafVerb(cmd *ffcli.Command, oldPath, newName string) []commandTextRe
 		return nil
 	}
 
-	oldShortUsage := strings.TrimSpace(cmd.ShortUsage)
 	oldCommandPath := strings.TrimSpace(strings.TrimPrefix(oldPath, "asc "))
 	newCommandPath := strings.TrimSpace(strings.TrimPrefix(newPath, "asc "))
 
 	cmd.Name = newName
 	renameFlagSetLastToken(cmd.FlagSet, oldName, newName)
 	rewriteLeadingVerbDescriptions(cmd, oldName, newName)
-
-	shortUsage := oldShortUsage
-	if shortUsage == "" {
-		shortUsage = oldPath
-	}
 
 	return []commandTextReplacement{
 		{old: oldPath, new: newPath},

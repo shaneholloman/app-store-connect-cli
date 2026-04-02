@@ -72,7 +72,6 @@ Examples:
 		Subcommands: []*ffcli.Command{
 			AgeRatingViewCommand(),
 			AgeRatingSetCommand(),
-			compatAgeRatingGetAliasCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -132,22 +131,6 @@ Examples:
 	}
 }
 
-func compatAgeRatingGetAliasCommand() *ffcli.Command {
-	cmd := AgeRatingViewCommand()
-	clone := *cmd
-	clone.Name = "get"
-	clone.ShortUsage = "asc age-rating get --app APP_ID [flags]"
-	clone.ShortHelp = "Compatibility alias for `asc age-rating view`."
-	clone.LongHelp = "Compatibility alias for the renamed `asc age-rating view` command."
-	clone.UsageFunc = shared.DefaultUsageFunc
-	origExec := cmd.Exec
-	clone.Exec = func(ctx context.Context, args []string) error {
-		fmt.Fprintln(os.Stderr, "Warning: `asc age-rating get` has been renamed to `asc age-rating view`.")
-		return origExec(ctx, args)
-	}
-	return &clone
-}
-
 func ageRatingUsageFunc(c *ffcli.Command) string {
 	if c == nil {
 		return ""
@@ -155,7 +138,7 @@ func ageRatingUsageFunc(c *ffcli.Command) string {
 	clone := *c
 	clone.Subcommands = make([]*ffcli.Command, 0, len(c.Subcommands))
 	for _, sub := range c.Subcommands {
-		if sub == nil || strings.TrimSpace(sub.Name) == "get" {
+		if sub == nil {
 			continue
 		}
 		clone.Subcommands = append(clone.Subcommands, sub)

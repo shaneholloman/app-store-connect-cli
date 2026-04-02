@@ -98,11 +98,17 @@ func TestReleaseCommandShape(t *testing.T) {
 	if cmd.Name != "release" {
 		t.Fatalf("expected command name release, got %q", cmd.Name)
 	}
-	if len(cmd.Subcommands) != 1 {
-		t.Fatalf("expected 1 subcommand, got %d", len(cmd.Subcommands))
+	if len(cmd.Subcommands) != 2 {
+		t.Fatalf("expected 2 subcommands, got %d", len(cmd.Subcommands))
 	}
 	if cmd.Subcommands[0].Name != "stage" {
 		t.Fatalf("expected subcommand stage, got %q", cmd.Subcommands[0].Name)
+	}
+	if cmd.Subcommands[1].Name != "run" {
+		t.Fatalf("expected hidden removed subcommand run, got %q", cmd.Subcommands[1].Name)
+	}
+	if !strings.HasPrefix(cmd.Subcommands[1].ShortHelp, "DEPRECATED:") {
+		t.Fatalf("expected hidden removed subcommand to be deprecated, got %q", cmd.Subcommands[1].ShortHelp)
 	}
 }
 

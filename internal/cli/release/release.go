@@ -41,9 +41,10 @@ Examples:
   asc publish appstore --app "APP_ID" --ipa app.ipa --version "2.4.0" --submit --confirm
   asc status --app "APP_ID"`,
 		FlagSet:   fs,
-		UsageFunc: shared.DefaultUsageFunc,
+		UsageFunc: shared.VisibleUsageFunc,
 		Subcommands: []*ffcli.Command{
 			ReleaseStageCommand(),
+			RemovedReleaseRunCommand(),
 		},
 		Exec: func(context.Context, []string) error {
 			return flag.ErrHelp

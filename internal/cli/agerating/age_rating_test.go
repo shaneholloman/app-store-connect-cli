@@ -18,15 +18,17 @@ func TestAgeRatingCommandShape(t *testing.T) {
 	if cmd.Name != "age-rating" {
 		t.Fatalf("unexpected command name: %q", cmd.Name)
 	}
-	if len(cmd.Subcommands) != 3 {
-		t.Fatalf("expected 3 subcommands, got %d", len(cmd.Subcommands))
+	if len(cmd.Subcommands) != 2 {
+		t.Fatalf("expected 2 subcommands, got %d", len(cmd.Subcommands))
 	}
 	if got := AgeRatingCommand(); got == nil {
 		t.Fatal("expected Command wrapper to return command")
 	}
 	usage := cmd.UsageFunc(cmd)
-	if strings.Contains(usage, "\n  get\t") {
-		t.Fatalf("expected age-rating help to hide get alias, got %q", usage)
+	for _, hidden := range []string{"\n  get\t", "\n  set\t"} {
+		if strings.Contains(usage, hidden) {
+			t.Fatalf("expected age-rating help to hide legacy verb %q, got %q", strings.TrimSpace(hidden), usage)
+		}
 	}
 }
 
@@ -63,19 +65,6 @@ func TestAgeRatingValidationErrors(t *testing.T) {
 			t.Fatalf("expected ErrHelp, got %v", err)
 		}
 	})
-}
-
-func TestCompatAgeRatingGetAliasShape(t *testing.T) {
-	cmd := compatAgeRatingGetAliasCommand()
-	if cmd == nil {
-		t.Fatal("expected get compatibility alias command")
-	}
-	if cmd.Name != "get" {
-		t.Fatalf("unexpected alias command name: %q", cmd.Name)
-	}
-	if cmd.ShortHelp != "Compatibility alias for `asc age-rating view`." {
-		t.Fatalf("unexpected alias short help: %q", cmd.ShortHelp)
-	}
 }
 
 func TestAgeRatingHelpers(t *testing.T) {
