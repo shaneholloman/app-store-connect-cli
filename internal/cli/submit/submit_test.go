@@ -34,8 +34,19 @@ func TestSubmitCommandShape(t *testing.T) {
 	if cmd.Name != "submit" {
 		t.Fatalf("unexpected command name: %q", cmd.Name)
 	}
-	if len(cmd.Subcommands) != 2 {
-		t.Fatalf("expected 2 submit subcommands, got %d", len(cmd.Subcommands))
+	if len(cmd.Subcommands) != 4 {
+		t.Fatalf("expected 4 submit subcommands, got %d", len(cmd.Subcommands))
+	}
+	usage := cmd.UsageFunc(cmd)
+	for _, visible := range []string{"\n  status  ", "\n  cancel  "} {
+		if !strings.Contains(usage, visible) {
+			t.Fatalf("expected submit help to include %q, got %q", strings.TrimSpace(visible), usage)
+		}
+	}
+	for _, hidden := range []string{"\n  create  ", "\n  preflight  "} {
+		if strings.Contains(usage, hidden) {
+			t.Fatalf("expected submit help to hide removed subcommand %q, got %q", strings.TrimSpace(hidden), usage)
+		}
 	}
 }
 

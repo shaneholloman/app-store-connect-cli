@@ -38,11 +38,25 @@ Use:
 		Subcommands: []*ffcli.Command{
 			SubmitStatusCommand(),
 			SubmitCancelCommand(),
+			RemovedSubmitCreateCommand(),
+			RemovedSubmitPreflightCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
 		},
 	}
+}
+
+func RemovedSubmitCreateCommand() *ffcli.Command {
+	cmd := SubmitCreateCommand()
+	cmd.ShortHelp = "DEPRECATED: removed; use `asc publish appstore --submit` or review submission commands."
+	cmd.LongHelp = "Removed legacy command. Use `asc publish appstore --submit` for the canonical high-level flow, or `asc versions attach-build` + `asc review submissions-*` when the build is already uploaded and the version is already prepared."
+	cmd.UsageFunc = shared.DeprecatedUsageFunc
+	cmd.Exec = func(ctx context.Context, args []string) error {
+		fmt.Fprintln(os.Stderr, "Error: `asc submit create` was removed. Use `asc publish appstore --submit` or `asc versions attach-build` + `asc review submissions-*` instead.")
+		return flag.ErrHelp
+	}
+	return cmd
 }
 
 func SubmitCreateCommand() *ffcli.Command {

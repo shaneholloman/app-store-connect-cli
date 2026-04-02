@@ -3960,6 +3960,16 @@ func TestSubmitValidationErrors(t *testing.T) {
 			args:    []string{"submit", "cancel", "--confirm", "--id", "SUBMIT_123", "--version-id", "VERSION_123"},
 			wantErr: "--id and --version-id are mutually exclusive",
 		},
+		{
+			name:    "create removed",
+			args:    []string{"submit", "create", "--confirm"},
+			wantErr: "Error: `asc submit create` was removed. Use `asc publish appstore --submit` or `asc versions attach-build` + `asc review submissions-*` instead.",
+		},
+		{
+			name:    "preflight removed",
+			args:    []string{"submit", "preflight"},
+			wantErr: "Error: `asc submit preflight` was removed. Use `asc validate` instead.",
+		},
 	}
 
 	for _, test := range tests {
@@ -4188,6 +4198,11 @@ func TestAppsUpdateValidationErrors(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
+		{
+			name:    "apps create removed",
+			args:    []string{"apps", "create"},
+			wantErr: "Error: `asc apps create` was removed. Use `asc web apps create` instead.",
+		},
 		{
 			name:    "apps update missing id",
 			args:    []string{"apps", "update"},
