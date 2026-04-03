@@ -32,7 +32,7 @@ export const scopes: Scope[] = [
           { id: "localizations", label: "Localizations", description: "Locale metadata" },
           { id: "screenshots", label: "Screenshots", description: "App Store screenshots" },
           { id: "categories", label: "Categories", description: "App categories" },
-          { id: "app-tags", label: "App Tags", description: "App tags" },
+          { id: "app-tags", label: "App Tags", description: "Apple-generated discoverability tags" },
           { id: "pre-orders", label: "Pre-orders", description: "Pre-order configuration" },
         ],
       },

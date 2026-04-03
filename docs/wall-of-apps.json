@@ -388,6 +388,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/7b/43/73/7b4373fc-26e2-030b-7162-2f0ab0a7681d/AppIcon-0-0-1x_U007ewatch-0-1-P3-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "iCardSort",
+    "link": "https://apps.apple.com/us/app/icardsort/id384552728?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/91/5d/55/915d552c-3b3d-a636-622c-525e4d4ca4e2/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Iconize Folder",
     "link": "https://apps.apple.com/us/app/iconize-folder/id6478772538?mt=12&uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/57/e3/94/57e39489-2c7c-c1cc-56bc-13f85096d9cc/AppIcon-0-0-85-220-0-5-0-2x.png/512x512bb.png"
@@ -934,6 +939,11 @@
     "app": "Tamloot",
     "link": "https://apps.apple.com/il/app/tamloot/id6758220887",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/26/a3/f7/26a3f7f9-3cb6-dc8e-fcbd-0fc93630dd4c/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Telescopo: Markdown & Diagrams",
+    "link": "https://apps.apple.com/us/app/telescopo-markdown-diagrams/id6747908871?mt=12&uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/eb/ba/d4/ebbad4d9-6a72-5d73-9a18-cf2719e6b8f3/telescopo-icon-0-0-85-220-0-6-0-2x-0-0-0.png/512x512bb.png"
   },
   {
     "app": "text to speech · speakeasy",
