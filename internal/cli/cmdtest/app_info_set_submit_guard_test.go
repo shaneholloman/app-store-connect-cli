@@ -180,8 +180,8 @@ func TestAppInfoSetWarnsWhenLocaleRemainsSubmitIncomplete(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(stderr, "Warning: locale fr-FR is missing submit-required fields") {
-		t.Fatalf("expected submit-required warning in stderr, got: %q", stderr)
+	if !strings.Contains(stderr, "created locale fr-FR now participates in submission validation") {
+		t.Fatalf("expected create warning in stderr, got: %q", stderr)
 	}
 	if !strings.Contains(stderr, "description") || !strings.Contains(stderr, "keywords") || !strings.Contains(stderr, "supportUrl") {
 		t.Fatalf("expected missing field list in warning, got: %q", stderr)
