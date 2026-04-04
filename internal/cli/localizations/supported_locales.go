@@ -23,10 +23,10 @@ type supportedLocaleEntry struct {
 }
 
 type supportedLocalesResult struct {
-	VersionID       string                 `json:"versionId"`
-	TotalSupported  int                    `json:"totalSupported"`
-	ConfiguredCount int                    `json:"configuredCount"`
-	Locales         []supportedLocaleEntry `json:"locales"`
+	VersionID          string                 `json:"versionId"`
+	CatalogLocaleCount int                    `json:"catalogLocaleCount"`
+	ConfiguredCount    int                    `json:"configuredCount"`
+	Locales            []supportedLocaleEntry `json:"locales"`
 }
 
 // LocalizationsSupportedLocalesCommand returns the supported-locales subcommand.
@@ -40,7 +40,7 @@ func LocalizationsSupportedLocalesCommand() *ffcli.Command {
 		Name:       "supported-locales",
 		ShortUsage: "asc localizations supported-locales --version \"VERSION_ID\" [flags]",
 		ShortHelp:  "List supported App Store localization locales for a version.",
-		LongHelp: `List supported App Store localization locales for a version and show which ones are already configured.
+		LongHelp: `List supported App Store localization locales from the shared CLI catalog for a version and show which ones are already configured.
 
 Examples:
   asc localizations supported-locales --version "VERSION_ID"
@@ -66,9 +66,21 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			resp, err := client.GetAppStoreVersionLocalizations(requestCtx, vid, asc.WithAppStoreVersionLocalizationsLimit(200))
+			firstPage, err := client.GetAppStoreVersionLocalizations(requestCtx, vid, asc.WithAppStoreVersionLocalizationsLimit(200))
 			if err != nil {
 				return fmt.Errorf("localizations supported-locales: failed to fetch configured localizations: %w", err)
+			}
+
+			paginated, err := asc.PaginateAll(requestCtx, firstPage, func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+				return client.GetAppStoreVersionLocalizations(ctx, vid, asc.WithAppStoreVersionLocalizationsNextURL(nextURL))
+			})
+			if err != nil {
+				return fmt.Errorf("localizations supported-locales: paginate configured localizations: %w", err)
+			}
+
+			resp, ok := paginated.(*asc.AppStoreVersionLocalizationsResponse)
+			if !ok {
+				return fmt.Errorf("localizations supported-locales: unexpected localization response type %T", paginated)
 			}
 
 			result := buildSupportedLocalesResult(vid, resp)
@@ -139,17 +151,17 @@ func buildSupportedLocalesResult(versionID string, resp *asc.AppStoreVersionLoca
 		}
 	}
 
-	result.TotalSupported = len(result.Locales)
+	result.CatalogLocaleCount = len(catalog)
 	return result
 }
 
 func renderSupportedLocales(result *supportedLocalesResult, markdown bool) {
 	shared.RenderSection(
 		"Summary",
-		[]string{"Version ID", "Supported Locales", "Configured Locales"},
+		[]string{"Version ID", "Catalog Locales", "Configured Locales"},
 		[][]string{{
 			result.VersionID,
-			strconv.Itoa(result.TotalSupported),
+			strconv.Itoa(result.CatalogLocaleCount),
 			strconv.Itoa(result.ConfiguredCount),
 		}},
 		markdown,
