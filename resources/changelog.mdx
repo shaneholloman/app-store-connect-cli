@@ -14,6 +14,21 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 No unreleased changes yet.
 
+### 1.0.1
+
+**Highlights**:
+
+* Metadata and localization write failures now surface the attempted field names alongside Apple's generic `(-50)` errors, making App Store Connect rejections much easier to debug
+* Review screenshot create coverage now catches failed delivery verification for both in-app purchases and subscription groups before regressions can slip into release CI
+* The Wall of Apps and install badge pick up the latest community refresh with DeskTally and HoverCalc
+
+**Changes**:
+
+* `fix(metadata)`: Include attempted metadata field names in generic App Store Connect write failures
+* `fix(localizations)`: Preserve whitespace-only attempted-field context so localization update diagnostics match the outgoing request
+* `test(cmdtest)`: Add failed delivery verification coverage for IAP and subscription review screenshot create commands
+* `build(community)`: Refresh the installs badge and add DeskTally and HoverCalc to the Wall of Apps
+
 ### 1.0.0
 
 **Highlights**:
