@@ -238,7 +238,11 @@ Examples:
 				}
 			}
 
-			uploaded, warnings, err := uploadVersionLocalizations(requestCtx, client, resolvedVersionID, localizations, localeToID)
+			submitOpts := shared.SubmitReadinessOptions{}
+			if migrateVersionLocalizationsNeedUpdateContext(localizations, localeToID) {
+				submitOpts = shared.ResolveSubmitReadinessOptionsForVersionBestEffort(requestCtx, client, resolvedVersionID, resolvedAppID, "")
+			}
+			uploaded, warnings, err := uploadVersionLocalizations(requestCtx, client, resolvedVersionID, localizations, localeToID, submitOpts)
 			if err != nil {
 				return err
 			}
@@ -266,6 +270,25 @@ Examples:
 			return shared.PrintSubmitReadinessCreateWarnings(os.Stderr, warnings)
 		},
 	}
+}
+
+func migrateVersionLocalizationsNeedUpdateContext(localizations []FastlaneLocalization, localeToID map[string]string) bool {
+	for _, loc := range localizations {
+		if strings.TrimSpace(localeToID[loc.Locale]) != "" {
+			continue
+		}
+		attrs := asc.AppStoreVersionLocalizationAttributes{
+			Locale:      loc.Locale,
+			Description: loc.Description,
+			Keywords:    loc.Keywords,
+			SupportURL:  loc.SupportURL,
+			WhatsNew:    loc.WhatsNew,
+		}
+		if strings.TrimSpace(loc.WhatsNew) == "" && len(shared.MissingSubmitRequiredLocalizationFields(attrs)) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // MigrateExportCommand returns the migrate export subcommand.

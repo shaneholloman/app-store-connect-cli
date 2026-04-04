@@ -136,7 +136,7 @@ func buildAppInfoFilePlans(localizations []AppInfoFastlaneLocalization) []Locali
 	return plans
 }
 
-func uploadVersionLocalizations(ctx context.Context, client *asc.Client, versionID string, localizations []FastlaneLocalization, localeToID map[string]string) ([]LocalizationUploadItem, []shared.SubmitReadinessCreateWarning, error) {
+func uploadVersionLocalizations(ctx context.Context, client *asc.Client, versionID string, localizations []FastlaneLocalization, localeToID map[string]string, submitOpts shared.SubmitReadinessOptions) ([]LocalizationUploadItem, []shared.SubmitReadinessCreateWarning, error) {
 	results := make([]LocalizationUploadItem, 0, len(localizations))
 	warnings := make([]shared.SubmitReadinessCreateWarning, 0, len(localizations))
 	for _, loc := range localizations {
@@ -164,7 +164,7 @@ func uploadVersionLocalizations(ctx context.Context, client *asc.Client, version
 			}
 			localizationID = resp.Data.ID
 			localeToID[loc.Locale] = localizationID
-			if warning, ok := shared.SubmitReadinessCreateWarningForLocale(loc.Locale, attrs, shared.SubmitReadinessCreateModeApplied); ok {
+			if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(loc.Locale, attrs, shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
 				warnings = append(warnings, warning)
 			}
 		}

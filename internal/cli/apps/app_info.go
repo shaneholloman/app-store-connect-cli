@@ -348,9 +348,19 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("apps info edit: %w", err)
 			}
+			submitOpts := shared.SubmitReadinessOptions{}
 
 			// Keep existing single-locale output compatibility unless batch planning is explicitly requested.
 			if fromDirValue == "" && len(localesValue) == 0 && localeValue != "" && !*dryRun {
+				if appInfoSetValuesNeedUpdateContext(inlineAttrs) {
+					submitOpts = shared.ResolveSubmitReadinessOptionsForVersionBestEffort(
+						requestCtx,
+						client,
+						versionResource.ID,
+						resolvedAppID,
+						string(versionResource.Attributes.Platform),
+					)
+				}
 				return runAppInfoSetSingleLocale(
 					requestCtx,
 					client,
@@ -358,6 +368,7 @@ Examples:
 					localeValue,
 					copyFromLocaleValue,
 					inlineAttrs,
+					submitOpts,
 					output,
 				)
 			}
@@ -379,6 +390,15 @@ Examples:
 					valuesByLocale[targetLocale] = inlineAttrs
 				}
 			}
+			if appInfoSetBatchNeedsUpdateContext(valuesByLocale) {
+				submitOpts = shared.ResolveSubmitReadinessOptionsForVersionBestEffort(
+					requestCtx,
+					client,
+					versionResource.ID,
+					resolvedAppID,
+					string(versionResource.Attributes.Platform),
+				)
+			}
 
 			batchResult, warnings, err := runAppInfoSetBatch(
 				requestCtx,
@@ -386,6 +406,7 @@ Examples:
 				resolvedAppID,
 				versionResource.ID,
 				valuesByLocale,
+				submitOpts,
 				*dryRun,
 			)
 			if err != nil {
@@ -426,6 +447,7 @@ func runAppInfoSetSingleLocale(
 	locale string,
 	copyFromLocale string,
 	attrs asc.AppStoreVersionLocalizationAttributes,
+	submitOpts shared.SubmitReadinessOptions,
 	output shared.OutputFlags,
 ) error {
 	localizationOpts := []asc.AppStoreVersionLocalizationsOption{
@@ -496,7 +518,7 @@ func runAppInfoSetSingleLocale(
 		if err := shared.PrintOutput(resp, *output.Output, *output.Pretty); err != nil {
 			return err
 		}
-		if warning, ok := shared.SubmitReadinessCreateWarningForLocale(locale, effectiveAttrs, shared.SubmitReadinessCreateModeApplied); ok {
+		if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, effectiveAttrs, shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
 			return shared.PrintSubmitReadinessCreateWarnings(os.Stderr, []shared.SubmitReadinessCreateWarning{warning})
 		}
 		return nil
@@ -523,6 +545,7 @@ func runAppInfoSetBatch(
 	appID string,
 	versionID string,
 	valuesByLocale map[string]asc.AppStoreVersionLocalizationAttributes,
+	submitOpts shared.SubmitReadinessOptions,
 	dryRun bool,
 ) (*asc.AppInfoSetBatchResult, []shared.SubmitReadinessCreateWarning, error) {
 	if len(valuesByLocale) == 0 {
@@ -569,7 +592,7 @@ func runAppInfoSetBatch(
 				LocalizationID: existingID,
 			}
 			if existingID == "" {
-				if warning, ok := shared.SubmitReadinessCreateWarningForLocale(locale, valuesByLocale[locale], shared.SubmitReadinessCreateModePlanned); ok {
+				if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, valuesByLocale[locale], shared.SubmitReadinessCreateModePlanned, submitOpts); ok {
 					warnings = append(warnings, warning)
 				}
 			}
@@ -642,7 +665,7 @@ func runAppInfoSetBatch(
 		if results[idx].Action != "create" || results[idx].Status != "success" {
 			continue
 		}
-		if warning, ok := shared.SubmitReadinessCreateWarningForLocale(locale, valuesByLocale[locale], shared.SubmitReadinessCreateModeApplied); ok {
+		if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, valuesByLocale[locale], shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
 			warnings = append(warnings, warning)
 		}
 	}
@@ -678,6 +701,19 @@ func appInfoSetHasAnyUpdates(attrs asc.AppStoreVersionLocalizationAttributes) bo
 		strings.TrimSpace(attrs.MarketingURL) != "" ||
 		strings.TrimSpace(attrs.PromotionalText) != "" ||
 		strings.TrimSpace(attrs.WhatsNew) != ""
+}
+
+func appInfoSetValuesNeedUpdateContext(attrs asc.AppStoreVersionLocalizationAttributes) bool {
+	return strings.TrimSpace(attrs.WhatsNew) == "" && len(shared.MissingSubmitRequiredLocalizationFields(attrs)) == 0
+}
+
+func appInfoSetBatchNeedsUpdateContext(valuesByLocale map[string]asc.AppStoreVersionLocalizationAttributes) bool {
+	for _, attrs := range valuesByLocale {
+		if appInfoSetValuesNeedUpdateContext(attrs) {
+			return true
+		}
+	}
+	return false
 }
 
 func readAppInfoSetLocalesFromDir(dirPath string) (map[string]asc.AppStoreVersionLocalizationAttributes, error) {

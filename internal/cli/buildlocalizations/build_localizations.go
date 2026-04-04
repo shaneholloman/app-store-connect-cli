@@ -237,8 +237,12 @@ Examples:
 				return fmt.Errorf("build-localizations create: %w", err)
 			}
 
+			submitOpts := shared.SubmitReadinessOptions{}
+			if strings.TrimSpace(attrs.WhatsNew) == "" && len(shared.MissingSubmitRequiredLocalizationFields(attrs)) == 0 {
+				submitOpts = shared.ResolveSubmitReadinessOptionsForVersionBestEffort(requestCtx, client, versionID, "", "")
+			}
 			warnings := make([]shared.SubmitReadinessCreateWarning, 0, 1)
-			if warning, ok := shared.SubmitReadinessCreateWarningForLocale(localeValue, attrs, shared.SubmitReadinessCreateModeApplied); ok {
+			if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(localeValue, attrs, shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
 				warnings = append(warnings, warning)
 			}
 

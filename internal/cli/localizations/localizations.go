@@ -462,7 +462,11 @@ Examples:
 					return fmt.Errorf("localizations upload: %w", err)
 				}
 
-				results, warnings, err := shared.UploadVersionLocalizationsWithWarnings(requestCtx, client, strings.TrimSpace(*versionID), valuesByLocale, *dryRun)
+				submitOpts := shared.SubmitReadinessOptions{}
+				if sharedVersionLocalizationValuesNeedUpdateContext(valuesByLocale) {
+					submitOpts = shared.ResolveSubmitReadinessOptionsForVersionBestEffort(requestCtx, client, strings.TrimSpace(*versionID), "", "")
+				}
+				results, warnings, err := shared.UploadVersionLocalizationsWithWarnings(requestCtx, client, strings.TrimSpace(*versionID), valuesByLocale, *dryRun, submitOpts)
 				if err != nil {
 					return fmt.Errorf("localizations upload: %w", err)
 				}
@@ -522,4 +526,16 @@ Examples:
 			}
 		},
 	}
+}
+
+func sharedVersionLocalizationValuesNeedUpdateContext(valuesByLocale map[string]map[string]string) bool {
+	for _, values := range valuesByLocale {
+		if strings.TrimSpace(values["whatsNew"]) == "" &&
+			strings.TrimSpace(values["description"]) != "" &&
+			strings.TrimSpace(values["keywords"]) != "" &&
+			strings.TrimSpace(values["supportUrl"]) != "" {
+			return true
+		}
+	}
+	return false
 }

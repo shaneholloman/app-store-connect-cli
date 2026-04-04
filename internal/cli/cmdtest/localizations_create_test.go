@@ -38,19 +38,36 @@ func TestLocalizationsCreateSuccess(t *testing.T) {
 	}
 
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		if req.Method != http.MethodPost || req.URL.Path != "/v1/appStoreVersionLocalizations" {
-			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
-		}
-		if err := json.NewDecoder(req.Body).Decode(&seenPayload); err != nil {
-			t.Fatalf("decode payload: %v", err)
-		}
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1":
+			body := `{"data":{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"2.0","platform":"IOS"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/app-1/appStoreVersions":
+			body := `{"data":[],"links":{"next":""}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/appStoreVersionLocalizations":
+			if err := json.NewDecoder(req.Body).Decode(&seenPayload); err != nil {
+				t.Fatalf("decode payload: %v", err)
+			}
 
-		body := `{"data":{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"locale":"ja","description":"Hello","keywords":"foo,bar","supportUrl":"https://example.com/support"}}}`
-		return &http.Response{
-			StatusCode: http.StatusCreated,
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Header:     http.Header{"Content-Type": []string{"application/json"}},
-		}, nil
+			body := `{"data":{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"locale":"ja","description":"Hello","keywords":"foo,bar","supportUrl":"https://example.com/support"}}}`
+			return &http.Response{
+				StatusCode: http.StatusCreated,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
 	})
 
 	root := RootCommand("1.2.3")
@@ -223,6 +240,82 @@ func TestLocalizationsCreateCompleteCreateDoesNotWarn(t *testing.T) {
 	}
 	if out.Data.ID != "loc-2" {
 		t.Fatalf("expected localization id loc-2, got %q", out.Data.ID)
+	}
+}
+
+func TestLocalizationsCreateWarnsWhenUpdateRequiresWhatsNew(t *testing.T) {
+	setupAuth(t)
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1":
+			body := `{"data":{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"2.0","platform":"IOS"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/app-1/appStoreVersions":
+			body := `{"data":[{"type":"appStoreVersions","id":"released-version","attributes":{"versionString":"1.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}],"links":{"next":""}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/appStoreVersionLocalizations":
+			body := `{"data":{"type":"appStoreVersionLocalizations","id":"loc-4","attributes":{"locale":"ja","description":"Hello","keywords":"foo,bar","supportUrl":"https://example.com/support"}}}`
+			return &http.Response{
+				StatusCode: http.StatusCreated,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"localizations", "create",
+			"--version", "version-1",
+			"--locale", "ja",
+			"--description", "Hello",
+			"--keywords", "foo,bar",
+			"--support-url", "https://example.com/support",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	if !strings.Contains(stderr, "created locale ja now participates in submission validation") {
+		t.Fatalf("expected create warning on stderr, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "whatsNew") {
+		t.Fatalf("expected whatsNew requirement in warning, got %q", stderr)
+	}
+
+	var out struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("stdout should be valid json: %v\nstdout=%q", err, stdout)
+	}
+	if out.Data.ID != "loc-4" {
+		t.Fatalf("expected localization id loc-4, got %q", out.Data.ID)
 	}
 }
 
