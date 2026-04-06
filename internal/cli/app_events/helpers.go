@@ -169,9 +169,9 @@ func appEventHasTerritorySchedule(event *asc.AppEventResponse, expected asc.AppE
 	expectedTerritories := sortedTerritories(expected.Territories)
 
 	for _, actual := range event.Data.Attributes.TerritorySchedules {
-		if actual.PublishStart == expected.PublishStart &&
-			actual.EventStart == expected.EventStart &&
-			actual.EventEnd == expected.EventEnd &&
+		if equalRFC3339Instant(actual.PublishStart, expected.PublishStart) &&
+			equalRFC3339Instant(actual.EventStart, expected.EventStart) &&
+			equalRFC3339Instant(actual.EventEnd, expected.EventEnd) &&
 			slices.Equal(sortedTerritories(actual.Territories), expectedTerritories) {
 			return true
 		}
@@ -184,6 +184,30 @@ func sortedTerritories(territories []string) []string {
 	sorted := slices.Clone(territories)
 	slices.Sort(sorted)
 	return sorted
+}
+
+func equalRFC3339Instant(actual, expected string) bool {
+	actual = strings.TrimSpace(actual)
+	expected = strings.TrimSpace(expected)
+	if actual == "" || expected == "" {
+		return actual == expected
+	}
+
+	actualTime, actualOK := parseRFC3339Instant(actual)
+	expectedTime, expectedOK := parseRFC3339Instant(expected)
+	if actualOK && expectedOK {
+		return actualTime.Equal(expectedTime)
+	}
+
+	return actual == expected
+}
+
+func parseRFC3339Instant(value string) (time.Time, bool) {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
 }
 
 func resolveAppEventLocalizationID(ctx context.Context, client *asc.Client, eventID, localizationID, locale string) (string, error) {

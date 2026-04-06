@@ -136,6 +136,34 @@ func TestAppEventHasTerritoryScheduleIgnoresTerritoryOrder(t *testing.T) {
 	}
 }
 
+func TestAppEventHasTerritoryScheduleIgnoresEquivalentTimestampFormatting(t *testing.T) {
+	event := &asc.AppEventResponse{
+		Data: asc.Resource[asc.AppEventAttributes]{
+			Attributes: asc.AppEventAttributes{
+				TerritorySchedules: []asc.AppEventTerritorySchedule{
+					{
+						Territories:  []string{"USA", "CAN"},
+						PublishStart: "2026-05-15T02:00:00+02:00",
+						EventStart:   "2026-06-01T02:00:00+02:00",
+						EventEnd:     "2026-07-01T01:59:59+02:00",
+					},
+				},
+			},
+		},
+	}
+
+	expected := asc.AppEventTerritorySchedule{
+		Territories:  []string{"USA", "CAN"},
+		PublishStart: "2026-05-15T00:00:00Z",
+		EventStart:   "2026-06-01T00:00:00Z",
+		EventEnd:     "2026-06-30T23:59:59Z",
+	}
+
+	if !appEventHasTerritorySchedule(event, expected) {
+		t.Fatal("expected schedule match when timestamps differ only by RFC3339 formatting/offset")
+	}
+}
+
 func TestAppEventHasTerritoryScheduleRejectsDifferentTerritories(t *testing.T) {
 	event := &asc.AppEventResponse{
 		Data: asc.Resource[asc.AppEventAttributes]{
