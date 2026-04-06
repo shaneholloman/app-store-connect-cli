@@ -182,13 +182,36 @@ asc screenshots upload --version-localization "LOC_ID" \
 asc screenshots upload --version-localization "LOC_ID" \
   --path "./screenshots/iphone" \
   --device-type "IPHONE_65"
+
+# Fan out across locale directories in one run
+asc screenshots upload --app "123456789" \
+  --version "1.2.3" \
+  --path "./screenshots" \
+  --device-type "IPHONE_65"
 ```
+
+For app/version fan-out uploads, structure `--path` with locale directories such as
+`./screenshots/en-US/iphone/*.png` and `./screenshots/fr-FR/iphone/*.png`.
+Each locale directory is matched against the remote App Store version
+localizations, and only files matching the selected `--device-type` are
+uploaded from each locale subtree. A device-rooted layout such as
+`./screenshots/iphone/en-US/*.png` also works when `--path` points at
+`./screenshots/iphone`.
 
 **File Requirements:**
 
 * Format: PNG or JPEG
 * Exact dimensions must match the device type specification
 * Use `asc screenshots sizes` to verify required dimensions
+* Partial failures write a retry artifact under `.asc/reports/screenshots-upload/`
+
+**Resume a Failed Upload:**
+
+```bash  theme={null}
+# Resume from the artifact printed by the failed run
+asc screenshots upload \
+  --resume ".asc/reports/screenshots-upload/failures-123.json"
+```
 
 **Typical Submission:**
 
@@ -202,6 +225,12 @@ asc screenshots upload --version-localization "LOC_ID" \
 asc screenshots upload --version-localization "LOC_ID" \
   --path "./screenshots/ipad" \
   --device-type "IPAD_PRO_3GEN_129"
+
+# Multi-locale iPhone set
+asc screenshots upload --app "123456789" \
+  --version "1.2.3" \
+  --path "./screenshots" \
+  --device-type "IPHONE_65"
 ```
 
 ### Download Screenshots

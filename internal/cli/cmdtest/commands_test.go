@@ -3430,6 +3430,9 @@ func TestLocalizationsCreateInvalidLocale(t *testing.T) {
 }
 
 func TestScreenshotsAndVideoPreviewsValidationErrors(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "missing-config.json"))
+
 	tests := []struct {
 		name    string
 		args    []string
@@ -3444,6 +3447,16 @@ func TestScreenshotsAndVideoPreviewsValidationErrors(t *testing.T) {
 			name:    "screenshots upload missing localization",
 			args:    []string{"screenshots", "upload", "--path", "./screenshots", "--device-type", "IPHONE_65"},
 			wantErr: "--version-localization is required",
+		},
+		{
+			name:    "screenshots validate missing path",
+			args:    []string{"screenshots", "validate", "--device-type", "IPHONE_65"},
+			wantErr: "--path is required",
+		},
+		{
+			name:    "screenshots validate missing device type",
+			args:    []string{"screenshots", "validate", "--path", "./screenshots"},
+			wantErr: "--device-type is required",
 		},
 		{
 			name:    "screenshots upload missing path",

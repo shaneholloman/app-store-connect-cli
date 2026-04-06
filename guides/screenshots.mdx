@@ -362,6 +362,13 @@ echo "Screenshots uploaded successfully!"
 asc screenshots list --version-localization "$EN_US_LOC_ID"
 ```
 
+If an upload stops partway through, the command prints a failure artifact path like
+`.asc/reports/screenshots-upload/failures-123.json`. Resume the remaining files with:
+
+```bash  theme={null}
+asc screenshots upload --resume ".asc/reports/screenshots-upload/failures-123.json"
+```
+
 ## Preview Videos
 
 Upload app preview videos:
@@ -385,47 +392,43 @@ asc video-previews upload \
 
 ## Multi-Locale Screenshot Workflow
 
-For apps with multiple localizations:
+For apps with multiple localizations, you can now fan out one upload across
+all matching locale directories:
 
 ```bash  theme={null}
-#!/bin/bash
-set -e
-
-VERSION_ID="YOUR_VERSION_ID"
-LOCALES=("en-US" "es-ES" "fr-FR" "ja" "zh-Hans")
-
-for locale in "${LOCALES[@]}"; do
-  echo "Processing $locale..."
-  
-  # Get localization ID
-  LOC_ID=$(asc localizations list --version "$VERSION_ID" --output json | \
-    jq -r '.data[] | select(.attributes.locale == "'$locale'") | .id')
-  
-  if [ -z "$LOC_ID" ]; then
-    echo "Localization $locale not found, skipping"
-    continue
-  fi
-  
-  # Upload screenshots for this locale
-  if [ -d "screenshots/$locale/iphone" ]; then
-    echo "Uploading iPhone screenshots for $locale..."
-    asc screenshots upload \
-      --version-localization "$LOC_ID" \
-      --path "screenshots/$locale/iphone" \
-      --device-type "IPHONE_65"
-  fi
-  
-  if [ -d "screenshots/$locale/ipad" ]; then
-    echo "Uploading iPad screenshots for $locale..."
-    asc screenshots upload \
-      --version-localization "$LOC_ID" \
-      --path "screenshots/$locale/ipad" \
-      --device-type "IPAD_PRO_3GEN_129"
-  fi
-done
-
-echo "All locales processed!"
+asc screenshots upload \
+  --app "YOUR_APP_ID" \
+  --version "1.2.3" \
+  --path "./screenshots" \
+  --device-type "IPHONE_65"
 ```
+
+Recommended directory layout:
+
+```text
+screenshots/
+  en-US/
+    iphone/
+      01-home.png
+      02-settings.png
+  fr-FR/
+    iphone/
+      01-home.png
+  ja/
+    iphone/
+      01-home.png
+```
+
+The command resolves the app store version, fetches its version localizations,
+and uploads each locale subtree to the matching remote localization. It only
+includes files whose dimensions match the selected `--device-type`, so mixed
+iPhone/iPad locale trees are safe as long as each locale contains the slot
+you are uploading. A device-rooted layout such as `screenshots/iphone/en-US`
+also works when `--path` points at `./screenshots/iphone`.
+
+For CI or large locale batches, save the printed failure artifact as a workflow
+artifact so a rerun can continue with
+`asc screenshots upload --resume <artifact>`.
 
 ## Troubleshooting
 

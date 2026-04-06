@@ -19,7 +19,7 @@ func resolveAppID(ctx context.Context, client *asc.Client, appFlag string, confi
 		return strings.TrimSpace(appFlag), nil
 	}
 	if strings.TrimSpace(config.AppIdentifier) != "" {
-		if isNumeric(config.AppIdentifier) {
+		if shared.IsNumericAppID(config.AppIdentifier) {
 			return config.AppIdentifier, nil
 		}
 		if client == nil {
@@ -148,6 +148,9 @@ func uploadVersionLocalizations(ctx context.Context, client *asc.Client, version
 			PromotionalText: loc.PromotionalText,
 			SupportURL:      loc.SupportURL,
 			MarketingURL:    loc.MarketingURL,
+		}
+		if err := shared.ValidateVersionLocalizationAttributes(attrs); err != nil {
+			return nil, nil, fmt.Errorf("migrate import: locale %q: %w", loc.Locale, err)
 		}
 		action := "create"
 		localizationID := localeToID[loc.Locale]
@@ -444,16 +447,4 @@ func isNotFoundReviewDetail(err error) bool {
 		}
 	}
 	return false
-}
-
-func isNumeric(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, ch := range value {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	return true
 }
