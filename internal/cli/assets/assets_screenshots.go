@@ -657,9 +657,14 @@ func collectLocaleAssetFiles(rootPath, displayType string) ([]screenshotLocaleAs
 	return results, nil
 }
 
-func collectLocaleAssetFilesRecursive(rootPath, displayType string) ([]string, error) {
-	files := make([]string, 0)
-	err := filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
+type screenshotMatchWalkOptions struct {
+	ignoreInvalidFiles bool
+	ignoreSymlinks     bool
+	onMatch            func(path string) error
+}
+
+func walkMatchingScreenshotFiles(rootPath, displayType string, opts screenshotMatchWalkOptions) error {
+	return filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -670,6 +675,9 @@ func collectLocaleAssetFilesRecursive(rootPath, displayType string) ([]string, e
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
+			if opts.ignoreSymlinks {
+				return nil
+			}
 			return fmt.Errorf("refusing to read symlink %q", path)
 		}
 		if entry.IsDir() {
@@ -680,23 +688,36 @@ func collectLocaleAssetFilesRecursive(rootPath, displayType string) ([]string, e
 		if err != nil {
 			return err
 		}
-		if !info.Mode().IsRegular() {
-			return nil
-		}
-		if !isSupportedScreenshotUploadFile(path) {
+		if !info.Mode().IsRegular() || !isSupportedScreenshotUploadFile(path) {
 			return nil
 		}
 		if err := asc.ValidateImageFile(path); err != nil {
+			if opts.ignoreInvalidFiles {
+				return nil
+			}
 			return err
 		}
 		matches, err := screenshotMatchesDisplayType(path, displayType)
 		if err != nil {
+			if opts.ignoreInvalidFiles {
+				return nil
+			}
 			return err
 		}
-		if matches {
-			files = append(files, path)
+		if !matches || opts.onMatch == nil {
+			return nil
 		}
-		return nil
+		return opts.onMatch(path)
+	})
+}
+
+func collectLocaleAssetFilesRecursive(rootPath, displayType string) ([]string, error) {
+	files := make([]string, 0)
+	err := walkMatchingScreenshotFiles(rootPath, displayType, screenshotMatchWalkOptions{
+		onMatch: func(path string) error {
+			files = append(files, path)
+			return nil
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -710,39 +731,13 @@ func collectLocaleAssetFilesRecursive(rootPath, displayType string) ([]string, e
 
 func directoryContainsMatchingScreenshotFiles(rootPath, displayType string) (bool, error) {
 	found := false
-	err := filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if path != rootPath && shouldIgnoreFanoutEntryName(entry.Name()) {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() {
-			return nil
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() || !isSupportedScreenshotUploadFile(path) {
-			return nil
-		}
-		if err := asc.ValidateImageFile(path); err != nil {
-			return err
-		}
-		matches, err := screenshotMatchesDisplayType(path, displayType)
-		if err != nil {
-			return err
-		}
-		if matches {
+	err := walkMatchingScreenshotFiles(rootPath, displayType, screenshotMatchWalkOptions{
+		ignoreInvalidFiles: true,
+		ignoreSymlinks:     true,
+		onMatch: func(path string) error {
 			found = true
 			return filepath.SkipAll
-		}
-		return nil
+		},
 	})
 	if err != nil && !errors.Is(err, filepath.SkipAll) {
 		return false, err

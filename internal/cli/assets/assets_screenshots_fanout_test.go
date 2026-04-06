@@ -211,6 +211,33 @@ func TestCollectLocaleAssetFilesSkipsIgnoredSubdirectoriesWithoutMatchingScreens
 	}
 }
 
+func TestCollectLocaleAssetFilesIgnoresMalformedProbeFilesInNonLocaleDirectories(t *testing.T) {
+	rootDir := t.TempDir()
+	enDir := filepath.Join(rootDir, "en-US", "iphone")
+	buildDir := filepath.Join(rootDir, "build")
+	if err := os.MkdirAll(enDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	writeAssetsTestPNGWithSize(t, enDir, "01-home.png", 1242, 2688)
+	if err := os.WriteFile(filepath.Join(buildDir, "stale.png"), []byte("not a png"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	files, err := collectLocaleAssetFiles(rootDir, asc.CanonicalScreenshotDisplayTypeForAPI("APP_IPHONE_65"))
+	if err != nil {
+		t.Fatalf("collectLocaleAssetFiles() error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected 1 locale result, got %d", len(files))
+	}
+	if files[0].Locale != "en-US" {
+		t.Fatalf("expected en-US locale, got %#v", files[0])
+	}
+}
+
 func TestCollectLocaleAssetFilesErrorsOnInvalidLocaleDirectoryWithMatchingScreenshots(t *testing.T) {
 	rootDir := t.TempDir()
 	iphoneDir := filepath.Join(rootDir, "iphone")
