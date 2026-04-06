@@ -55,7 +55,7 @@ Use "asc auth status" to see which credentials/profile are currently active.
 Examples:
   asc auth status
   asc auth status --verbose
-  asc auth switch --profile work`,
+  asc auth switch --name work`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{

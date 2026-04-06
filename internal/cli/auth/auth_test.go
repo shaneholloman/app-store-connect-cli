@@ -37,7 +37,7 @@ func TestAuthHelpHighlightsStatusDiscoverability(t *testing.T) {
 	for _, expected := range []string{
 		`Use "asc auth status" to see which credentials/profile are currently active.`,
 		"asc auth status --verbose",
-		"asc auth switch --profile work",
+		"asc auth switch --name work",
 	} {
 		if !strings.Contains(cmd.LongHelp, expected) {
 			t.Fatalf("expected AuthCommand().LongHelp to contain %q, got %q", expected, cmd.LongHelp)
