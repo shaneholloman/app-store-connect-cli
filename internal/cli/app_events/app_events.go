@@ -280,15 +280,27 @@ Examples:
 					TerritorySchedules: []asc.AppEventTerritorySchedule{schedule},
 				})
 				if err != nil {
-					cleanupCtx, cancelCleanup := shared.ContextWithTimeout(ctx)
-					defer cancelCleanup()
+					verifyCtx, cancelVerify := shared.ContextWithTimeout(ctx)
+					defer cancelVerify()
 
-					cleanupErr := client.DeleteAppEvent(cleanupCtx, createdID)
-					if cleanupErr != nil {
-						return fmt.Errorf("app-events create: created event %q but failed to apply schedule: %w (cleanup also failed: %s)", createdID, err, cleanupErr.Error())
+					verifiedResp, verifyErr := client.GetAppEvent(verifyCtx, createdID)
+					if verifyErr == nil {
+						if appEventHasTerritorySchedule(verifiedResp, schedule) {
+							resp = verifiedResp
+						} else {
+							cleanupCtx, cancelCleanup := shared.ContextWithTimeout(ctx)
+							defer cancelCleanup()
+
+							cleanupErr := client.DeleteAppEvent(cleanupCtx, createdID)
+							if cleanupErr != nil {
+								return fmt.Errorf("app-events create: created event %q but failed to apply schedule: %w (verification confirmed the schedule is still missing; cleanup also failed: %s)", createdID, err, cleanupErr.Error())
+							}
+
+							return fmt.Errorf("app-events create: failed to apply schedule after creating event %q; verification confirmed the schedule was not applied and the event was deleted so the command is safe to retry: %w", createdID, err)
+						}
+					} else {
+						return fmt.Errorf("app-events create: created event %q but could not confirm whether the schedule update succeeded: %w (verification failed: %s)", createdID, err, verifyErr.Error())
 					}
-
-					return fmt.Errorf("app-events create: failed to apply schedule after creating event %q; the event was deleted so the command is safe to retry: %w", createdID, err)
 				}
 			}
 

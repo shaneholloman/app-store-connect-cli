@@ -161,6 +161,23 @@ func normalizeAppEventTerritorySchedule(start, end, publishStart, territories st
 	return buildAppEventTerritorySchedule(territoryValues, publishValue, startValue, endValue), true, nil
 }
 
+func appEventHasTerritorySchedule(event *asc.AppEventResponse, expected asc.AppEventTerritorySchedule) bool {
+	if event == nil {
+		return false
+	}
+
+	for _, actual := range event.Data.Attributes.TerritorySchedules {
+		if actual.PublishStart == expected.PublishStart &&
+			actual.EventStart == expected.EventStart &&
+			actual.EventEnd == expected.EventEnd &&
+			slices.Equal(actual.Territories, expected.Territories) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func resolveAppEventLocalizationID(ctx context.Context, client *asc.Client, eventID, localizationID, locale string) (string, error) {
 	localizationID = strings.TrimSpace(localizationID)
 	if localizationID != "" {
