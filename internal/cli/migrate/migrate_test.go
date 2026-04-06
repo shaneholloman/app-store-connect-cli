@@ -467,16 +467,10 @@ func TestValidateVersionLocalization_DescriptionTooLong(t *testing.T) {
 }
 
 func TestValidateVersionLocalization_KeywordsTooLong(t *testing.T) {
-	// Create keywords that exceed 100 bytes.
-	longKeywords := make([]byte, 101)
-	for i := range longKeywords {
-		longKeywords[i] = 'k'
-	}
-
 	loc := FastlaneLocalization{
 		Locale:      "en-US",
 		Description: "Valid description",
-		Keywords:    string(longKeywords),
+		Keywords:    strings.Repeat("語", 101),
 	}
 
 	issues := validateVersionLocalization(loc)
@@ -484,8 +478,8 @@ func TestValidateVersionLocalization_KeywordsTooLong(t *testing.T) {
 	for _, issue := range issues {
 		if issue.Field == "keywords" && issue.Severity == "error" {
 			foundError = true
-			if issue.Message != "exceeds 100-byte limit" {
-				t.Fatalf("expected byte-limit message, got %q", issue.Message)
+			if issue.Message != "exceeds 100-character limit" {
+				t.Fatalf("expected character-limit message, got %q", issue.Message)
 			}
 			if issue.Length != 101 {
 				t.Fatalf("expected keyword length 101, got %d", issue.Length)

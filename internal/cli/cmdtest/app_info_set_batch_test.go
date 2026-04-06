@@ -154,22 +154,22 @@ func TestRunAppInfoSetRejectsOverLimitKeywordBytesBeforeAuthResolution(t *testin
 			"apps", "info", "edit",
 			"--app", "APP_ID",
 			"--locale", "ja",
-			"--keywords", strings.Repeat("語", 34),
+			"--keywords", strings.Repeat("語", 101),
 		}, "1.2.3")
 		if code != cmd.ExitUsage {
 			t.Fatalf("expected exit code %d, got %d", cmd.ExitUsage, code)
 		}
 	})
 
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)
 	}
 }
 
-func TestRunAppInfoSetFromDirRejectsOverLimitKeywordBytesBeforeAuthResolution(t *testing.T) {
+func TestRunAppInfoSetFromDirRejectsOverLimitKeywordCharactersBeforeAuthResolution(t *testing.T) {
 	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
 	t.Setenv("ASC_KEY_ID", "")
 	t.Setenv("ASC_ISSUER_ID", "")
@@ -180,7 +180,7 @@ func TestRunAppInfoSetFromDirRejectsOverLimitKeywordBytesBeforeAuthResolution(t 
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
 
 	inputDir := t.TempDir()
-	content := `{"description":"Japanese description","keywords":"` + strings.Repeat("語", 34) + `"}`
+	content := `{"description":"Japanese description","keywords":"` + strings.Repeat("語", 101) + `"}`
 	if err := os.WriteFile(filepath.Join(inputDir, "ja.json"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write ja file: %v", err)
 	}
@@ -208,8 +208,8 @@ func TestRunAppInfoSetFromDirRejectsOverLimitKeywordBytesBeforeAuthResolution(t 
 		}
 	})
 
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)

@@ -144,7 +144,7 @@ func TestRunMetadataPushRejectsOverLimitKeywordBytesBeforeAuthResolution(t *test
 	if err := os.MkdirAll(versionDir, 0o755); err != nil {
 		t.Fatalf("mkdir version dir: %v", err)
 	}
-	body := `{"keywords":"` + strings.Repeat("語", 34) + `"}`
+	body := `{"keywords":"` + strings.Repeat("語", 101) + `"}`
 	if err := os.WriteFile(filepath.Join(versionDir, "ja.json"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write version file: %v", err)
 	}
@@ -176,8 +176,8 @@ func TestRunMetadataPushRejectsOverLimitKeywordBytesBeforeAuthResolution(t *test
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)

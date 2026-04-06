@@ -821,10 +821,7 @@ func validateVersionLocalization(loc FastlaneLocalization) []ValidationIssue {
 	}
 
 	if issue := validation.KeywordFieldLengthIssue(loc.Keywords); issue != nil {
-		limitUnit := issue.Unit
-		if limitUnit == "bytes" {
-			limitUnit = "byte"
-		}
+		limitUnit := strings.TrimSuffix(issue.Unit, "s")
 		issues = append(issues, ValidationIssue{
 			Locale:   loc.Locale,
 			Field:    "keywords",

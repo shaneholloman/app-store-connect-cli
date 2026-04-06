@@ -131,7 +131,7 @@ func TestUploadVersionLocalizations_RejectsOverLimitKeywordBytesBeforeRequests(t
 		"version-1",
 		[]FastlaneLocalization{{
 			Locale:   "ja",
-			Keywords: strings.Repeat("語", 34),
+			Keywords: strings.Repeat("語", 101),
 		}},
 		map[string]string{},
 		shared.SubmitReadinessOptions{},
@@ -139,8 +139,8 @@ func TestUploadVersionLocalizations_RejectsOverLimitKeywordBytesBeforeRequests(t
 	if err == nil {
 		t.Fatal("expected upload validation error")
 	}
-	if !strings.Contains(err.Error(), "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %v", err)
+	if !strings.Contains(err.Error(), "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %v", err)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)

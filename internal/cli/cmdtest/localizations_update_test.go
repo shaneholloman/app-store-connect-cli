@@ -174,7 +174,7 @@ func TestLocalizationsUpdate_RejectsOverLimitKeywordBytesBeforeRequest(t *testin
 			"localizations", "update",
 			"--version", "ver-1",
 			"--locale", "ja",
-			"--keywords", strings.Repeat("語", 34),
+			"--keywords", strings.Repeat("語", 101),
 		}, "1.2.3")
 		if code != cmd.ExitUsage {
 			t.Fatalf("expected exit code %d, got %d", cmd.ExitUsage, code)
@@ -184,15 +184,15 @@ func TestLocalizationsUpdate_RejectsOverLimitKeywordBytesBeforeRequest(t *testin
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)
 	}
 }
 
-func TestLocalizationsUpdate_RejectsRawKeywordBytesIncludingTrailingSpaceBeforeRequest(t *testing.T) {
+func TestLocalizationsUpdate_RejectsRawKeywordCharactersIncludingTrailingSpaceBeforeRequest(t *testing.T) {
 	setupLocUpdateAuth(t)
 
 	originalTransport := http.DefaultTransport
@@ -220,8 +220,8 @@ func TestLocalizationsUpdate_RejectsRawKeywordBytesIncludingTrailingSpaceBeforeR
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)

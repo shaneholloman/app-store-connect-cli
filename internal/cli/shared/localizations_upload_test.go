@@ -193,13 +193,13 @@ func TestUploadVersionLocalizations_DoesNotRetryWhenWhatsNewIsEmpty(t *testing.T
 	}
 }
 
-func TestUploadVersionLocalizationsWithWarnings_RejectsOverLimitKeywordBytesBeforeFetch(t *testing.T) {
+func TestUploadVersionLocalizationsWithWarnings_RejectsOverLimitKeywordCharactersBeforeFetch(t *testing.T) {
 	client := &stubVersionLocalizationClient{}
 
 	valuesByLocale := map[string]map[string]string{
 		"ja": {
 			"description": "日本語説明",
-			"keywords":    strings.Repeat("語", 34),
+			"keywords":    strings.Repeat("語", 101),
 		},
 	}
 
@@ -207,8 +207,8 @@ func TestUploadVersionLocalizationsWithWarnings_RejectsOverLimitKeywordBytesBefo
 	if err == nil {
 		t.Fatal("expected upload validation error")
 	}
-	if !strings.Contains(err.Error(), "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %v", err)
+	if !strings.Contains(err.Error(), "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %v", err)
 	}
 	if client.getCalls != 0 {
 		t.Fatalf("expected no fetch calls, got %d", client.getCalls)
