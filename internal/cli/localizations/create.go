@@ -55,9 +55,11 @@ Examples:
 				fmt.Fprintln(os.Stderr, "Error: --locale is required")
 				return flag.ErrHelp
 			}
-			if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
+			normalizedLocale, err := shared.CanonicalizeAppStoreLocalizationLocale(localeValue)
+			if err != nil {
 				return shared.UsageError(err.Error())
 			}
+			localeValue = normalizedLocale
 
 			client, err := shared.GetASCClient()
 			if err != nil {
@@ -82,7 +84,43 @@ Examples:
 				return fmt.Errorf("localizations create: failed to create: %w", err)
 			}
 
-			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+			submitOpts := shared.SubmitReadinessOptions{}
+			var submitWarningLookupErr error
+			if strings.TrimSpace(attrs.WhatsNew) == "" {
+				submitOpts, submitWarningLookupErr = shared.ResolveSubmitReadinessOptionsForVersion(requestCtx, client, vid, "", "")
+				if submitWarningLookupErr != nil {
+					submitOpts = shared.SubmitReadinessOptions{}
+				}
+			}
+			warnings := make([]shared.SubmitReadinessCreateWarning, 0, 1)
+			if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(localeValue, attrs, shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
+				warnings = append(warnings, warning)
+			}
+
+			if err := shared.PrintOutput(resp, *output.Output, *output.Pretty); err != nil {
+				return err
+			}
+			if err := shared.PrintSubmitReadinessCreateWarnings(os.Stderr, warnings); err != nil {
+				return err
+			}
+			if submitWarningLookupErr == nil || len(warnings) > 0 {
+				return nil
+			}
+
+			localeLabel := strings.TrimSpace(resp.Data.Attributes.Locale)
+			if localeLabel == "" {
+				localeLabel = localeValue
+			}
+			if localeLabel == "" {
+				localeLabel = "<unknown>"
+			}
+			_, err = fmt.Fprintf(
+				os.Stderr,
+				"Warning: locale %s was created without whatsNew, but the CLI could not determine whether this version is an app update: %v\n",
+				localeLabel,
+				submitWarningLookupErr,
+			)
+			return err
 		},
 	}
 }

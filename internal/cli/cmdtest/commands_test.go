@@ -1412,6 +1412,11 @@ func TestPricingValidationErrors(t *testing.T) {
 		wantErr string
 	}{
 		{
+			name:    "pricing price-points equalizations missing price-point",
+			args:    []string{"pricing", "price-points", "equalizations"},
+			wantErr: "Error: --price-point is required",
+		},
+		{
 			name:    "pricing schedule get missing app and id",
 			args:    []string{"pricing", "schedule", "view"},
 			wantErr: "Error: --app or --id is required",
@@ -3318,6 +3323,11 @@ func TestLocalizationsValidationErrors(t *testing.T) {
 			wantErr: "--locale is required",
 		},
 		{
+			name:    "localizations supported-locales missing version",
+			args:    []string{"localizations", "supported-locales"},
+			wantErr: "--version is required",
+		},
+		{
 			name:    "localizations list missing app for app-info",
 			args:    []string{"localizations", "list", "--type", "app-info"},
 			wantErr: "--app is required",
@@ -3336,6 +3346,16 @@ func TestLocalizationsValidationErrors(t *testing.T) {
 			name:    "localizations upload missing path",
 			args:    []string{"localizations", "upload", "--version", "VERSION_ID"},
 			wantErr: "--path is required",
+		},
+		{
+			name:    "metadata keywords push missing version id",
+			args:    []string{"metadata", "keywords", "push", "--input", "keywords.json"},
+			wantErr: "--version-id is required",
+		},
+		{
+			name:    "metadata keywords push missing input",
+			args:    []string{"metadata", "keywords", "push", "--version-id", "VERSION_ID"},
+			wantErr: "--input is required",
 		},
 		{
 			name:    "localizations upload missing version",

@@ -34,7 +34,7 @@ func TestMetadataHelpShowsKeywordsWorkflow(t *testing.T) {
 		t.Fatal("expected metadata keywords command")
 	}
 	keywordsUsage := keywordsCmd.UsageFunc(keywordsCmd)
-	for _, subcommand := range []string{"import", "plan", "diff", "localize", "apply", "sync"} {
+	for _, subcommand := range []string{"import", "plan", "diff", "localize", "apply", "push", "sync"} {
 		if !usageListsSubcommand(keywordsUsage, subcommand) {
 			t.Fatalf("expected metadata keywords help to list %s, got %q", subcommand, keywordsUsage)
 		}
@@ -1099,7 +1099,12 @@ func TestMetadataKeywordsPlanBuildsKeywordOnlyRemotePlan(t *testing.T) {
 		}
 		switch req.URL.Path {
 		case "/v1/apps/app-1/appStoreVersions":
+			if req.URL.Query().Get("filter[appStoreState]") != "" {
+				return metadataKeywordsJSONResponse(`{"data":[],"links":{"next":""}}`)
+			}
 			return metadataKeywordsJSONResponse(`{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}],"links":{"next":""}}`)
+		case "/v1/appStoreVersions/version-1":
+			return metadataKeywordsJSONResponse(`{"data":{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`)
 		case "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
 			return metadataKeywordsJSONResponse(`{
 				"data":[
@@ -1164,7 +1169,7 @@ func TestMetadataKeywordsPlanBuildsKeywordOnlyRemotePlan(t *testing.T) {
 	if len(payload.Warnings) != 1 || payload.Warnings[0].Action != "create" || payload.Warnings[0].Locale != "ja" {
 		t.Fatalf("expected one ja warning, got %+v", payload.Warnings)
 	}
-	if !strings.Contains(payload.Warnings[0].Message, "create would leave locale") || !strings.Contains(payload.Warnings[0].Message, "description, supportUrl") {
+	if !strings.Contains(payload.Warnings[0].Message, "creating locale ja would make it participate in submission validation") || !strings.Contains(payload.Warnings[0].Message, "description, supportUrl") {
 		t.Fatalf("expected create warning message with missing fields, got %+v", payload.Warnings[0])
 	}
 	if len(payload.Warnings[0].MissingFields) != 2 || payload.Warnings[0].MissingFields[0] != "description" || payload.Warnings[0].MissingFields[1] != "supportUrl" {
@@ -1195,6 +1200,9 @@ func TestMetadataKeywordsPlanDoesNotWarnForExistingLocaleUpdate(t *testing.T) {
 		}
 		switch req.URL.Path {
 		case "/v1/apps/app-1/appStoreVersions":
+			if req.URL.Query().Get("filter[appStoreState]") != "" {
+				return metadataKeywordsJSONResponse(`{"data":[],"links":{"next":""}}`)
+			}
 			return metadataKeywordsJSONResponse(`{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}],"links":{"next":""}}`)
 		case "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
 			return metadataKeywordsJSONResponse(`{
@@ -1245,6 +1253,81 @@ func TestMetadataKeywordsPlanDoesNotWarnForExistingLocaleUpdate(t *testing.T) {
 	}
 	if len(payload.Warnings) != 0 {
 		t.Fatalf("expected no warnings for existing-locale update, got %+v", payload.Warnings)
+	}
+}
+
+func TestMetadataKeywordsDiffIncludesCreateWarnings(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+	t.Setenv("ASC_APP_ID", "")
+
+	dir := t.TempDir()
+	versionDir := filepath.Join(dir, "version", "1.2.3")
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("mkdir version dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(versionDir, "ja.json"), []byte(`{"keywords":"nihongo"}`), 0o644); err != nil {
+		t.Fatalf("write ja file: %v", err)
+	}
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET only, got %s %s", req.Method, req.URL.Path)
+		}
+		switch req.URL.Path {
+		case "/v1/apps/app-1/appStoreVersions":
+			if req.URL.Query().Get("filter[appStoreState]") != "" {
+				return metadataKeywordsJSONResponse(`{"data":[],"links":{"next":""}}`)
+			}
+			return metadataKeywordsJSONResponse(`{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}],"links":{"next":""}}`)
+		case "/v1/appStoreVersions/version-1":
+			return metadataKeywordsJSONResponse(`{"data":{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`)
+		case "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
+			return metadataKeywordsJSONResponse(`{"data":[],"links":{"next":""}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+			return nil, nil
+		}
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"metadata", "keywords", "diff",
+			"--app", "app-1",
+			"--version", "1.2.3",
+			"--dir", dir,
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		Warnings []struct {
+			Locale        string   `json:"locale"`
+			Message       string   `json:"message"`
+			MissingFields []string `json:"missingFields"`
+		} `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout=%q", err, stdout)
+	}
+	if len(payload.Warnings) != 1 || payload.Warnings[0].Locale != "ja" {
+		t.Fatalf("expected one ja warning, got %+v", payload.Warnings)
+	}
+	if !strings.Contains(payload.Warnings[0].Message, "creating locale ja would make it participate in submission validation") {
+		t.Fatalf("expected submission warning message, got %+v", payload.Warnings[0])
 	}
 }
 
@@ -1525,7 +1608,12 @@ func TestMetadataKeywordsApplyCreatesLocale(t *testing.T) {
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
 		case "/v1/apps/app-1/appStoreVersions":
+			if strings.Contains(req.URL.RawQuery, "filter%5BappStoreState%5D") {
+				return metadataKeywordsJSONResponse(`{"data":[],"links":{"next":""}}`)
+			}
 			return metadataKeywordsJSONResponse(`{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}],"links":{"next":""}}`)
+		case "/v1/appStoreVersions/version-1":
+			return metadataKeywordsJSONResponse(`{"data":{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`)
 		case "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
 			if req.Method != http.MethodGet {
 				t.Fatalf("expected GET for localizations, got %s", req.Method)
@@ -1687,6 +1775,80 @@ func TestMetadataKeywordsSyncDryRunUsesImportedStateWithoutWriting(t *testing.T)
 
 	if _, err := os.Stat(filepath.Join(dir, "version", "1.2.3", "en-US.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("expected dry-run sync to avoid writing canonical file, got err=%v", err)
+	}
+}
+
+func TestMetadataKeywordsSyncPropagatesCreateWarnings(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+	t.Setenv("ASC_APP_ID", "")
+
+	dir := t.TempDir()
+	inputPath := filepath.Join(t.TempDir(), "keywords.json")
+	if err := os.WriteFile(inputPath, []byte(`{"locale":"ja","keywords":["nihongo"]}`), 0o644); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodGet {
+			t.Fatalf("expected GET only for dry-run sync, got %s %s", req.Method, req.URL.Path)
+		}
+		switch req.URL.Path {
+		case "/v1/apps/app-1/appStoreVersions":
+			return metadataKeywordsJSONResponse(`{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}],"links":{"next":""}}`)
+		case "/v1/appStoreVersions/version-1":
+			return metadataKeywordsJSONResponse(`{"data":{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"},"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}}}`)
+		case "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
+			return metadataKeywordsJSONResponse(`{"data":[],"links":{"next":""}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.Path)
+			return nil, nil
+		}
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"metadata", "keywords", "sync",
+			"--app", "app-1",
+			"--version", "1.2.3",
+			"--dir", dir,
+			"--input", inputPath,
+			"--format", "json",
+			"--dry-run",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		Plan struct {
+			Warnings []struct {
+				Locale        string   `json:"locale"`
+				Message       string   `json:"message"`
+				MissingFields []string `json:"missingFields"`
+			} `json:"warnings"`
+		} `json:"plan"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout=%q", err, stdout)
+	}
+	if len(payload.Plan.Warnings) != 1 || payload.Plan.Warnings[0].Locale != "ja" {
+		t.Fatalf("expected one ja warning, got %+v", payload.Plan.Warnings)
+	}
+	if !strings.Contains(payload.Plan.Warnings[0].Message, "creating locale ja would make it participate in submission validation") {
+		t.Fatalf("expected submission warning message, got %+v", payload.Plan.Warnings[0])
 	}
 }
 
