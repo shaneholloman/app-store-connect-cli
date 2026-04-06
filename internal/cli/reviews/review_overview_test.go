@@ -183,6 +183,57 @@ func TestBuildReviewDoctorResultAddsRemovedItemsOnlyBlocker(t *testing.T) {
 	}
 }
 
+func TestAccumulateReviewSubmissionItemsIgnoresUnrelatedSubmissionItems(t *testing.T) {
+	summary := reviewSubmissionItemsContext{}
+	items := []asc.ReviewSubmissionItemResource{
+		{
+			ID: "item-removed-version",
+			Attributes: asc.ReviewSubmissionItemAttributes{
+				State: "REMOVED",
+			},
+			Relationships: &asc.ReviewSubmissionItemRelationships{
+				AppStoreVersion: &asc.Relationship{
+					Data: asc.ResourceData{ID: "ver-1", Type: asc.ResourceTypeAppStoreVersions},
+				},
+			},
+		},
+		{
+			ID: "item-active-background",
+			Attributes: asc.ReviewSubmissionItemAttributes{
+				State: "APPROVED",
+			},
+			Relationships: &asc.ReviewSubmissionItemRelationships{
+				BackgroundAssetVersion: &asc.Relationship{
+					Data: asc.ResourceData{ID: "bg-1", Type: asc.ResourceTypeBackgroundAssetVersions},
+				},
+			},
+		},
+		{
+			ID: "item-other-version",
+			Attributes: asc.ReviewSubmissionItemAttributes{
+				State: "APPROVED",
+			},
+			Relationships: &asc.ReviewSubmissionItemRelationships{
+				AppStoreVersion: &asc.Relationship{
+					Data: asc.ResourceData{ID: "ver-2", Type: asc.ResourceTypeAppStoreVersions},
+				},
+			},
+		},
+	}
+
+	accumulateReviewSubmissionItems(&summary, items, "ver-1")
+
+	if summary.TotalCount != 1 {
+		t.Fatalf("expected only selected version item to count, got total=%d", summary.TotalCount)
+	}
+	if summary.RemovedCount != 1 {
+		t.Fatalf("expected removed count 1, got %d", summary.RemovedCount)
+	}
+	if summary.ActiveCount != 0 {
+		t.Fatalf("expected no active selected-version items, got %d", summary.ActiveCount)
+	}
+}
+
 func TestSelectRelevantReviewSubmissionPrefersActiveSubmissionWithoutSubmittedDate(t *testing.T) {
 	submissions := []asc.ReviewSubmissionResource{
 		{

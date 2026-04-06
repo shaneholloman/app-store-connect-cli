@@ -270,8 +270,8 @@ func buildReviewSnapshot(ctx context.Context, client *asc.Client, appID, version
 		selectedVersionID = strings.TrimSpace(versionContext.ID)
 	}
 	snapshot.LatestSubmission = selectRelevantReviewSubmission(reviewSubmissions, selectedVersionID)
-	if shouldInspectReviewSubmissionItems(snapshot.LatestSubmission) {
-		submissionItems, err := summarizeReviewSubmissionItems(ctx, client, snapshot.LatestSubmission.ID)
+	if selectedVersionID != "" && shouldInspectReviewSubmissionItems(snapshot.LatestSubmission) {
+		submissionItems, err := summarizeReviewSubmissionItems(ctx, client, snapshot.LatestSubmission.ID, selectedVersionID)
 		if err != nil {
 			return snapshot, fmt.Errorf("fetch review submission items for %q: %w", snapshot.LatestSubmission.ID, err)
 		}
@@ -382,21 +382,27 @@ func shouldInspectReviewSubmissionItems(submission *reviewSubmissionContext) boo
 	return strings.EqualFold(strings.TrimSpace(submission.State), string(asc.ReviewSubmissionStateComplete))
 }
 
-func summarizeReviewSubmissionItems(ctx context.Context, client *asc.Client, submissionID string) (reviewSubmissionItemsContext, error) {
+func summarizeReviewSubmissionItems(ctx context.Context, client *asc.Client, submissionID, versionID string) (reviewSubmissionItemsContext, error) {
 	var summary reviewSubmissionItemsContext
 
 	submissionID = strings.TrimSpace(submissionID)
+	versionID = strings.TrimSpace(versionID)
 	if submissionID == "" || client == nil {
 		return summary, nil
 	}
 
-	resp, err := client.GetReviewSubmissionItems(ctx, submissionID, asc.WithReviewSubmissionItemsLimit(200))
+	resp, err := client.GetReviewSubmissionItems(
+		ctx,
+		submissionID,
+		asc.WithReviewSubmissionItemsLimit(200),
+		asc.WithReviewSubmissionItemsFields([]string{"state", "appStoreVersion"}),
+	)
 	if err != nil {
 		return summary, err
 	}
 
 	for {
-		accumulateReviewSubmissionItems(&summary, resp.Data)
+		accumulateReviewSubmissionItems(&summary, resp.Data, versionID)
 
 		nextURL := strings.TrimSpace(resp.Links.Next)
 		if nextURL == "" {
@@ -410,12 +416,15 @@ func summarizeReviewSubmissionItems(ctx context.Context, client *asc.Client, sub
 	}
 }
 
-func accumulateReviewSubmissionItems(summary *reviewSubmissionItemsContext, items []asc.ReviewSubmissionItemResource) {
+func accumulateReviewSubmissionItems(summary *reviewSubmissionItemsContext, items []asc.ReviewSubmissionItemResource, versionID string) {
 	if summary == nil {
 		return
 	}
 
 	for _, item := range items {
+		if !reviewSubmissionItemTargetsVersion(item, versionID) {
+			continue
+		}
 		summary.TotalCount++
 		if strings.EqualFold(strings.TrimSpace(item.Attributes.State), "REMOVED") {
 			summary.RemovedCount++
@@ -423,6 +432,16 @@ func accumulateReviewSubmissionItems(summary *reviewSubmissionItemsContext, item
 		}
 		summary.ActiveCount++
 	}
+}
+
+func reviewSubmissionItemTargetsVersion(item asc.ReviewSubmissionItemResource, versionID string) bool {
+	if strings.TrimSpace(versionID) == "" {
+		return true
+	}
+	if item.Relationships == nil || item.Relationships.AppStoreVersion == nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(item.Relationships.AppStoreVersion.Data.ID), strings.TrimSpace(versionID))
 }
 
 func reviewSnapshotHasOnlyRemovedItems(snapshot reviewSnapshot) bool {
