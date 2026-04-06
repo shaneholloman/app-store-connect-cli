@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -52,11 +51,6 @@ type screenshotValidateResult struct {
 	Issues         []screenshotValidateIssue `json:"issues,omitempty"`
 }
 
-type screenshotValidateCandidate struct {
-	path string
-	name string
-}
-
 // AssetsScreenshotsValidateCommand returns the screenshots validate subcommand.
 func AssetsScreenshotsValidateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("validate", flag.ExitOnError)
@@ -99,7 +93,7 @@ Examples:
 
 			displayType, err := normalizeScreenshotDisplayType(deviceValue)
 			if err != nil {
-				return fmt.Errorf("screenshots validate: %w", err)
+				return shared.UsageError(err.Error())
 			}
 
 			result, err := validateScreenshotAssets(pathValue, displayType)
@@ -139,12 +133,12 @@ func validateScreenshotAssets(pathValue, displayType string) (*screenshotValidat
 		result.APIDisplayType = apiDisplayType
 	}
 
-	candidates, err := collectScreenshotValidateCandidates(cleanPath)
+	paths, err := collectAssetPaths(cleanPath)
 	if err != nil {
 		return nil, err
 	}
-	result.TotalFiles = len(candidates)
-	if len(candidates) == 0 {
+	result.TotalFiles = len(paths)
+	if len(paths) == 0 {
 		appendScreenshotValidateIssue(result, screenshotValidateIssue{
 			Code:        "no_files",
 			Severity:    screenshotValidateSeverityError,
@@ -154,35 +148,36 @@ func validateScreenshotAssets(pathValue, displayType string) (*screenshotValidat
 		return result, nil
 	}
 
-	for index, candidate := range candidates {
+	for index, filePath := range paths {
+		fileName := filepath.Base(filePath)
 		fileResult := screenshotValidateFile{
 			Order:    index + 1,
-			FilePath: candidate.path,
-			FileName: candidate.name,
+			FilePath: filePath,
+			FileName: fileName,
 		}
 
 		hasError := false
 		hasWarning := false
-		if strings.HasPrefix(candidate.name, ".") {
+		if strings.HasPrefix(fileName, ".") {
 			fileResult.Hidden = true
 			hasWarning = true
 			appendScreenshotValidateIssue(result, screenshotValidateIssue{
 				Code:        "hidden_file",
 				Severity:    screenshotValidateSeverityWarning,
-				FilePath:    candidate.path,
-				FileName:    candidate.name,
-				Message:     fmt.Sprintf("hidden file %q will be included in upload ordering", candidate.name),
+				FilePath:    filePath,
+				FileName:    fileName,
+				Message:     fmt.Sprintf("hidden file %q will be included in upload ordering", fileName),
 				Remediation: "Remove hidden files like .DS_Store from the upload directory before uploading screenshots.",
 			})
 		}
 
-		if err := asc.ValidateImageFile(candidate.path); err != nil {
+		if err := asc.ValidateImageFile(filePath); err != nil {
 			hasError = true
 			appendScreenshotValidateIssue(result, screenshotValidateIssue{
 				Code:        "read_failure",
 				Severity:    screenshotValidateSeverityError,
-				FilePath:    candidate.path,
-				FileName:    candidate.name,
+				FilePath:    filePath,
+				FileName:    fileName,
 				Message:     err.Error(),
 				Remediation: "Keep only regular, readable screenshot image files in the upload directory.",
 			})
@@ -191,14 +186,14 @@ func validateScreenshotAssets(pathValue, displayType string) (*screenshotValidat
 			continue
 		}
 
-		dimensions, err := asc.ReadImageDimensions(candidate.path)
+		dimensions, err := asc.ReadImageDimensions(filePath)
 		if err != nil {
 			hasError = true
 			appendScreenshotValidateIssue(result, screenshotValidateIssue{
 				Code:        "read_failure",
 				Severity:    screenshotValidateSeverityError,
-				FilePath:    candidate.path,
-				FileName:    candidate.name,
+				FilePath:    filePath,
+				FileName:    fileName,
 				Message:     err.Error(),
 				Remediation: "Replace this file with a valid PNG or JPEG screenshot.",
 			})
@@ -209,13 +204,13 @@ func validateScreenshotAssets(pathValue, displayType string) (*screenshotValidat
 		fileResult.Width = dimensions.Width
 		fileResult.Height = dimensions.Height
 
-		if err := asc.ValidateScreenshotDimensionsForSize(candidate.path, dimensions.Width, dimensions.Height, apiDisplayType); err != nil {
+		if err := asc.ValidateScreenshotDimensionsForSize(filePath, dimensions.Width, dimensions.Height, apiDisplayType); err != nil {
 			hasError = true
 			appendScreenshotValidateIssue(result, screenshotValidateIssue{
 				Code:        "dimension_mismatch",
 				Severity:    screenshotValidateSeverityError,
-				FilePath:    candidate.path,
-				FileName:    candidate.name,
+				FilePath:    filePath,
+				FileName:    fileName,
 				Message:     err.Error(),
 				Remediation: fmt.Sprintf("Resize or replace this file to match %s screenshot requirements.", apiDisplayType),
 			})
@@ -237,41 +232,6 @@ func validateScreenshotAssets(pathValue, displayType string) (*screenshotValidat
 	}
 
 	return result, nil
-}
-
-func collectScreenshotValidateCandidates(path string) ([]screenshotValidateCandidate, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-
-	if !info.IsDir() {
-		return []screenshotValidateCandidate{{
-			path: path,
-			name: filepath.Base(path),
-		}}, nil
-	}
-
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, err
-	}
-
-	candidates := make([]screenshotValidateCandidate, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		candidates = append(candidates, screenshotValidateCandidate{
-			path: filepath.Join(path, entry.Name()),
-			name: entry.Name(),
-		})
-	}
-
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].name < candidates[j].name
-	})
-	return candidates, nil
 }
 
 func appendScreenshotValidateIssue(result *screenshotValidateResult, issue screenshotValidateIssue) {
@@ -297,15 +257,18 @@ func renderScreenshotValidateResult(result *screenshotValidateResult, markdown b
 		apiDisplayType = result.APIDisplayType
 	}
 
-	shared.RenderSection("Summary", []string{"field", "value"}, [][]string{
+	summaryRows := [][]string{
 		{"path", result.Path},
 		{"displayType", result.DisplayType},
-		{"apiDisplayType", apiDisplayType},
 		{"totalFiles", fmt.Sprintf("%d", result.TotalFiles)},
 		{"readyFiles", fmt.Sprintf("%d", result.ReadyFiles)},
 		{"errorCount", fmt.Sprintf("%d", result.ErrorCount)},
 		{"warningCount", fmt.Sprintf("%d", result.WarningCount)},
-	}, markdown)
+	}
+	if strings.TrimSpace(result.APIDisplayType) != "" && result.APIDisplayType != result.DisplayType {
+		summaryRows = append(summaryRows[0:2], append([][]string{{"apiDisplayType", apiDisplayType}}, summaryRows[2:]...)...)
+	}
+	shared.RenderSection("Summary", []string{"field", "value"}, summaryRows, markdown)
 
 	if len(result.Files) > 0 {
 		rows := make([][]string, 0, len(result.Files))

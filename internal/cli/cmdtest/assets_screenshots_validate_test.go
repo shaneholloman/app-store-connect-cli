@@ -173,3 +173,23 @@ func TestAssetsScreenshotsValidateReportsUnreadableHiddenDotfiles(t *testing.T) 
 		t.Fatalf("expected unreadable-dotfile error, got %+v", result.Issues)
 	}
 }
+
+func TestAssetsScreenshotsValidateRejectsInvalidDeviceTypeAsUsageError(t *testing.T) {
+	dir := t.TempDir()
+
+	stdout, stderr, runErr := runRootCommand(t, []string{
+		"screenshots", "validate",
+		"--path", dir,
+		"--device-type", "not-a-device",
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !errors.Is(runErr, flag.ErrHelp) {
+		t.Fatalf("expected flag.ErrHelp, got %v", runErr)
+	}
+	if !strings.Contains(stderr, "unsupported screenshot display type") {
+		t.Fatalf("expected invalid device-type error, got %q", stderr)
+	}
+}

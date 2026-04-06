@@ -2,6 +2,8 @@ package assets
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +43,35 @@ func TestValidateScreenshotAssetsSortsEntriesAndKeepsHiddenWarningsNonBlocking(t
 	}
 }
 
+func TestValidateScreenshotAssetsMatchesUploadOrdering(t *testing.T) {
+	dir := t.TempDir()
+	writeAssetsTestPNGWithSize(t, dir, "02-details.png", 1242, 2688)
+	writeAssetsTestPNGWithSize(t, dir, "01-home.png", 1242, 2688)
+	writeAssetsTestPNGWithSize(t, dir, ".hidden.png", 1242, 2688)
+
+	uploadFiles, err := collectAssetFiles(dir)
+	if err != nil {
+		t.Fatalf("collectAssetFiles() error: %v", err)
+	}
+
+	result, err := validateScreenshotAssets(dir, "APP_IPHONE_65")
+	if err != nil {
+		t.Fatalf("validateScreenshotAssets() error: %v", err)
+	}
+
+	if len(result.Files) != len(uploadFiles) {
+		t.Fatalf("expected %d files, got %d", len(uploadFiles), len(result.Files))
+	}
+	for i, uploadFile := range uploadFiles {
+		if result.Files[i].FilePath != uploadFile {
+			t.Fatalf("expected validate path %q at index %d, got %q", uploadFile, i, result.Files[i].FilePath)
+		}
+		if result.Files[i].FileName != filepath.Base(uploadFile) {
+			t.Fatalf("expected validate file name %q at index %d, got %q", filepath.Base(uploadFile), i, result.Files[i].FileName)
+		}
+	}
+}
+
 func TestValidateScreenshotAssetsReportsUnreadableDotfilesAndDimensionMismatch(t *testing.T) {
 	dir := t.TempDir()
 	writeAssetsTestPNGWithSize(t, dir, "01-home.png", 1242, 2688)
@@ -72,6 +103,58 @@ func TestValidateScreenshotAssetsReportsUnreadableDotfilesAndDimensionMismatch(t
 	}
 	if !hasScreenshotValidateIssueWithSeverity(result.Issues, "dimension_mismatch", screenshotValidateSeverityError, "03-bad.png") {
 		t.Fatalf("expected dimension mismatch error, got %+v", result.Issues)
+	}
+}
+
+func TestRenderScreenshotValidateResultSkipsRedundantAPIDisplayTypeRow(t *testing.T) {
+	result := &screenshotValidateResult{
+		Path:         "/tmp/screenshots",
+		DisplayType:  "APP_IPHONE_65",
+		TotalFiles:   1,
+		ReadyFiles:   1,
+		Files:        []screenshotValidateFile{{Order: 1, FilePath: "/tmp/screenshots/01-home.png", FileName: "01-home.png", Width: 1242, Height: 2688, Status: "ok"}},
+		ErrorCount:   0,
+		WarningCount: 0,
+	}
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := renderScreenshotValidateResult(result, false); err != nil {
+			t.Fatalf("renderScreenshotValidateResult() error: %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if strings.Contains(stdout, "apiDisplayType") {
+		t.Fatalf("expected redundant apiDisplayType row to be omitted, got %q", stdout)
+	}
+}
+
+func TestRenderScreenshotValidateResultIncludesCanonicalAPIDisplayTypeRowWhenItDiffers(t *testing.T) {
+	result := &screenshotValidateResult{
+		Path:           "/tmp/screenshots",
+		DisplayType:    "APP_IPHONE_69",
+		APIDisplayType: "APP_IPHONE_67",
+		TotalFiles:     1,
+		ReadyFiles:     1,
+		Files:          []screenshotValidateFile{{Order: 1, FilePath: "/tmp/screenshots/01-home.png", FileName: "01-home.png", Width: 1290, Height: 2796, Status: "ok"}},
+	}
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := renderScreenshotValidateResult(result, false); err != nil {
+			t.Fatalf("renderScreenshotValidateResult() error: %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, "apiDisplayType") {
+		t.Fatalf("expected canonical apiDisplayType row, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "APP_IPHONE_67") {
+		t.Fatalf("expected canonical API display type in output, got %q", stdout)
 	}
 }
 
