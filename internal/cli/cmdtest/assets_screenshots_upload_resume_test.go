@@ -21,6 +21,8 @@ func TestRunScreenshotsUploadResumeRejectsSelectorFlags(t *testing.T) {
 		code := cmd.Run([]string{
 			"screenshots", "upload",
 			"--resume", "artifact.json",
+			"--app", "123456789",
+			"--version", "1.2.3",
 			"--path", "./screenshots",
 		}, "1.2.3")
 		if code != cmd.ExitUsage {
@@ -28,7 +30,7 @@ func TestRunScreenshotsUploadResumeRejectsSelectorFlags(t *testing.T) {
 		}
 	})
 
-	if !strings.Contains(stderr, "--resume cannot be combined with --version-localization, --path, or --device-type") {
+	if !strings.Contains(stderr, "--resume cannot be combined with --version-localization, --app, --version, --version-id, --platform, --path, or --device-type") {
 		t.Fatalf("expected resume conflict message, got %q", stderr)
 	}
 }

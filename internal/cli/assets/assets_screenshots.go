@@ -419,8 +419,14 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			resumePath := strings.TrimSpace(*resume)
 			if resumePath != "" {
-				if strings.TrimSpace(*localizationID) != "" || strings.TrimSpace(*path) != "" || strings.TrimSpace(*deviceType) != "" {
-					return shared.UsageError("--resume cannot be combined with --version-localization, --path, or --device-type")
+				if strings.TrimSpace(*localizationID) != "" ||
+					strings.TrimSpace(*appID) != "" ||
+					strings.TrimSpace(*version) != "" ||
+					strings.TrimSpace(*versionID) != "" ||
+					strings.TrimSpace(*platform) != "" ||
+					strings.TrimSpace(*path) != "" ||
+					strings.TrimSpace(*deviceType) != "" {
+					return shared.UsageError("--resume cannot be combined with --version-localization, --app, --version, --version-id, --platform, --path, or --device-type")
 				}
 				if *skipExisting || *replace || *dryRun {
 					return shared.UsageError("--resume cannot be combined with --skip-existing, --replace, or --dry-run")
