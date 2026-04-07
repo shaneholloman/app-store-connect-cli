@@ -68,8 +68,8 @@ func TestMetadataLengthChecks_ValidUnicode(t *testing.T) {
 	}
 }
 
-func TestVersionLocalizationLengthIssues_KeywordsUseByteLimit(t *testing.T) {
-	keywords := strings.Repeat("語", 34)
+func TestVersionLocalizationLengthIssues_KeywordsUseCharacterLimit(t *testing.T) {
+	keywords := strings.Repeat("語", 101)
 
 	issues := VersionLocalizationLengthIssues(VersionLocalization{
 		Locale:   "ja-JP",
@@ -82,8 +82,8 @@ func TestVersionLocalizationLengthIssues_KeywordsUseByteLimit(t *testing.T) {
 	if issues[0].Field != "keywords" {
 		t.Fatalf("expected keywords issue, got %+v", issues[0])
 	}
-	if issues[0].Length != len(keywords) {
-		t.Fatalf("expected keyword length %d, got %d", len(keywords), issues[0].Length)
+	if issues[0].Length != 101 {
+		t.Fatalf("expected keyword length 101, got %d", issues[0].Length)
 	}
 	if issues[0].Limit != LimitKeywords {
 		t.Fatalf("expected keyword limit %d, got %d", LimitKeywords, issues[0].Limit)

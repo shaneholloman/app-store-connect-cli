@@ -189,7 +189,7 @@ func TestLocalizationsUploadAppliedCreateWarns(t *testing.T) {
 	}
 }
 
-func TestRunLocalizationsUploadRejectsOverLimitKeywordBytesBeforeAuthResolution(t *testing.T) {
+func TestRunLocalizationsUploadRejectsOverLimitKeywordCharactersBeforeAuthResolution(t *testing.T) {
 	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
 	t.Setenv("ASC_KEY_ID", "")
 	t.Setenv("ASC_ISSUER_ID", "")
@@ -200,7 +200,7 @@ func TestRunLocalizationsUploadRejectsOverLimitKeywordBytesBeforeAuthResolution(
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
 	dir := t.TempDir()
-	content := "\"description\" = \"日本語説明\";\n\"keywords\" = \"" + strings.Repeat("語", 34) + "\";\n"
+	content := "\"description\" = \"日本語説明\";\n\"keywords\" = \"" + strings.Repeat("語", 101) + "\";\n"
 	if err := os.WriteFile(filepath.Join(dir, "ja.strings"), []byte(content), 0o644); err != nil {
 		t.Fatalf("write strings file: %v", err)
 	}
@@ -231,15 +231,15 @@ func TestRunLocalizationsUploadRejectsOverLimitKeywordBytesBeforeAuthResolution(
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)
 	}
 }
 
-func TestRunLocalizationsUploadRejectsRawKeywordBytesIncludingTrailingSpaceBeforeAuthResolution(t *testing.T) {
+func TestRunLocalizationsUploadRejectsRawKeywordCharactersIncludingTrailingSpaceBeforeAuthResolution(t *testing.T) {
 	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
 	t.Setenv("ASC_KEY_ID", "")
 	t.Setenv("ASC_ISSUER_ID", "")
@@ -281,8 +281,8 @@ func TestRunLocalizationsUploadRejectsRawKeywordBytesIncludingTrailingSpaceBefor
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)

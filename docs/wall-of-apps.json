@@ -792,6 +792,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/38/1c/5b/381c5b87-8ab7-7351-138b-0cef5c4d5084/AppIcon-1x_U007ephone-0-1-85-220-0.jpeg/512x512bb.jpg"
   },
   {
+    "app": "QontactR",
+    "link": "https://apps.apple.com/us/app/qontactr/id1169525139?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/dd/e8/78/dde87816-0e87-d38d-9b0a-a0fc93dfd60e/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Quick RSS - RSS Reader",
     "link": "https://apps.apple.com/us/app/quick-rss-rss-reader/id6670696072?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/d6/55/7f/d6557fd2-7a41-2057-7ca4-0b67c1c0638c/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
@@ -810,6 +815,11 @@
     "app": "QuitNicPouches Pouch Tracker",
     "link": "https://apps.apple.com/us/app/quitnicpouches-pouch-tracker/id6753104415?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/99/f4/3b/99f43be3-8cd4-448c-26db-bbe190492794/AppIcon-0-0-1x_U007ephone-0-1-P3-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "RateTier",
+    "link": "https://apps.apple.com/us/app/ratetier/id6759999815?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/eb/49/d8/eb49d8c5-20bb-c2f7-068f-d24a970abb2f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg"
   },
   {
     "app": "rawcast — Terminal Weather",
@@ -890,6 +900,11 @@
     "app": "Sharing Me: Shared Journal",
     "link": "https://apps.apple.com/us/app/sharing-me-shared-journal/id6756325680?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/53/33/66/53336647-1330-96ad-575f-1bdb47d653d1/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Shua - arXiv Paper Reader",
+    "link": "https://apps.apple.com/us/app/shua-arxiv-paper-reader/id6759848629?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/66/fc/74/66fc74ce-6a9d-7344-618d-5b0e5af2110b/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
   },
   {
     "app": "Silk: Relationship Tracker",
@@ -984,6 +999,11 @@
     "app": "Super Shot: EXIF Photo Frame",
     "link": "https://apps.apple.com/us/app/super-shot-exif-photo-frame/id6760384143?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/49/01/f9/4901f9f9-8d90-7283-bbec-6e506aec4391/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "SweatCount - Workout Calendar",
+    "link": "https://apps.apple.com/us/app/sweatcount-workout-calendar/id6755407742?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9c/4a/88/9c4a88f0-7ce8-6c72-8eb4-6462b67625e5/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
   },
   {
     "app": "SwiftBiu",
@@ -1109,6 +1129,11 @@
     "app": "Voice Do",
     "link": "https://apps.apple.com/us/app/voice-do-task-manager/id6746357453",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/27/ed/a2/27eda257-5dd2-5150-7b0e-977f35636552/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Voice Reminder Planner: Echo",
+    "link": "https://apps.apple.com/us/app/voice-reminder-planner-echo/id6752544263?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/05/25/f3/0525f38c-b2cd-3b22-c1d7-420535cc43f4/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
   },
   {
     "app": "VoiceBee: AI Voice Keyboard",

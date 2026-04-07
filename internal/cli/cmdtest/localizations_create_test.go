@@ -722,7 +722,7 @@ func TestLocalizationsCreate_RejectsOverLimitKeywordBytesBeforeRequest(t *testin
 			"localizations", "create",
 			"--version", "version-1",
 			"--locale", "ja",
-			"--keywords", strings.Repeat("語", 34),
+			"--keywords", strings.Repeat("語", 101),
 		}, "1.2.3")
 		if code != cmd.ExitUsage {
 			t.Fatalf("expected exit code %d, got %d", cmd.ExitUsage, code)
@@ -732,15 +732,15 @@ func TestLocalizationsCreate_RejectsOverLimitKeywordBytesBeforeRequest(t *testin
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)
 	}
 }
 
-func TestLocalizationsCreate_RejectsOverLimitKeywordBytesBeforeAuthResolution(t *testing.T) {
+func TestLocalizationsCreate_RejectsOverLimitKeywordCharactersBeforeAuthResolution(t *testing.T) {
 	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
 	t.Setenv("ASC_KEY_ID", "")
 	t.Setenv("ASC_ISSUER_ID", "")
@@ -767,7 +767,7 @@ func TestLocalizationsCreate_RejectsOverLimitKeywordBytesBeforeAuthResolution(t 
 			"localizations", "create",
 			"--version", "version-1",
 			"--locale", "ja",
-			"--keywords", strings.Repeat("語", 34),
+			"--keywords", strings.Repeat("語", 101),
 		}, "1.2.3")
 		if code != cmd.ExitUsage {
 			t.Fatalf("expected exit code %d, got %d", cmd.ExitUsage, code)
@@ -777,8 +777,8 @@ func TestLocalizationsCreate_RejectsOverLimitKeywordBytesBeforeAuthResolution(t 
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "keywords exceed 100 bytes") {
-		t.Fatalf("expected keyword byte-limit error, got %q", stderr)
+	if !strings.Contains(stderr, "keywords exceed 100 characters") {
+		t.Fatalf("expected keyword character-limit error, got %q", stderr)
 	}
 	if requestCount != 0 {
 		t.Fatalf("expected no HTTP requests, got %d", requestCount)

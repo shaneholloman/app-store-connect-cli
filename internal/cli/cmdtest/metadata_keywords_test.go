@@ -216,18 +216,18 @@ func TestMetadataKeywordsImportDryRunReportsOverLimitIssue(t *testing.T) {
 	if payload.Valid {
 		t.Fatalf("expected invalid preview payload, got %+v", payload)
 	}
-	if len(payload.Issues) != 1 || payload.Issues[0].Locale != "en-US" || payload.Issues[0].Message != "keywords exceed 100 bytes" || payload.Issues[0].Length != 101 || payload.Issues[0].Limit != 100 {
+	if len(payload.Issues) != 1 || payload.Issues[0].Locale != "en-US" || payload.Issues[0].Message != "keywords exceed 100 characters" || payload.Issues[0].Length != 101 || payload.Issues[0].Limit != 100 {
 		t.Fatalf("unexpected issues payload: %+v", payload.Issues)
 	}
-	if len(payload.Results) != 1 || payload.Results[0].Action != "invalid" || payload.Results[0].Reason != "keywords exceed 100 bytes" {
+	if len(payload.Results) != 1 || payload.Results[0].Action != "invalid" || payload.Results[0].Reason != "keywords exceed 100 characters" {
 		t.Fatalf("unexpected result payload: %+v", payload.Results)
 	}
 }
 
-func TestMetadataKeywordsImportDryRunReportsOverLimitByteIssue(t *testing.T) {
+func TestMetadataKeywordsImportDryRunReportsOverLimitCharacterIssue(t *testing.T) {
 	dir := t.TempDir()
 	inputPath := filepath.Join(t.TempDir(), "keywords.txt")
-	keywords := strings.Repeat("語", 34)
+	keywords := strings.Repeat("語", 101)
 	if err := os.WriteFile(inputPath, []byte(keywords), 0o644); err != nil {
 		t.Fatalf("write input: %v", err)
 	}
@@ -278,10 +278,10 @@ func TestMetadataKeywordsImportDryRunReportsOverLimitByteIssue(t *testing.T) {
 	if payload.Valid {
 		t.Fatalf("expected invalid preview payload, got %+v", payload)
 	}
-	if len(payload.Issues) != 1 || payload.Issues[0].Locale != "ja" || payload.Issues[0].Message != "keywords exceed 100 bytes" || payload.Issues[0].Length != len(keywords) || payload.Issues[0].Limit != 100 {
+	if len(payload.Issues) != 1 || payload.Issues[0].Locale != "ja" || payload.Issues[0].Message != "keywords exceed 100 characters" || payload.Issues[0].Length != 101 || payload.Issues[0].Limit != 100 {
 		t.Fatalf("unexpected issues payload: %+v", payload.Issues)
 	}
-	if len(payload.Results) != 1 || payload.Results[0].Action != "invalid" || payload.Results[0].Reason != "keywords exceed 100 bytes" {
+	if len(payload.Results) != 1 || payload.Results[0].Action != "invalid" || payload.Results[0].Reason != "keywords exceed 100 characters" {
 		t.Fatalf("unexpected result payload: %+v", payload.Results)
 	}
 }

@@ -235,14 +235,14 @@ func TestValidateVersionLocalizationKeys(t *testing.T) {
 	})
 }
 
-func TestValidateVersionLocalizationAttributesRejectsRawKeywordBytes(t *testing.T) {
+func TestValidateVersionLocalizationAttributesRejectsRawKeywordCharacters(t *testing.T) {
 	err := ValidateVersionLocalizationAttributes(asc.AppStoreVersionLocalizationAttributes{
 		Keywords: strings.Repeat("a", 100) + " ",
 	})
 	if err == nil {
 		t.Fatal("expected keyword length error")
 	}
-	if err.Error() != "keywords exceed 100 bytes" {
+	if err.Error() != "keywords exceed 100 characters" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -265,13 +265,13 @@ func TestValidateVersionLocalizationValueSetFormatsErrorsOnce(t *testing.T) {
 	t.Run("adds locale once for keyword issue", func(t *testing.T) {
 		err := ValidateVersionLocalizationValueSet(map[string]map[string]string{
 			"ja": {
-				"keywords": strings.Repeat("語", 34),
+				"keywords": strings.Repeat("語", 101),
 			},
 		})
 		if err == nil {
 			t.Fatal("expected keyword length validation error")
 		}
-		if err.Error() != "locale \"ja\": keywords exceed 100 bytes" {
+		if err.Error() != "locale \"ja\": keywords exceed 100 characters" {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})

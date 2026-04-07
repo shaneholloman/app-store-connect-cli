@@ -247,10 +247,10 @@ func TestReadVersionLocalizationPatchAcceptsCaseInsensitiveKeys(t *testing.T) {
 	}
 }
 
-func TestReadVersionLocalizationPatchRejectsOverLimitKeywordBytes(t *testing.T) {
+func TestReadVersionLocalizationPatchRejectsOverLimitKeywordCharacters(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "ja.json")
-	body := `{"keywords":"` + strings.Repeat("語", 34) + `"}`
+	body := `{"keywords":"` + strings.Repeat("語", 101) + `"}`
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestReadVersionLocalizationPatchRejectsOverLimitKeywordBytes(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected keyword limit error")
 	}
-	if !strings.Contains(err.Error(), "keywords exceed 100 bytes") {
+	if !strings.Contains(err.Error(), "keywords exceed 100 characters") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
