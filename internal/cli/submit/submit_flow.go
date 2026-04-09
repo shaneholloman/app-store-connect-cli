@@ -48,26 +48,38 @@ type SubmitResolvedVersionResult struct {
 
 // SubmissionLocalizationPreflight runs the submission-blocking localization
 // preflight used by submit-style App Store review flows.
-func SubmissionLocalizationPreflight(ctx context.Context, client *asc.Client, appID, versionID, platform string) error {
-	return SubmissionLocalizationPreflightWithTimeout(ctx, client, appID, versionID, platform, 0)
+func SubmissionLocalizationPreflight(ctx context.Context, client *asc.Client, appID, versionID, platform, retryCommand string) error {
+	return SubmissionLocalizationPreflightWithTimeout(ctx, client, appID, versionID, platform, 0, retryCommand)
 }
 
 // SubmissionLocalizationPreflightWithTimeout runs localization preflight with
 // an explicit request budget when the caller needs a per-phase timeout.
-func SubmissionLocalizationPreflightWithTimeout(ctx context.Context, client *asc.Client, appID, versionID, platform string, requestTimeout time.Duration) error {
-	return runSubmitCreateLocalizationPreflight(ctx, client, appID, versionID, platform, requestTimeout)
+func SubmissionLocalizationPreflightWithTimeout(
+	ctx context.Context,
+	client *asc.Client,
+	appID, versionID, platform string,
+	requestTimeout time.Duration,
+	retryCommand string,
+) error {
+	return runSubmissionLocalizationPreflight(ctx, client, appID, versionID, platform, requestTimeout, "", retryCommand)
 }
 
 // SubmissionSubscriptionPreflight runs the advisory subscription preflight used
 // by submit-style App Store review flows.
-func SubmissionSubscriptionPreflight(ctx context.Context, client *asc.Client, appID string) {
-	SubmissionSubscriptionPreflightWithTimeout(ctx, client, appID, 0)
+func SubmissionSubscriptionPreflight(ctx context.Context, client *asc.Client, appID, retryCommand string) {
+	SubmissionSubscriptionPreflightWithTimeout(ctx, client, appID, 0, retryCommand)
 }
 
 // SubmissionSubscriptionPreflightWithTimeout runs subscription preflight with
 // an explicit request budget when the caller needs a per-phase timeout.
-func SubmissionSubscriptionPreflightWithTimeout(ctx context.Context, client *asc.Client, appID string, requestTimeout time.Duration) {
-	runSubmitCreateSubscriptionPreflight(ctx, client, appID, requestTimeout)
+func SubmissionSubscriptionPreflightWithTimeout(
+	ctx context.Context,
+	client *asc.Client,
+	appID string,
+	requestTimeout time.Duration,
+	retryCommand string,
+) {
+	runSubmissionSubscriptionPreflight(ctx, client, appID, requestTimeout, retryCommand)
 }
 
 // EnsureBuildAttached ensures the target build is attached to the resolved App

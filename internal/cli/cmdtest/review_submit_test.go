@@ -77,6 +77,142 @@ func TestReviewSubmitValidationErrors(t *testing.T) {
 	}
 }
 
+func TestReviewSubmitLocalizationPreflightUsesReviewSubmitGuidance(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	installDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1":
+			if req.URL.Query().Get("include") != "app" {
+				t.Fatalf("expected include=app, got %q", req.URL.Query().Get("include"))
+			}
+			return jsonResponse(http.StatusOK, `{
+				"data":{
+					"type":"appStoreVersions",
+					"id":"version-1",
+					"attributes":{"platform":"IOS","versionString":"1.2.3"},
+					"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}
+				},
+				"included":[{"type":"apps","id":"app-1","attributes":{"bundleId":"app-1","name":"App One"}}]
+			}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
+			return jsonResponse(http.StatusOK, `{"data":[{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"locale":"en-US"}}]}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/app-1/appStoreVersions":
+			if !strings.Contains(req.URL.RawQuery, "filter%5BappStoreState%5D=") {
+				t.Fatalf("expected appStoreState filter, got %q", req.URL.RawQuery)
+			}
+			return jsonResponse(http.StatusOK, `{"data":[]}`)
+		default:
+			t.Fatalf("unexpected request during localization preflight: %s %s?%s", req.Method, req.URL.Path, req.URL.RawQuery)
+			return nil, nil
+		}
+	}))
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	var runErr error
+	_, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"review", "submit",
+			"--app", "app-1",
+			"--version-id", "version-1",
+			"--build", "build-1",
+			"--confirm",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+	if runErr == nil {
+		t.Fatal("expected localization preflight error, got nil")
+	}
+	if !strings.Contains(runErr.Error(), "review submit: submit preflight failed") {
+		t.Fatalf("expected review submit error prefix, got %v", runErr)
+	}
+	if strings.Contains(runErr.Error(), "submit create:") {
+		t.Fatalf("did not expect removed submit create prefix, got %v", runErr)
+	}
+	if !strings.Contains(stderr, "before retrying `asc review submit`") {
+		t.Fatalf("expected retry guidance for review submit, got %q", stderr)
+	}
+	if strings.Contains(stderr, "submit create") {
+		t.Fatalf("did not expect removed submit create guidance, got %q", stderr)
+	}
+}
+
+func TestReviewSubmitSubscriptionPreflightUsesReviewSubmitGuidance(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_APP_ID", "")
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	installDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1":
+			if req.URL.Query().Get("include") != "app" {
+				t.Fatalf("expected include=app, got %q", req.URL.Query().Get("include"))
+			}
+			return jsonResponse(http.StatusOK, `{
+				"data":{
+					"type":"appStoreVersions",
+					"id":"version-1",
+					"attributes":{"platform":"IOS","versionString":"1.2.3"},
+					"relationships":{"app":{"data":{"type":"apps","id":"app-1"}}}
+				},
+				"included":[{"type":"apps","id":"app-1","attributes":{"bundleId":"app-1","name":"App One"}}]
+			}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
+			return jsonResponse(http.StatusOK, `{"data":[{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"locale":"en-US","description":"Description","keywords":"keyword","supportUrl":"https://example.com/support"}}]}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/app-1/appStoreVersions":
+			if !strings.Contains(req.URL.RawQuery, "filter%5BappStoreState%5D=") {
+				t.Fatalf("expected appStoreState filter, got %q", req.URL.RawQuery)
+			}
+			return jsonResponse(http.StatusOK, `{"data":[]}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/app-1/subscriptionGroups":
+			return jsonResponse(http.StatusOK, `{"data":[{"type":"subscriptionGroups","id":"group-1","attributes":{"referenceName":"Premium"}}],"links":{}}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/subscriptionGroups/group-1/subscriptions":
+			return jsonResponse(http.StatusOK, `{"data":[{"type":"subscriptions","id":"sub-1","attributes":{"name":"Monthly","state":"READY_TO_SUBMIT"}}],"links":{}}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1/build":
+			return jsonResponse(http.StatusNotFound, `{"errors":[{"status":"404","code":"NOT_FOUND","title":"Not Found"}]}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/version-1/appStoreVersionSubmission":
+			return jsonResponse(http.StatusNotFound, `{"errors":[{"status":"404","code":"NOT_FOUND","title":"Not Found"}]}`)
+		default:
+			t.Fatalf("unexpected request during subscription preflight: %s %s?%s", req.Method, req.URL.Path, req.URL.RawQuery)
+			return nil, nil
+		}
+	}))
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"review", "submit",
+			"--app", "app-1",
+			"--version-id", "version-1",
+			"--build", "build-1",
+			"--dry-run",
+			"--output", "json",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+	if !strings.Contains(stdout, `"wouldSubmit":true`) {
+		t.Fatalf("expected successful dry-run output, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "before retrying `asc review submit`") {
+		t.Fatalf("expected retry guidance for review submit, got %q", stderr)
+	}
+	if strings.Contains(stderr, "submit create") {
+		t.Fatalf("did not expect removed submit create guidance, got %q", stderr)
+	}
+}
+
 func TestReviewSubmitDryRunPreviewsWithoutMutations(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_APP_ID", "")

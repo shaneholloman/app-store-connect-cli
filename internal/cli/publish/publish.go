@@ -592,18 +592,39 @@ Examples:
 
 				localizationPreflight := func() error {
 					if submitRequestTimeout > 0 {
-						return submitcli.SubmissionLocalizationPreflightWithTimeout(submitCtx, client, resolvedPublishAppID, versionResp.Data.ID, normalizedPlatform, submitRequestTimeout)
+						return submitcli.SubmissionLocalizationPreflightWithTimeout(
+							submitCtx,
+							client,
+							resolvedPublishAppID,
+							versionResp.Data.ID,
+							normalizedPlatform,
+							submitRequestTimeout,
+							"asc publish appstore --submit",
+						)
 					}
-					return submitcli.SubmissionLocalizationPreflight(submitCtx, client, resolvedPublishAppID, versionResp.Data.ID, normalizedPlatform)
+					return submitcli.SubmissionLocalizationPreflight(
+						submitCtx,
+						client,
+						resolvedPublishAppID,
+						versionResp.Data.ID,
+						normalizedPlatform,
+						"asc publish appstore --submit",
+					)
 				}
 				if err := localizationPreflight(); err != nil {
 					return fmt.Errorf("publish appstore: %w", err)
 				}
 
 				if submitRequestTimeout > 0 {
-					submitcli.SubmissionSubscriptionPreflightWithTimeout(submitCtx, client, resolvedPublishAppID, submitRequestTimeout)
+					submitcli.SubmissionSubscriptionPreflightWithTimeout(
+						submitCtx,
+						client,
+						resolvedPublishAppID,
+						submitRequestTimeout,
+						"asc publish appstore --submit",
+					)
 				} else {
-					submitcli.SubmissionSubscriptionPreflight(submitCtx, client, resolvedPublishAppID)
+					submitcli.SubmissionSubscriptionPreflight(submitCtx, client, resolvedPublishAppID, "asc publish appstore --submit")
 				}
 
 				submitResult, err := submitcli.SubmitResolvedVersion(submitCtx, client, submitcli.SubmitResolvedVersionOptions{
