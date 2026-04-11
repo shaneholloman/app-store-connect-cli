@@ -105,8 +105,9 @@ Examples:
 			}
 
 			inputs, skipped, err := resolveImportInputs(importInputOptions{
-				WorkDir:     workDir,
-				FastlaneDir: strings.TrimSpace(*fastlaneDir),
+				WorkDir:         workDir,
+				FastlaneDir:     strings.TrimSpace(*fastlaneDir),
+				SkipScreenshots: *skipScreenshots,
 			})
 			if err != nil {
 				return fmt.Errorf("migrate import: %w", err)

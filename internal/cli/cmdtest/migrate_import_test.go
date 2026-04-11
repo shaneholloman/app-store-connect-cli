@@ -669,6 +669,50 @@ func TestMigrateImportSkipScreenshotsRejectsInvalidBooleanExitCode(t *testing.T)
 	}
 }
 
+func TestMigrateImportDryRunSkipScreenshotsAllowsMissingFastlaneScreenshotsDir(t *testing.T) {
+	root := t.TempDir()
+	fastlaneDir := filepath.Join(root, "fastlane")
+	metadataDir := filepath.Join(fastlaneDir, "metadata", "en-US")
+	if err := os.MkdirAll(metadataDir, 0o755); err != nil {
+		t.Fatalf("mkdir metadata: %v", err)
+	}
+	writeFile(t, filepath.Join(metadataDir, "description.txt"), "English description")
+
+	rootCmd := RootCommand("1.2.3")
+	rootCmd.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := rootCmd.Parse([]string{
+			"migrate", "import",
+			"--app", "APP_ID",
+			"--version-id", "VERSION_ID",
+			"--fastlane-dir", fastlaneDir,
+			"--dry-run",
+			"--skip-screenshots",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := rootCmd.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var result migrate.MigrateImportResult
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if len(result.MetadataFiles) != 1 {
+		t.Fatalf("expected metadata plan to survive missing screenshots dir, got %+v", result.MetadataFiles)
+	}
+	if len(result.ScreenshotPlan) != 0 {
+		t.Fatalf("expected no screenshot plan, got %+v", result.ScreenshotPlan)
+	}
+}
+
 func migrateJSONResponse(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: status,
