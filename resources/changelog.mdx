@@ -14,6 +14,21 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 No unreleased changes yet.
 
+### 1.2.2
+
+**Highlights**:
+
+* `asc app-clips invocations create` now supports inline localization creation with explicit `--locale` and `--title` flags, fixing the broken beta App Clip invocation flow that previously failed against the App Store Connect API
+* Regression coverage expands again for fastlane migrate flows and submission lookup edge cases, reducing the chance of silent breakage in tricky automation paths
+* The Wall of Apps and community surfaces pick up Newgrain: Film Photo Community, AI Chat Assistant - Chappie, Shluffy - A Baby Sleep Coach, Dateminder - Event Reminders, and Splitie - Split & Settle Bills
+
+**Changes**:
+
+* `fix(app-clips)`: Add inline localization support for beta App Clip invocation creation and validate the required localization inputs before sending the request
+* `test(migrate)`: Cover the fastlane Deliverfile `skip_screenshots` path more aggressively
+* `test(submit)`: Add regression coverage for submission lookup not-found and empty version ID branches
+* `build(community)`: Refresh the installs badge and add Newgrain: Film Photo Community, AI Chat Assistant - Chappie, Shluffy - A Baby Sleep Coach, Dateminder - Event Reminders, and Splitie - Split & Settle Bills to the Wall of Apps
+
 ### 1.2.1
 
 **Highlights**:
