@@ -3996,7 +3996,7 @@ func TestSubmitValidationErrors(t *testing.T) {
 		{
 			name:    "create removed",
 			args:    []string{"submit", "create", "--confirm"},
-			wantErr: "Error: `asc submit create` was removed. Use `asc publish appstore --submit` or `asc versions attach-build` + `asc review submissions-*` instead.",
+			wantErr: "Error: `asc submit create` was removed. Use `asc publish appstore --submit` or `asc review submit` instead.",
 		},
 		{
 			name:    "preflight removed",
@@ -4604,6 +4604,21 @@ func TestAppClipsValidationErrors(t *testing.T) {
 			name:    "invocations list missing build bundle",
 			args:    []string{"app-clips", "invocations", "list"},
 			wantErr: "Error: --build-bundle-id is required",
+		},
+		{
+			name:    "invocations create missing localization source",
+			args:    []string{"app-clips", "invocations", "create", "--build-bundle-id", "BUNDLE_ID", "--url", "https://example.com/clip"},
+			wantErr: "Error: provide --localization-id or both --locale and --title",
+		},
+		{
+			name:    "invocations create missing locale for inline localization",
+			args:    []string{"app-clips", "invocations", "create", "--build-bundle-id", "BUNDLE_ID", "--url", "https://example.com/clip", "--title", "Try it"},
+			wantErr: "Error: --locale is required when --title is set",
+		},
+		{
+			name:    "invocations create missing title for inline localization",
+			args:    []string{"app-clips", "invocations", "create", "--build-bundle-id", "BUNDLE_ID", "--url", "https://example.com/clip", "--locale", "en-US"},
+			wantErr: "Error: --title is required when --locale is set",
 		},
 		{
 			name:    "domain status cache missing build bundle",
