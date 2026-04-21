@@ -236,6 +236,15 @@ asc screenshots list --version-localization "LOC_ID"
 asc video-previews list --app "123456789"
 ```
 
+Uploading screenshots for a single locale:
+
+```bash
+asc apps list
+asc versions list --app [123456789]
+asc localizations list --version [12345678-1234-1234-1234-1234567890123456] --output json --locale en_US | jsonpp
+asc screenshots upload --version-localization [version_localization_id] --path ./screenshots/en-US --device-type "IPHONE_65" --replace
+```
+
 ### Signing and bundle IDs
 
 ```bash
