@@ -240,9 +240,9 @@ Uploading screenshots for a single locale:
 
 ```bash
 asc apps list
-asc versions list --app [123456789]
-asc localizations list --version [12345678-1234-1234-1234-1234567890123456] --output json --locale en_US | jsonpp
-asc screenshots upload --version-localization [version_localization_id] --path ./screenshots/en-US --device-type "IPHONE_65" --replace
+asc versions list --app "APP_ID"
+asc localizations list --version "VERSION_ID" --output json --locale "en-US" | jsonpp
+asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots/en-US" --device-type "IPHONE_65" --replace
 ```
 
 ### Signing and bundle IDs
