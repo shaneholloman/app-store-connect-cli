@@ -216,7 +216,7 @@ asc review doctor --app "123456789"
 ### Metadata and localization
 
 ```bash
-asc localizations list --app "123456789"
+asc localizations list --app "123456789" --type app-info
 asc metadata apply --app "123456789" --version "1.2.3" --dir "./metadata" --dry-run
 asc metadata keywords audit --app "123456789" --version "1.2.3" --blocked-terms-file "./blocked-terms.txt"
 asc apps info view --app "123456789" --output json --pretty
@@ -234,6 +234,15 @@ asc screenshots plan --app "123456789" --version "1.2.3" --review-output-dir "./
 asc screenshots apply --app "123456789" --version "1.2.3" --review-output-dir "./screenshots/review" --confirm
 asc screenshots list --version-localization "LOC_ID"
 asc video-previews list --app "123456789"
+```
+
+Uploading screenshots for a single locale:
+
+```bash
+asc apps list
+asc versions list --app "APP_ID"
+asc localizations list --version "VERSION_ID" --output json --locale "en-US" | jsonpp
+asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots/en-US" --device-type "IPHONE_65" --replace
 ```
 
 ### Signing and bundle IDs
@@ -255,7 +264,9 @@ asc workflow run --dry-run testflight_beta VERSION:1.2.3
 
 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for a copyable `.asc/workflow.json`
 and `ExportOptions.plist` that use `asc builds next-build-number`, `asc xcode archive`,
-`asc xcode export`, and `asc publish testflight --group ... --wait`.
+`asc xcode export`, and `asc publish testflight --group ... --wait`. Add
+`--submit --confirm` when distributing to an external TestFlight group that needs
+beta app review submission.
 
 ```bash
 asc workflow validate
