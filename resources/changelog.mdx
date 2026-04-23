@@ -14,6 +14,22 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 No unreleased changes yet.
 
+### 1.2.5
+
+**Highlights**:
+
+* Workflow files can now reuse output-producing step names across independent workflows, which removes the need for awkward step-name prefixes when those workflows never run together
+* Workflow validation is stricter around cyclic workflow graphs, closing a reachability-caching edge case and adding stronger regression coverage for duplicate output producers
+* Community surfaces keep growing with This Day: Photo Cleaner and Model Usage
+
+**Changes**:
+
+* `fix(workflow)`: Allow duplicate output-producing step names across independent workflows while still rejecting conflicts that can execute in the same run graph
+* `fix(workflow)`: Avoid partial reachability caching across cyclic workflow references during duplicate-output validation
+* `test(workflow)`: Expand validator and CLI regression coverage for scoped duplicate output producers and cycle-shaped workflow graphs
+* `docs(workflow)`: Clarify workflow output scope and refresh workflow command examples and guidance
+* `build(community)`: Add This Day: Photo Cleaner and Model Usage to the Wall of Apps
+
 ### 1.2.4
 
 **Highlights**:
