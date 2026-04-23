@@ -117,5 +117,6 @@ Notes:
 - Add `"ASC_BYPASS_KEYCHAIN": "1"` to the top-level `env` block if you want the
   workflow to resolve credentials from environment variables or config instead
   of the macOS keychain.
-- Output-producing step names should stay unique within the workflow file when
-  you define multiple workflows that use `outputs`.
+- Output-producing step names only need to stay unique within workflows that
+  can execute together in the same run graph. Independent workflows can reuse
+  names like `archive` or `publish`.

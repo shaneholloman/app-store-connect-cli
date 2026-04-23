@@ -1642,3 +1642,53 @@ func TestWorkflowValidate_Pretty(t *testing.T) {
 		t.Fatalf("expected valid=true, got %v", result["valid"])
 	}
 }
+
+func TestWorkflowValidate_AllowsDuplicateOutputProducerNamesAcrossIndependentWorkflows(t *testing.T) {
+	dir := t.TempDir()
+	path := writeWorkflowJSON(t, dir, `{
+		"workflows": {
+			"testflight_beta": {
+				"steps": [
+					{
+						"name": "archive",
+						"run": "printf '{\"buildId\":\"beta\"}'",
+						"outputs": {
+							"BUILD_ID": "$.buildId"
+						}
+					}
+				]
+			},
+			"appstore_release": {
+				"steps": [
+					{
+						"name": "archive",
+						"run": "printf '{\"buildId\":\"release\"}'",
+						"outputs": {
+							"BUILD_ID": "$.buildId"
+						}
+					}
+				]
+			}
+		}
+	}`)
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"workflow", "validate", "--file", path}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("expected valid JSON, got %q: %v", stdout, err)
+	}
+	if result["valid"] != true {
+		t.Fatalf("expected valid=true, got %v", result["valid"])
+	}
+}
