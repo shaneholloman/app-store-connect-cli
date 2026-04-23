@@ -261,7 +261,9 @@ func workflowsReachableFrom(def *Definition, root string, cache map[string]map[s
 	}
 
 	delete(visiting, root)
-	cache[root] = reachable
+	if len(visiting) == 0 {
+		cache[root] = reachable
+	}
 	return reachable
 }
 

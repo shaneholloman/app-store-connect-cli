@@ -368,6 +368,46 @@ func TestValidate_StepOutputsRejectDuplicateProducerNamesInSameExecutionGraph(t 
 	assertValidationCode(t, errs, ErrDuplicateOutputProducerName)
 }
 
+func TestValidate_StepOutputsRejectDuplicateProducerNamesAcrossCycle(t *testing.T) {
+	def := &Definition{
+		Workflows: map[string]Workflow{
+			"a": {
+				Steps: []Step{
+					{Workflow: "b"},
+					{Workflow: "x"},
+				},
+			},
+			"b": {
+				Steps: []Step{
+					{Workflow: "a"},
+				},
+			},
+			"x": {
+				Steps: []Step{
+					{
+						Name:    "common",
+						Run:     `printf '{"id":"x"}'`,
+						Outputs: map[string]string{"ID": "$.id"},
+					},
+				},
+			},
+			"d": {
+				Steps: []Step{
+					{Workflow: "b"},
+					{
+						Name:    "common",
+						Run:     `printf '{"id":"d"}'`,
+						Outputs: map[string]string{"ID": "$.id"},
+					},
+				},
+			},
+		},
+	}
+
+	errs := Validate(def)
+	assertValidationCode(t, errs, ErrDuplicateOutputProducerName)
+}
+
 func TestValidate_StepOutputsRejectInvalidOutputExpr(t *testing.T) {
 	def := &Definition{
 		Workflows: map[string]Workflow{
