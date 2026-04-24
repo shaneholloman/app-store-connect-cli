@@ -14,6 +14,20 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 No unreleased changes yet.
 
+### 1.2.6
+
+**Highlights**:
+
+* `asc subscriptions setup` now auto-enables the pricing territory as subscription availability when pricing is configured without explicit `--territories`
+* Subscription pricing regression coverage now verifies territory override payloads, `preserveCurrentPrice`, and start-date forwarding
+* Community surfaces keep growing with Pixel Whisper
+
+**Changes**:
+
+* `fix(subscriptions)`: Derive setup availability from `--price-territory` when no explicit availability territories are provided
+* `test(subscriptions)`: Cover subscription setup auto-availability and per-territory price payload creation
+* `build(community)`: Add Pixel Whisper to the Wall of Apps
+
 ### 1.2.5
 
 **Highlights**:
