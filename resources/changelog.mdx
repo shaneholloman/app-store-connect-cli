@@ -14,6 +14,50 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 No unreleased changes yet.
 
+### 1.2.7
+
+**Highlights**:
+
+* `asc subscriptions offers introductory create` now supports the common global subscription flow with `--all-territories` and `--territory ALL`
+* All-territory introductory offer creation can be previewed with `--dry-run`, skips territories that already have introductory offers, and reports created, skipped, and failed territory counts
+* The web auth Ctrl+C regression test is less brittle on macOS CI while still guarding against usage-error fallback after password prompt interruption
+
+**Changes**:
+
+* `feat(subscriptions)`: Add all-current-availability introductory offer creation, dry-run summaries, existing-offer skip detection, and validation for unsupported all-territory price-point usage
+* `docs(subscriptions)`: Document the all-territory introductory offer workflow and `--territory ALL` shorthand
+* `test(web)`: Relax the PTY diagnostic-drain assertion for web auth prompt interruption while keeping the non-usage exit and no password-required fallback checks
+
+### 1.2.6
+
+**Highlights**:
+
+* `asc subscriptions setup` now auto-enables the pricing territory as subscription availability when pricing is configured without explicit `--territories`
+* Subscription pricing regression coverage now verifies territory override payloads, `preserveCurrentPrice`, and start-date forwarding
+* Community surfaces keep growing with Pixel Whisper
+
+**Changes**:
+
+* `fix(subscriptions)`: Derive setup availability from `--price-territory` when no explicit availability territories are provided
+* `test(subscriptions)`: Cover subscription setup auto-availability and per-territory price payload creation
+* `build(community)`: Add Pixel Whisper to the Wall of Apps
+
+### 1.2.5
+
+**Highlights**:
+
+* Workflow files can now reuse output-producing step names across independent workflows, which removes the need for awkward step-name prefixes when those workflows never run together
+* Workflow validation is stricter around cyclic workflow graphs, closing a reachability-caching edge case and adding stronger regression coverage for duplicate output producers
+* Community surfaces keep growing with This Day: Photo Cleaner and Model Usage
+
+**Changes**:
+
+* `fix(workflow)`: Allow duplicate output-producing step names across independent workflows while still rejecting conflicts that can execute in the same run graph
+* `fix(workflow)`: Avoid partial reachability caching across cyclic workflow references during duplicate-output validation
+* `test(workflow)`: Expand validator and CLI regression coverage for scoped duplicate output producers and cycle-shaped workflow graphs
+* `docs(workflow)`: Clarify workflow output scope and refresh workflow command examples and guidance
+* `build(community)`: Add This Day: Photo Cleaner and Model Usage to the Wall of Apps
+
 ### 1.2.4
 
 **Highlights**:
