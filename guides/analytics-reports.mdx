@@ -76,12 +76,13 @@ Request custom analytics reports for detailed app metrics.
 
 <Steps>
   <Step title="Request analytics report">
-    Ensure ongoing analytics access exists without creating duplicate requests:
+    Request ongoing analytics access and reuse an existing active request when possible:
 
     ```bash  theme={null}
-    asc analytics requests ensure \
+    asc analytics request \
       --app "YOUR_APP_ID" \
-      --access-type ONGOING
+      --access-type ONGOING \
+      --reuse-existing
     ```
 
     Or create a request directly:
@@ -226,9 +227,9 @@ if [ $(date +%u) -eq 1 ]; then
     --output "$REPORT_DIR/weekly-sales.txt"
 fi
 
-# 3. Ensure analytics access exists
-echo "Ensuring analytics request..."
-REQUEST=$(asc analytics requests ensure --app "$ASC_APP_ID" --access-type ONGOING --output json)
+# 3. Request analytics access, reusing an active request when possible
+echo "Requesting analytics access..."
+REQUEST=$(asc analytics request --app "$ASC_APP_ID" --access-type ONGOING --reuse-existing --output json)
 REQUEST_ID=$(echo "$REQUEST" | jq -r '.requestId')
 
 # 4. Download available analytics instances

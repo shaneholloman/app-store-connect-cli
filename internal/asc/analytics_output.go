@@ -26,8 +26,8 @@ type AnalyticsReportRequestResult struct {
 	CreatedDate string `json:"createdDate,omitempty"`
 }
 
-// AnalyticsReportRequestEnsureResult represents CLI output for idempotent request creation.
-type AnalyticsReportRequestEnsureResult struct {
+// AnalyticsReportRequestReuseResult represents CLI output for reused or created requests.
+type AnalyticsReportRequestReuseResult struct {
 	RequestID   string `json:"requestId"`
 	AppID       string `json:"appId"`
 	AccessType  string `json:"accessType"`
@@ -113,7 +113,7 @@ func analyticsReportRequestResultRows(result *AnalyticsReportRequestResult) ([]s
 	return headers, rows
 }
 
-func analyticsReportRequestEnsureResultRows(result *AnalyticsReportRequestEnsureResult) ([]string, [][]string) {
+func analyticsReportRequestReuseResultRows(result *AnalyticsReportRequestReuseResult) ([]string, [][]string) {
 	headers := []string{"Request ID", "App ID", "Access Type", "State", "Created Date", "Created"}
 	rows := [][]string{{
 		result.RequestID,

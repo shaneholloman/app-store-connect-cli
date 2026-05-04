@@ -51,19 +51,21 @@ func TestAnalyticsValidationErrors(t *testing.T) {
 			wantErr: "--confirm is required",
 		},
 		{
-			name:    "requests ensure missing app",
-			args:    []string{"analytics", "requests", "ensure", "--access-type", "ONGOING"},
+			name:    "request reuse existing missing app",
+			args:    []string{"analytics", "request", "--access-type", "ONGOING", "--reuse-existing"},
 			wantErr: "--app is required",
 		},
 		{
-			name:    "requests ensure missing access type",
-			args:    []string{"analytics", "requests", "ensure", "--app", "APP_ID"},
+			name:    "request reuse existing missing access type",
+			args:    []string{"analytics", "request", "--app", "APP_ID", "--reuse-existing"},
 			wantErr: "--access-type is required",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("ASC_APP_ID", "")
+
 			root := RootCommand("1.2.3")
 			root.FlagSet.SetOutput(io.Discard)
 
