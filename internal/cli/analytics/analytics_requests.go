@@ -2,8 +2,10 @@ package analytics
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -201,6 +203,36 @@ Examples:
 }
 
 func createOrReuseAnalyticsReportRequest(ctx context.Context, client *asc.Client, appID string, accessType asc.AnalyticsAccessType) (*asc.AnalyticsReportRequestReuseResult, error) {
+	requests, err := listAnalyticsReportRequestsForReuse(ctx, client, appID)
+	if err != nil {
+		return nil, err
+	}
+
+	if request, ok := findReusableAnalyticsReportRequest(requests, accessType); ok {
+		return analyticsReportRequestReuseResult(appID, request, false), nil
+	}
+
+	created, err := client.CreateAnalyticsReportRequest(ctx, appID, accessType)
+	if err != nil {
+		if !isAnalyticsReportRequestCreateConflict(err) {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		requests, listErr := listAnalyticsReportRequestsForReuse(ctx, client, appID)
+		if listErr != nil {
+			return nil, listErr
+		}
+		if request, ok := findReusableAnalyticsReportRequest(requests, accessType); ok {
+			return analyticsReportRequestReuseResult(appID, request, false), nil
+		}
+
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	return analyticsReportRequestReuseResult(appID, created.Data, true), nil
+}
+
+func listAnalyticsReportRequestsForReuse(ctx context.Context, client *asc.Client, appID string) (*asc.AnalyticsReportRequestsResponse, error) {
 	existing, err := client.GetAnalyticsReportRequests(ctx, appID, asc.WithAnalyticsReportRequestsLimit(200))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list requests: %w", err)
@@ -221,18 +253,25 @@ func createOrReuseAnalyticsReportRequest(ctx context.Context, client *asc.Client
 		return nil, fmt.Errorf("failed to list requests: unexpected paginated response type %T", paginated)
 	}
 
+	return requests, nil
+}
+
+func findReusableAnalyticsReportRequest(requests *asc.AnalyticsReportRequestsResponse, accessType asc.AnalyticsAccessType) (asc.AnalyticsReportRequestResource, bool) {
+	if requests == nil {
+		return asc.AnalyticsReportRequestResource{}, false
+	}
 	for _, request := range requests.Data {
 		if analyticsReportRequestMatches(request, accessType) {
-			return analyticsReportRequestReuseResult(appID, request, false), nil
+			return request, true
 		}
 	}
 
-	created, err := client.CreateAnalyticsReportRequest(ctx, appID, accessType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
+	return asc.AnalyticsReportRequestResource{}, false
+}
 
-	return analyticsReportRequestReuseResult(appID, created.Data, true), nil
+func isAnalyticsReportRequestCreateConflict(err error) bool {
+	var apiErr *asc.APIError
+	return errors.As(err, &apiErr) && apiErr != nil && apiErr.StatusCode == http.StatusConflict
 }
 
 func analyticsReportRequestMatches(request asc.AnalyticsReportRequestResource, accessType asc.AnalyticsAccessType) bool {
