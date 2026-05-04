@@ -160,7 +160,8 @@ func appsRegistryPull(ctx context.Context, opts appsRegistryPullOptions) error {
 	requestCtx, cancel := shared.ContextWithTimeout(ctx)
 	defer cancel()
 
-	response, err := shared.PaginateWithSpinner(requestCtx,
+	response, err := shared.PaginateWithSpinner(
+		requestCtx,
 		func(ctx context.Context) (asc.PaginatedResponse, error) {
 			return client.GetApps(ctx, asc.WithAppsLimit(200), asc.WithAppsSort("name"))
 		},

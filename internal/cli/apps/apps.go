@@ -359,7 +359,8 @@ func appsList(ctx context.Context, output string, pretty bool, bundleID string, 
 
 	if paginate {
 		paginateOpts := append(opts, asc.WithAppsLimit(200))
-		apps, err := shared.PaginateWithSpinner(requestCtx,
+		apps, err := shared.PaginateWithSpinner(
+			requestCtx,
 			func(ctx context.Context) (asc.PaginatedResponse, error) {
 				return client.GetApps(ctx, paginateOpts...)
 			},
