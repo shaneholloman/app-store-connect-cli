@@ -124,14 +124,16 @@ func bundledASCCandidates() []string {
 	var candidates []string
 	if executable, err := osExecutableFunc(); err == nil && strings.TrimSpace(executable) != "" {
 		execDir := filepath.Dir(executable)
-		candidates = append(candidates,
+		candidates = append(
+			candidates,
 			filepath.Clean(filepath.Join(execDir, "..", "Resources", "bin", "asc")),
 			filepath.Clean(filepath.Join(execDir, "bin", "asc")),
 		)
 	}
 
 	if workingDir, err := getwdFunc(); err == nil && strings.TrimSpace(workingDir) != "" {
-		candidates = append(candidates,
+		candidates = append(
+			candidates,
 			filepath.Join(workingDir, "bin", "asc"),
 			filepath.Join(workingDir, "apps", "studio", "bin", "asc"),
 		)
