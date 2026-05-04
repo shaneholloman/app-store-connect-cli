@@ -49,8 +49,9 @@ func TestAnalyticsRequestReuseExistingRejectsInvalidBoolExitCode(t *testing.T) {
 	binaryPath := buildASCBlackBoxBinary(t)
 
 	tests := []struct {
-		name string
-		args []string
+		name    string
+		args    []string
+		wantErr string
 	}{
 		{
 			name: "invalid bool",
@@ -60,6 +61,7 @@ func TestAnalyticsRequestReuseExistingRejectsInvalidBoolExitCode(t *testing.T) {
 				"--access-type", "ONGOING",
 				"--reuse-existing=maybe",
 			},
+			wantErr: `invalid boolean value "maybe" for -reuse-existing`,
 		},
 		{
 			name: "invalid bool mixed flag order",
@@ -69,6 +71,17 @@ func TestAnalyticsRequestReuseExistingRejectsInvalidBoolExitCode(t *testing.T) {
 				"--reuse-existing=maybe",
 				"--app", "app-1",
 			},
+			wantErr: `invalid boolean value "maybe" for -reuse-existing`,
+		},
+		{
+			name: "invalid bool before subcommand",
+			args: []string{
+				"--reuse-existing=maybe",
+				"analytics", "request",
+				"--app", "app-1",
+				"--access-type", "ONGOING",
+			},
+			wantErr: "flag provided but not defined: -reuse-existing",
 		},
 	}
 
@@ -92,7 +105,7 @@ func TestAnalyticsRequestReuseExistingRejectsInvalidBoolExitCode(t *testing.T) {
 			if stdout.String() != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout.String())
 			}
-			if !strings.Contains(stderr.String(), `invalid boolean value "maybe" for -reuse-existing`) {
+			if !strings.Contains(stderr.String(), test.wantErr) {
 				t.Fatalf("expected invalid bool error, got %q", stderr.String())
 			}
 		})
@@ -327,9 +340,25 @@ func TestAnalyticsRequestReuseExistingCreatesMissingRequest(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to read request body: %v", err)
 			}
-			body := string(bodyBytes)
-			if !strings.Contains(body, `"accessType":"ONGOING"`) || !strings.Contains(body, `"id":"app-1"`) {
-				t.Fatalf("unexpected create payload: %s", body)
+			var payload struct {
+				Data struct {
+					Attributes struct {
+						AccessType string `json:"accessType"`
+					} `json:"attributes"`
+					Relationships struct {
+						App struct {
+							Data struct {
+								ID string `json:"id"`
+							} `json:"data"`
+						} `json:"app"`
+					} `json:"relationships"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+				t.Fatalf("failed to parse create payload: %v", err)
+			}
+			if payload.Data.Attributes.AccessType != "ONGOING" || payload.Data.Relationships.App.Data.ID != "app-1" {
+				t.Fatalf("unexpected create payload: %#v", payload)
 			}
 			response := `{"data":{"type":"analyticsReportRequests","id":"req-created","attributes":{"accessType":"ONGOING","state":"PROCESSING","createdDate":"2026-05-02T00:00:00Z"}}}`
 			return analyticsReuseExistingJSONResponse(http.StatusCreated, response), nil
