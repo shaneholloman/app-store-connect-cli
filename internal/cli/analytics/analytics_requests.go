@@ -176,7 +176,8 @@ Examples:
 
 				if *paginate {
 					paginateOpts := append(opts, asc.WithAnalyticsReportRequestsLimit(200))
-					paginated, err := shared.PaginateWithSpinner(requestCtx,
+					paginated, err := shared.PaginateWithSpinner(
+						requestCtx,
 						func(ctx context.Context) (asc.PaginatedResponse, error) {
 							return client.GetAnalyticsReportRequests(ctx, resolvedAppID, paginateOpts...)
 						},
