@@ -379,6 +379,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/a1/e6/4f/a1e64f9f-de99-5fc1-f7e0-7ecbe7fafedb/AppIcon-0-1x_U007emarketing-0-11-0-sRGB-85-220-0.png/512x512bb.jpg"
   },
   {
+    "app": "Floating Head, show yourself",
+    "link": "https://apps.apple.com/us/app/floating-head-show-yourself/id1565946661?mt=12&uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/a8/1c/5f/a81c5f95-aeea-6b4a-08c2-f1e029af022c/AppIcon-0-0-85-220-0-5-0-2x.png/512x512bb.png"
+  },
+  {
     "app": "Focus Rail: Pomodoro Timer",
     "link": "https://apps.apple.com/us/app/focus-rail-pomodoro-timer/id6758016543?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/7d/f9/0e/7df90e3f-3a37-c70c-7bf9-cb3cc9c0f16d/AppIcon-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg"
@@ -553,6 +558,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/c8/38/fd/c838fddf-a2db-5007-12be-8cb9906926e1/AppIcon-0-0-85-220-0-5-0-2x-P3-0-0-0.png/512x512bb.png"
   },
   {
+    "app": "Kilowatt – Electric Car Timer",
+    "link": "https://apps.apple.com/us/app/kilowatt-electric-car-timer/id1502312657?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/cd/ac/b6/cdacb60b-c1c2-79f1-a7cf-7b3e6674b963/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Klick #1 AI Camera Assistant",
     "link": "https://apps.apple.com/us/app/klick-1-ai-camera-assistant/id6749798728?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/47/23/d9/4723d958-44ab-af95-67a7-5431d6ff981a/AppIcon-0-0-1x_U007ephone-0-1-85-220.jpeg/512x512bb.jpg"
@@ -623,9 +633,19 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/12/8e/fb/128efb33-a5ee-d321-2720-924431d772dd/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Margin: AI Article Reader",
+    "link": "https://apps.apple.com/us/app/margin-ai-article-reader/id6748705626?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/1a/dd/73/1add730b-0e85-d8fd-09eb-722cb492877d/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Masseter: Jaw Clench Tracker",
     "link": "https://apps.apple.com/us/app/masseter-jaw-clench-tracker/id6758920098?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9d/34/53/9d345362-2b78-96c5-5294-33d2e084bb90/AppIcon-0-0-1x_U007epad-0-1-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Master Indicator",
+    "link": "https://apps.apple.com/us/app/master-indicator/id6758697856?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/25/2c/78/252c787f-d9e8-738e-51fb-61c64ee95c32/AppIcon-1x_U007emarketing-0-10-0-85-220-0.png/512x512bb.jpg"
   },
   {
     "app": "MD Clock - Flip Clock",
@@ -862,6 +882,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/5d/49/25/5d4925ae-e8d1-6d72-5f7c-28f78c126f0f/AppIcon-0-0-1x_U007epad-0-1-85-220.png/512x512bb.jpg"
   },
   {
+    "app": "Pocket Mole Watch",
+    "link": "https://apps.apple.com/us/app/pocket-mole-watch/id6766255492?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/89/bd/10/89bd10b6-2a9a-4292-2eaf-16948b018a7a/AppIcon-0-0-1x_U007emarketing-0-11-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Pop - Find by Color",
     "link": "https://apps.apple.com/us/app/pop-find-by-color/id6758629086?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ee/8a/b3/ee8ab36e-f44e-a3d8-baf5-bf9036af5532/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
@@ -1035,6 +1060,11 @@
     "app": "Shua - arXiv Paper Reader",
     "link": "https://apps.apple.com/us/app/shua-arxiv-paper-reader/id6759848629?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/66/fc/74/66fc74ce-6a9d-7344-618d-5b0e5af2110b/AppIcon-0-0-1x_U007ephone-0-1-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "Sift - AI Food Scanner",
+    "link": "https://apps.apple.com/us/app/sift-ai-food-scanner/id6760613139?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/f4/71/8a/f4718a2c-0eab-61f7-19c4-4c3039dfaaa5/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.png/512x512bb.jpg"
   },
   {
     "app": "Silk: Relationship Tracker",
@@ -1349,6 +1379,11 @@
     "app": "Zen Flip Clock - Minimal Timer",
     "link": "https://apps.apple.com/us/app/zen-flip-clock-minimal-timer/id1265404088?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/f4/13/4bf4138d-b804-9563-f684-92a9a2845b16/zfc-glass-icon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "ZenJournal:Stress-free Journal",
+    "link": "https://apps.apple.com/us/app/zenjournal-stress-free-journal/id1399816360?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/33/eb/e1/33ebe137-a850-63be-ef48-7a7a804ec151/ZenJournalIcon-0-1x_U007epad-0-1-85-220-0.png/512x512bb.jpg"
   },
   {
     "app": "ZenShelf",
