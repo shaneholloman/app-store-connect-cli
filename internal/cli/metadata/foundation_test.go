@@ -198,6 +198,8 @@ func TestValidateLocaleCanonicalizesCommonAliases(t *testing.T) {
 		{input: "de", want: "de-DE"},
 		{input: "english-us", want: "en-US"},
 		{input: "czech-cs", want: "cs"},
+		{input: "Gujarati", want: "gu-IN"},
+		{input: "slovenian", want: "sl-SI"},
 		{input: "zh_TW", want: "zh-Hant"},
 	}
 
