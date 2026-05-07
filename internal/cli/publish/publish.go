@@ -502,6 +502,17 @@ Examples:
 				}
 			}
 
+			var metadataValuesByLocale map[string]map[string]string
+			if metadataDirValue != "" {
+				metadataValuesByLocale, err = loadPublishVersionMetadataValues(metadataDirValue, versionValue)
+				if err != nil {
+					return shared.UsageErrorf("--metadata-dir %q: %v", metadataDirValue, err)
+				}
+				if err := shared.ValidateVersionLocalizationValueSet(metadataValuesByLocale); err != nil {
+					return shared.UsageErrorf("--metadata-dir %q: %v", metadataDirValue, err)
+				}
+			}
+
 			platformValue := asc.Platform(normalizedPlatform)
 			timeoutOverride := *timeout > 0
 			mode := asc.PublishModeIPAUpload
@@ -603,9 +614,10 @@ Examples:
 
 			if metadataDirValue != "" {
 				if _, err := applyPublishVersionMetadataFn(requestCtx, client, publishVersionMetadataOptions{
-					VersionID: versionResp.Data.ID,
-					Version:   versionValue,
-					Dir:       metadataDirValue,
+					VersionID:      versionResp.Data.ID,
+					Version:        versionValue,
+					Dir:            metadataDirValue,
+					ValuesByLocale: metadataValuesByLocale,
 				}); err != nil {
 					return fmt.Errorf("publish appstore: apply metadata: %w", err)
 				}

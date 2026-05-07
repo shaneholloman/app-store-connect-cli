@@ -856,6 +856,7 @@ func TestPublishAppStoreMetadataDirAppliesAfterEnsureVersionBeforeAttach(t *test
 	defer restore()
 
 	metadataDir := t.TempDir()
+	writePublishVersionMetadataFixture(t, metadataDir, "1.2.3")
 	sequence := make([]string, 0, 4)
 
 	getPublishASCClientFn = func(time.Duration) (*asc.Client, error) { return newPublishCommandTestClient(t), nil }
@@ -887,6 +888,9 @@ func TestPublishAppStoreMetadataDirAppliesAfterEnsureVersionBeforeAttach(t *test
 		}
 		if opts.Dir != metadataDir {
 			t.Fatalf("expected metadata dir %q, got %q", metadataDir, opts.Dir)
+		}
+		if got := opts.ValuesByLocale["en-US"]["description"]; got != "Updated description" {
+			t.Fatalf("expected preflighted metadata values, got %+v", opts.ValuesByLocale)
 		}
 		return nil, nil
 	}
@@ -949,6 +953,8 @@ func TestPublishAppStoreDryRunPlanIncludesMetadataStepWhenMetadataDirProvided(t 
 	if err := os.WriteFile(ipaPath, []byte("payload"), 0o600); err != nil {
 		t.Fatalf("write IPA fixture: %v", err)
 	}
+	metadataDir := t.TempDir()
+	writePublishVersionMetadataFixture(t, metadataDir, "1.2.3")
 
 	cmd := PublishAppStoreCommand()
 	cmd.FlagSet.SetOutput(io.Discard)
@@ -957,7 +963,7 @@ func TestPublishAppStoreDryRunPlanIncludesMetadataStepWhenMetadataDirProvided(t 
 		"--ipa", ipaPath,
 		"--version", "1.2.3",
 		"--build-number", "42",
-		"--metadata-dir", t.TempDir(),
+		"--metadata-dir", metadataDir,
 		"--submit",
 		"--dry-run",
 		"--output", "json",
@@ -995,6 +1001,18 @@ func TestPublishAppStoreDryRunPlanIncludesMetadataStepWhenMetadataDirProvided(t 
 	}
 	if strings.Join(planNames, ",") != strings.Join(expectedPlanNames, ",") {
 		t.Fatalf("expected plan %v, got %v", expectedPlanNames, planNames)
+	}
+}
+
+func writePublishVersionMetadataFixture(t *testing.T, dir, version string) {
+	t.Helper()
+
+	versionDir := filepath.Join(dir, "version", version)
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("create version metadata dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(versionDir, "en-US.json"), []byte(`{"description":"Updated description"}`), 0o600); err != nil {
+		t.Fatalf("write version metadata fixture: %v", err)
 	}
 }
 

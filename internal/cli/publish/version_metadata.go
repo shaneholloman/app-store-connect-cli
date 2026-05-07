@@ -13,9 +13,10 @@ import (
 )
 
 type publishVersionMetadataOptions struct {
-	VersionID string
-	Version   string
-	Dir       string
+	VersionID      string
+	Version        string
+	Dir            string
+	ValuesByLocale map[string]map[string]string
 }
 
 func applyPublishVersionMetadata(ctx context.Context, client *asc.Client, opts publishVersionMetadataOptions) ([]asc.LocalizationUploadLocaleResult, error) {
@@ -24,9 +25,13 @@ func applyPublishVersionMetadata(ctx context.Context, client *asc.Client, opts p
 		return nil, fmt.Errorf("version ID is required")
 	}
 
-	valuesByLocale, err := loadPublishVersionMetadataValues(opts.Dir, opts.Version)
-	if err != nil {
-		return nil, err
+	valuesByLocale := opts.ValuesByLocale
+	if valuesByLocale == nil {
+		var err error
+		valuesByLocale, err = loadPublishVersionMetadataValues(opts.Dir, opts.Version)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	results, warnings, err := shared.UploadVersionLocalizationsWithWarnings(ctx, client, versionID, valuesByLocale, false, shared.SubmitReadinessOptions{})
