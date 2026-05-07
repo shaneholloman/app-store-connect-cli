@@ -501,9 +501,54 @@ func TestSubscriptionsOfferCodesCreateStopsBeforeMutationWhenLookupFails(t *test
 		"--offer-eligibility", "STACK_WITH_INTRO_OFFERS",
 		"--customer-eligibilities", "NEW",
 		"--offer-duration", "ONE_MONTH",
-		"--offer-mode", "FREE_TRIAL",
+		"--offer-mode", "PAY_AS_YOU_GO",
 		"--number-of-periods", "1",
 		"--prices", "usa:pp-us",
+	})
+	if runErr == nil {
+		t.Fatal("expected lookup error")
+	}
+	if !strings.Contains(runErr.Error(), "not found") {
+		t.Fatalf("expected not found error, got %v", runErr)
+	}
+	if requests == 0 {
+		t.Fatal("expected lookup requests before failure")
+	}
+}
+
+func TestSubscriptionsOfferCodesCreateFreeTrialStopsBeforeMutationWhenLookupFails(t *testing.T) {
+	setupStableSelectorAuth(t)
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = originalTransport })
+
+	requests := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		requests++
+		if req.Method == http.MethodPost && req.URL.Path == "/v1/subscriptionOfferCodes" {
+			t.Fatalf("unexpected mutation request during failed lookup: %s %s", req.Method, req.URL.String())
+		}
+		switch req.URL.Path {
+		case "/v1/apps/app-1/subscriptionGroups":
+			return selectorJSONResponse(`{"data":[{"type":"subscriptionGroups","id":"group-1","attributes":{"referenceName":"Premium"}}]}`), nil
+		case "/v1/subscriptionGroups/group-1/subscriptions":
+			return selectorJSONResponse(`{"data":[]}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	_, _, runErr := runRootCommand(t, []string{
+		"subscriptions", "offers", "offer-codes", "create",
+		"--app", "app-1",
+		"--subscription-id", "com.example.missing",
+		"--name", "SPRING",
+		"--offer-eligibility", "STACK_WITH_INTRO_OFFERS",
+		"--customer-eligibilities", "NEW",
+		"--offer-duration", "ONE_MONTH",
+		"--offer-mode", "FREE_TRIAL",
+		"--number-of-periods", "1",
 	})
 	if runErr == nil {
 		t.Fatal("expected lookup error")
