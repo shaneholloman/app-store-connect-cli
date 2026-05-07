@@ -36,13 +36,20 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleCommand(t *testing.T) {
 	stubWebSubscriptionsSession(t)
 	resetWebSubscriptionAvailabilityStubs(t)
 
+	listCalls := 0
 	listWebSubscriptionPlanAvailabilitiesFn = func(ctx context.Context, client *webcore.Client, subscriptionID string) ([]webcore.SubscriptionPlanAvailability, error) {
 		if subscriptionID != "sub-1" {
 			t.Fatalf("expected subscription sub-1, got %q", subscriptionID)
 		}
+		listCalls++
+		if listCalls > 1 {
+			return []webcore.SubscriptionPlanAvailability{
+				{ID: "plan-1", PlanType: "UPFRONT", AvailableInNewTerritories: false, AvailableTerritoriesLoaded: true},
+			}, nil
+		}
 		return []webcore.SubscriptionPlanAvailability{
-			{ID: "plan-ignored", PlanType: "OTHER", AvailableInNewTerritories: true, AvailableTerritories: []string{"USA"}},
-			{ID: "plan-1", PlanType: "UPFRONT", AvailableInNewTerritories: true, AvailableTerritories: []string{"USA"}},
+			{ID: "plan-ignored", PlanType: "OTHER", AvailableInNewTerritories: true, AvailableTerritories: []string{"USA"}, AvailableTerritoriesLoaded: true},
+			{ID: "plan-1", PlanType: "UPFRONT", AvailableInNewTerritories: true, AvailableTerritories: []string{"USA"}, AvailableTerritoriesLoaded: true},
 		}, nil
 	}
 	removeWebSubscriptionPlanAvailabilityFromSaleFn = func(ctx context.Context, client *webcore.Client, planAvailabilityID string) (*webcore.SubscriptionPlanAvailability, error) {
@@ -77,7 +84,7 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleCommand(t *testing.T) {
 	if payload.AvailableInNewTerritories {
 		t.Fatalf("expected availableInNewTerritories=false: %#v", payload)
 	}
-	wantLabels := []string{"Loading subscription plan availability", "Removing subscription from sale"}
+	wantLabels := []string{"Loading subscription plan availability", "Removing subscription from sale", "Verifying subscription removal from sale"}
 	for i, want := range wantLabels {
 		if len(*labels) <= i || (*labels)[i] != want {
 			t.Fatalf("expected labels %v, got %v", wantLabels, *labels)
@@ -90,10 +97,12 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleCommandUsesDirectPlanAvailabi
 	stubWebSubscriptionsSession(t)
 	resetWebSubscriptionAvailabilityStubs(t)
 
-	listCalled := false
+	listCalls := 0
 	listWebSubscriptionPlanAvailabilitiesFn = func(ctx context.Context, client *webcore.Client, subscriptionID string) ([]webcore.SubscriptionPlanAvailability, error) {
-		listCalled = true
-		return nil, nil
+		listCalls++
+		return []webcore.SubscriptionPlanAvailability{
+			{ID: "plan-direct", PlanType: "UPFRONT", AvailableInNewTerritories: listCalls == 1, AvailableTerritoriesLoaded: true},
+		}, nil
 	}
 	removeWebSubscriptionPlanAvailabilityFromSaleFn = func(ctx context.Context, client *webcore.Client, planAvailabilityID string) (*webcore.SubscriptionPlanAvailability, error) {
 		if planAvailabilityID != "plan-direct" {
@@ -116,8 +125,68 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleCommandUsesDirectPlanAvailabi
 			t.Fatalf("exec error: %v", err)
 		}
 	})
-	if listCalled {
-		t.Fatal("expected direct plan availability id to skip availability listing")
+	if listCalls != 2 {
+		t.Fatalf("expected direct plan availability id to verify before and after patch, got %d list calls", listCalls)
+	}
+}
+
+func TestWebSubscriptionsAvailabilityRemoveFromSaleCommandRejectsMismatchedDirectPlanAvailabilityID(t *testing.T) {
+	_ = stubWebProgressLabels(t)
+	stubWebSubscriptionsSession(t)
+	resetWebSubscriptionAvailabilityStubs(t)
+
+	removeCalled := false
+	listWebSubscriptionPlanAvailabilitiesFn = func(ctx context.Context, client *webcore.Client, subscriptionID string) ([]webcore.SubscriptionPlanAvailability, error) {
+		return []webcore.SubscriptionPlanAvailability{{ID: "plan-other", PlanType: "UPFRONT", AvailableInNewTerritories: true, AvailableTerritories: []string{"USA"}, AvailableTerritoriesLoaded: true}}, nil
+	}
+	removeWebSubscriptionPlanAvailabilityFromSaleFn = func(ctx context.Context, client *webcore.Client, planAvailabilityID string) (*webcore.SubscriptionPlanAvailability, error) {
+		removeCalled = true
+		return nil, nil
+	}
+
+	cmd := WebSubscriptionsAvailabilityRemoveFromSaleCommand()
+	if err := cmd.FlagSet.Parse([]string{
+		"--subscription-id", "sub-1",
+		"--plan-availability-id", "plan-direct",
+		"--confirm",
+	}); err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	err := cmd.Exec(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), `plan availability "plan-direct" was not found for subscription "sub-1"`) {
+		t.Fatalf("expected mismatched plan availability error, got %v", err)
+	}
+	if removeCalled {
+		t.Fatal("expected mismatched direct plan availability id to stop before removal")
+	}
+}
+
+func TestWebSubscriptionsAvailabilityRemoveFromSaleCommandFailsWhenReadbackStillOnSale(t *testing.T) {
+	_ = stubWebProgressLabels(t)
+	stubWebSubscriptionsSession(t)
+	resetWebSubscriptionAvailabilityStubs(t)
+
+	listCalls := 0
+	listWebSubscriptionPlanAvailabilitiesFn = func(ctx context.Context, client *webcore.Client, subscriptionID string) ([]webcore.SubscriptionPlanAvailability, error) {
+		listCalls++
+		return []webcore.SubscriptionPlanAvailability{
+			{ID: "plan-1", PlanType: "UPFRONT", AvailableInNewTerritories: true, AvailableTerritories: []string{"USA"}, AvailableTerritoriesLoaded: true},
+		}, nil
+	}
+	removeWebSubscriptionPlanAvailabilityFromSaleFn = func(ctx context.Context, client *webcore.Client, planAvailabilityID string) (*webcore.SubscriptionPlanAvailability, error) {
+		return &webcore.SubscriptionPlanAvailability{ID: "plan-1", PlanType: "UPFRONT", AvailableInNewTerritories: false}, nil
+	}
+
+	cmd := WebSubscriptionsAvailabilityRemoveFromSaleCommand()
+	if err := cmd.FlagSet.Parse([]string{"--subscription-id", "sub-1", "--confirm"}); err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	err := cmd.Exec(context.Background(), nil)
+	if err == nil || !strings.Contains(err.Error(), "is still available after patch") {
+		t.Fatalf("expected verification error, got %v", err)
+	}
+	if listCalls != 2 {
+		t.Fatalf("expected preflight and readback list calls, got %d", listCalls)
 	}
 }
 

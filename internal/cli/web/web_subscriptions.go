@@ -146,14 +146,21 @@ Examples:
 				trimmedSubscriptionID = strings.TrimSpace(selected.ID)
 			}
 
-			if trimmedPlanAvailabilityID == "" {
-				availabilities, err := withWebSpinnerValue("Loading subscription plan availability", func() ([]webcore.SubscriptionPlanAvailability, error) {
-					return listWebSubscriptionPlanAvailabilitiesFn(requestCtx, client, trimmedSubscriptionID)
-				})
+			availabilities, err := withWebSpinnerValue("Loading subscription plan availability", func() ([]webcore.SubscriptionPlanAvailability, error) {
+				return listWebSubscriptionPlanAvailabilitiesFn(requestCtx, client, trimmedSubscriptionID)
+			})
+			if err != nil {
+				return withWebAuthHint(err, "web subscriptions availability remove-from-sale")
+			}
+
+			var selected webcore.SubscriptionPlanAvailability
+			if trimmedPlanAvailabilityID != "" {
+				selected, err = findSubscriptionPlanAvailability(availabilities, trimmedPlanAvailabilityID)
 				if err != nil {
-					return withWebAuthHint(err, "web subscriptions availability remove-from-sale")
+					return fmt.Errorf("web subscriptions availability remove-from-sale failed: plan availability %q was not found for subscription %q", trimmedPlanAvailabilityID, trimmedSubscriptionID)
 				}
-				selected, err := selectSubscriptionPlanAvailability(availabilities)
+			} else {
+				selected, err = selectSubscriptionPlanAvailability(availabilities)
 				if err != nil {
 					return fmt.Errorf("web subscriptions availability remove-from-sale failed: %w", err)
 				}
@@ -169,14 +176,38 @@ Examples:
 			if removed == nil || strings.TrimSpace(removed.ID) == "" {
 				return fmt.Errorf("web subscriptions availability remove-from-sale failed: plan availability ID missing from response")
 			}
+			if !strings.EqualFold(strings.TrimSpace(removed.ID), trimmedPlanAvailabilityID) {
+				return fmt.Errorf("web subscriptions availability remove-from-sale failed: Apple returned plan availability %q after patching %q", strings.TrimSpace(removed.ID), trimmedPlanAvailabilityID)
+			}
+
+			verifiedAvailabilities, err := withWebSpinnerValue("Verifying subscription removal from sale", func() ([]webcore.SubscriptionPlanAvailability, error) {
+				return listWebSubscriptionPlanAvailabilitiesFn(requestCtx, client, trimmedSubscriptionID)
+			})
+			if err != nil {
+				return withWebAuthHint(err, "web subscriptions availability remove-from-sale")
+			}
+			verified, err := findSubscriptionPlanAvailability(verifiedAvailabilities, trimmedPlanAvailabilityID)
+			if err != nil {
+				return fmt.Errorf("web subscriptions availability remove-from-sale failed: could not verify plan availability %q for subscription %q after patch", trimmedPlanAvailabilityID, trimmedSubscriptionID)
+			}
+			removedFromSale := subscriptionPlanAvailabilityRemovedFromSale(verified)
+			if !removedFromSale {
+				return fmt.Errorf(
+					"web subscriptions availability remove-from-sale failed: plan availability %q is still available after patch (availableInNewTerritories=%t, availableTerritoriesLoaded=%t, availableTerritories=%d)",
+					trimmedPlanAvailabilityID,
+					verified.AvailableInNewTerritories,
+					verified.AvailableTerritoriesLoaded,
+					len(verified.AvailableTerritories),
+				)
+			}
 
 			result := webSubscriptionRemoveFromSaleResult{
 				SubscriptionID:            trimmedSubscriptionID,
-				PlanAvailabilityID:        strings.TrimSpace(removed.ID),
-				PlanType:                  strings.TrimSpace(removed.PlanType),
-				RemovedFromSale:           true,
-				AvailableInNewTerritories: removed.AvailableInNewTerritories,
-				AvailableTerritories:      removed.AvailableTerritories,
+				PlanAvailabilityID:        strings.TrimSpace(verified.ID),
+				PlanType:                  strings.TrimSpace(verified.PlanType),
+				RemovedFromSale:           removedFromSale,
+				AvailableInNewTerritories: verified.AvailableInNewTerritories,
+				AvailableTerritories:      verified.AvailableTerritories,
 				RequiresAccountHolderRole: true,
 			}
 			return shared.PrintOutputWithRenderers(
@@ -207,6 +238,20 @@ func selectSubscriptionPlanAvailability(availabilities []webcore.SubscriptionPla
 		return upfrontMatches[0], nil
 	}
 	return webcore.SubscriptionPlanAvailability{}, fmt.Errorf("multiple subscription plan availabilities matched; pass --plan-availability-id")
+}
+
+func findSubscriptionPlanAvailability(availabilities []webcore.SubscriptionPlanAvailability, planAvailabilityID string) (webcore.SubscriptionPlanAvailability, error) {
+	planAvailabilityID = strings.TrimSpace(planAvailabilityID)
+	for _, availability := range availabilities {
+		if strings.EqualFold(strings.TrimSpace(availability.ID), planAvailabilityID) {
+			return availability, nil
+		}
+	}
+	return webcore.SubscriptionPlanAvailability{}, fmt.Errorf("plan availability not found")
+}
+
+func subscriptionPlanAvailabilityRemovedFromSale(availability webcore.SubscriptionPlanAvailability) bool {
+	return !availability.AvailableInNewTerritories && availability.AvailableTerritoriesLoaded && len(availability.AvailableTerritories) == 0
 }
 
 func withWebAccountHolderHint(err error, operation string) error {

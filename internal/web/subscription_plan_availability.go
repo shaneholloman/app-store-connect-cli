@@ -11,11 +11,12 @@ import (
 
 // SubscriptionPlanAvailability models the internal web API subscription plan availability resource.
 type SubscriptionPlanAvailability struct {
-	ID                        string   `json:"id"`
-	Type                      string   `json:"type,omitempty"`
-	AvailableInNewTerritories bool     `json:"availableInNewTerritories"`
-	PlanType                  string   `json:"planType,omitempty"`
-	AvailableTerritories      []string `json:"availableTerritories,omitempty"`
+	ID                         string   `json:"id"`
+	Type                       string   `json:"type,omitempty"`
+	AvailableInNewTerritories  bool     `json:"availableInNewTerritories"`
+	PlanType                   string   `json:"planType,omitempty"`
+	AvailableTerritories       []string `json:"availableTerritories,omitempty"`
+	AvailableTerritoriesLoaded bool     `json:"-"`
 }
 
 func decodeSubscriptionPlanAvailabilityResource(resource jsonAPIResource) SubscriptionPlanAvailability {
@@ -26,7 +27,13 @@ func decodeSubscriptionPlanAvailabilityResource(resource jsonAPIResource) Subscr
 		PlanType:                  stringAttr(resource.Attributes, "planType"),
 	}
 
-	refs := relationshipRefs(resource, "availableTerritories")
+	relationship, ok := resource.Relationships["availableTerritories"]
+	if ok {
+		trimmedData := strings.TrimSpace(string(relationship.Data))
+		availability.AvailableTerritoriesLoaded = trimmedData != "" && trimmedData != "null"
+	}
+
+	refs := parseRelationshipRefs(relationship.Data)
 	if len(refs) == 0 {
 		return availability
 	}

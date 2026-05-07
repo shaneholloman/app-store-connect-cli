@@ -53,6 +53,9 @@ func TestListSubscriptionPlanAvailabilitiesBuildsExpectedRequest(t *testing.T) {
 	if len(got[0].AvailableTerritories) != 1 || got[0].AvailableTerritories[0] != "USA" {
 		t.Fatalf("unexpected decoded territories: %#v", got[0].AvailableTerritories)
 	}
+	if !got[0].AvailableTerritoriesLoaded {
+		t.Fatalf("expected available territories relationship to be loaded: %#v", got[0])
+	}
 }
 
 func TestRemoveSubscriptionPlanAvailabilityFromSaleBuildsExpectedRequest(t *testing.T) {
