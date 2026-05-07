@@ -631,8 +631,16 @@ func TestSubscriptionsOfferCodesCreateFreeTrialResolvesAndOmitsPrices(t *testing
 	if stderr != "" {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
-	if !strings.Contains(stdout, `"id":"sub-offer-ft-2"`) {
-		t.Fatalf("expected offer code id in output, got %q", stdout)
+	var resp struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout: %s", err, stdout)
+	}
+	if resp.Data.ID != "sub-offer-ft-2" {
+		t.Fatalf("expected offer code id sub-offer-ft-2, got %q", resp.Data.ID)
 	}
 }
 
@@ -656,6 +664,40 @@ func TestSubscriptionsOfferCodesCreateFreeTrialWithPricesIsRejected(t *testing.T
 	}
 	if !strings.Contains(stderr, "--prices must not be set for FREE_TRIAL") {
 		t.Fatalf("expected validation message in stderr, got %q", stderr)
+	}
+}
+
+func TestSubscriptionsOfferCodesCreateNonFreeTrialWithoutPricesIsRejected(t *testing.T) {
+	tests := []struct {
+		name      string
+		offerMode string
+	}{
+		{"pay_as_you_go", "PAY_AS_YOU_GO"},
+		{"pay_up_front", "PAY_UP_FRONT"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, stderr, runErr := runRootCommand(t, []string{
+				"subscriptions", "offers", "offer-codes", "create",
+				"--subscription-id", "8000000001",
+				"--name", "SPRING",
+				"--offer-eligibility", "STACK_WITH_INTRO_OFFERS",
+				"--customer-eligibilities", "NEW",
+				"--offer-duration", "ONE_MONTH",
+				"--offer-mode", tc.offerMode,
+				"--number-of-periods", "1",
+			})
+			if runErr == nil {
+				t.Fatalf("expected error for %s without prices, got nil", tc.offerMode)
+			}
+			if !errors.Is(runErr, flag.ErrHelp) {
+				t.Fatalf("expected flag.ErrHelp (exit 2), got %v", runErr)
+			}
+			if !strings.Contains(stderr, "--prices is required") {
+				t.Fatalf("expected --prices is required in stderr, got %q", stderr)
+			}
+		})
 	}
 }
 
