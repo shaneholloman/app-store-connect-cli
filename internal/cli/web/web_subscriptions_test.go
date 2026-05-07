@@ -14,11 +14,11 @@ import (
 
 func stubWebSubscriptionsSession(t *testing.T) {
 	t.Helper()
-	origResolveSession := resolveSessionFn
-	t.Cleanup(func() { resolveSessionFn = origResolveSession })
-	resolveSessionFn = func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
+
+	t.Setenv("ASC_APP_ID", "")
+	t.Cleanup(SetResolveWebSession(func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
 		return &webcore.AuthSession{Client: &http.Client{}}, "cache", nil
-	}
+	}))
 }
 
 func resetWebSubscriptionAvailabilityStubs(t *testing.T) {
