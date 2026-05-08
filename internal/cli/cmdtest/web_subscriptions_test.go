@@ -14,10 +14,12 @@ import (
 )
 
 func TestWebSubscriptionsAvailabilityRemoveFromSaleRunWithAppSelector(t *testing.T) {
+	availabilityListCalls := 0
+	patchCalls := 0
 	restoreSession := webcmd.SetResolveWebSession(func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
 		return &webcore.AuthSession{
 			Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				return webSubscriptionsAvailabilityResponse(t, req)
+				return webSubscriptionsAvailabilityResponse(t, req, &availabilityListCalls, &patchCalls)
 			})},
 		}, "cache", nil
 	})
@@ -56,6 +58,12 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleRunWithAppSelector(t *testing
 	if payload.AvailableInNewTerritories || len(payload.AvailableTerritories) != 0 {
 		t.Fatalf("expected subscription to be removed from sale, got %+v", payload)
 	}
+	if availabilityListCalls != 2 {
+		t.Fatalf("expected pre-patch and post-patch availability reads, got %d", availabilityListCalls)
+	}
+	if patchCalls != 1 {
+		t.Fatalf("expected one remove-from-sale patch, got %d", patchCalls)
+	}
 }
 
 func TestWebSubscriptionsAvailabilityRemoveFromSaleRunUsageErrors(t *testing.T) {
@@ -80,6 +88,16 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleRunUsageErrors(t *testing.T) 
 			},
 			wantErr: "--confirm is required",
 		},
+		{
+			name: "invalid output",
+			args: []string{
+				"web", "subscriptions", "availability", "remove-from-sale",
+				"--subscription-id", "sub-1",
+				"--confirm",
+				"--output", "yaml",
+			},
+			wantErr: "unsupported format: yaml",
+		},
 	}
 
 	for _, test := range tests {
@@ -97,7 +115,7 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleRunUsageErrors(t *testing.T) 
 	}
 }
 
-func webSubscriptionsAvailabilityResponse(t *testing.T, req *http.Request) (*http.Response, error) {
+func webSubscriptionsAvailabilityResponse(t *testing.T, req *http.Request, availabilityListCalls *int, patchCalls *int) (*http.Response, error) {
 	t.Helper()
 
 	switch {
@@ -127,6 +145,22 @@ func webSubscriptionsAvailabilityResponse(t *testing.T, req *http.Request) (*htt
 			}]
 		}`), nil
 	case req.Method == http.MethodGet && req.URL.Path == "/iris/v1/subscriptions/sub-1/planAvailabilities":
+		*availabilityListCalls++
+		if *availabilityListCalls == 1 {
+			return webSubscriptionsJSONResponse(`{
+				"data": [{
+					"id": "plan-1",
+					"type": "subscriptionPlanAvailabilities",
+					"attributes": {
+						"availableInNewTerritories": true,
+						"planType": "UPFRONT"
+					},
+					"relationships": {
+						"availableTerritories": {"data": [{"type": "territories", "id": "USA"}]}
+					}
+				}]
+			}`), nil
+		}
 		return webSubscriptionsJSONResponse(`{
 			"data": [{
 				"id": "plan-1",
@@ -141,6 +175,7 @@ func webSubscriptionsAvailabilityResponse(t *testing.T, req *http.Request) (*htt
 			}]
 		}`), nil
 	case req.Method == http.MethodPatch && req.URL.Path == "/iris/v1/subscriptionPlanAvailabilities/plan-1":
+		*patchCalls++
 		rawBody, err := io.ReadAll(req.Body)
 		if err != nil {
 			t.Fatalf("read request body: %v", err)
