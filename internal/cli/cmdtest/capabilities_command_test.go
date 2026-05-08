@@ -143,6 +143,21 @@ func TestRun_CapabilitiesInvalidAreaReturnsUsage(t *testing.T) {
 	}
 }
 
+func TestRun_CapabilitiesUnexpectedArgsReturnsUsage(t *testing.T) {
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
+
+	_, stderr := captureOutput(t, func() {
+		code := cmd.Run([]string{"capabilities", "typo"}, "1.0.0")
+		if code != cmd.ExitUsage {
+			t.Fatalf("expected exit code %d, got %d", cmd.ExitUsage, code)
+		}
+	})
+
+	if !strings.Contains(stderr, "unexpected arguments: typo") {
+		t.Fatalf("expected unexpected argument error, got stderr: %s", stderr)
+	}
+}
+
 func TestRun_CapabilitiesCommandReferencesResolve(t *testing.T) {
 	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
 
