@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/peterbourgon/ff/v3/ffcli"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
 )
 
@@ -127,6 +128,53 @@ func TestRun_CapabilitiesInvalidStatusReturnsUsage(t *testing.T) {
 	}
 }
 
+func TestRun_CapabilitiesInvalidAreaReturnsUsage(t *testing.T) {
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
+
+	_, stderr := captureOutput(t, func() {
+		code := cmd.Run([]string{"capabilities", "--area", "nope"}, "1.0.0")
+		if code != cmd.ExitUsage {
+			t.Fatalf("expected exit code %d, got %d", cmd.ExitUsage, code)
+		}
+	})
+
+	if !strings.Contains(stderr, "invalid --area") {
+		t.Fatalf("expected invalid --area error, got stderr: %s", stderr)
+	}
+}
+
+func TestRun_CapabilitiesCommandReferencesResolve(t *testing.T) {
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
+
+	stdout, stderr := captureOutput(t, func() {
+		code := cmd.Run([]string{"capabilities", "--output", "json"}, "1.0.0")
+		if code != cmd.ExitSuccess {
+			t.Fatalf("expected exit code %d, got %d", cmd.ExitSuccess, code)
+		}
+	})
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got: %s", stderr)
+	}
+
+	var resp capabilitiesTestResponse
+	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+		t.Fatalf("expected JSON output, got error %v and stdout %s", err, stdout)
+	}
+
+	root := RootCommand("1.0.0")
+	for _, entry := range resp.Capabilities {
+		for _, command := range entry.Commands {
+			args := capabilityCommandPath(command)
+			if len(args) == 0 {
+				t.Fatalf("invalid command reference %q", command)
+			}
+			if !commandPathExists(root, args) {
+				t.Fatalf("command reference %q does not resolve in the CLI registry", command)
+			}
+		}
+	}
+}
+
 func assertCapability(t *testing.T, resp capabilitiesTestResponse, capability, status, command string) {
 	t.Helper()
 
@@ -148,4 +196,38 @@ func assertCapability(t *testing.T, resp capabilitiesTestResponse, capability, s
 		t.Fatalf("expected %q commands to include %q, got %v", capability, command, entry.Commands)
 	}
 	t.Fatalf("capability %q not found in response: %+v", capability, resp.Capabilities)
+}
+
+func capabilityCommandPath(command string) []string {
+	parts := strings.Fields(command)
+	if len(parts) < 2 || parts[0] != "asc" {
+		return nil
+	}
+
+	args := make([]string, 0, len(parts))
+	for _, part := range parts[1:] {
+		if strings.HasPrefix(part, "-") {
+			break
+		}
+		args = append(args, part)
+	}
+	return args
+}
+
+func commandPathExists(root *ffcli.Command, args []string) bool {
+	current := root
+	for _, arg := range args {
+		var next *ffcli.Command
+		for _, subcommand := range current.Subcommands {
+			if subcommand.Name == arg {
+				next = subcommand
+				break
+			}
+		}
+		if next == nil {
+			return false
+		}
+		current = next
+	}
+	return true
 }

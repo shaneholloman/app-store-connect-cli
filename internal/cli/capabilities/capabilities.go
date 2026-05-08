@@ -372,7 +372,7 @@ func capabilityRows() []Capability {
 			Area:       "testflight",
 			Capability: "Sandbox tester lifecycle",
 			Status:     statusPartial,
-			Commands:   []string{"asc sandbox testers", "asc web sandbox create"},
+			Commands:   []string{"asc sandbox", "asc web sandbox create"},
 			APIResources: []string{
 				"sandboxTesters",
 				"sandboxTestersClearPurchaseHistoryRequest",
