@@ -599,6 +599,14 @@ Examples:
 
 			name := strings.TrimSpace(*referenceName)
 			note := strings.TrimSpace(*reviewNote)
+			visited := map[string]bool{}
+			fs.Visit(func(f *flag.Flag) {
+				visited[f.Name] = true
+			})
+			if visited["review-note"] && note == "" {
+				fmt.Fprintln(os.Stderr, "Error: --review-note cannot be empty")
+				return flag.ErrHelp
+			}
 			period, err := normalizeSubscriptionPeriod(*subscriptionPeriod, false)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err.Error())
