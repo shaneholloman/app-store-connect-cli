@@ -254,6 +254,11 @@
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/79/16/d5/7916d56d-bf7f-37a0-cb0c-bb50f04ed4f3/AppIcon-0-0-85-220-0-5-0-2x.png/512x512bb.png"
   },
   {
+    "app": "DayCount: Countdown Widget",
+    "link": "https://apps.apple.com/us/app/daycount-countdown-widget/id6765979160?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/1a/98/4d/1a984db8-c625-4bcc-c3da-2caf3ded04ba/AppIcon-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg"
+  },
+  {
     "app": "Deep Hour - Deep Focus Ritual",
     "link": "https://apps.apple.com/app/id6758889630",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/55/90/80/55908099-0de3-f577-f029-7e76d29e3481/AppIcon-0-0-1x_U007ephone-0-1-sRGB-85-220.png/512x512bb.jpg"
@@ -661,6 +666,11 @@
     "app": "MD Widgets - Countdown widget",
     "link": "https://apps.apple.com/us/app/md-widgets-countdown-widget/id1551277937?uo=4",
     "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/2f/ca/21/2fca210d-91ad-8736-575b-d729d3002f17/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg"
+  },
+  {
+    "app": "MealMate: Calorie Counter",
+    "link": "https://apps.apple.com/us/app/mealmate-calorie-counter/id6740268220?uo=4",
+    "icon": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/0f/f1/68/0ff1684f-f3fd-35c5-b6b3-5ef10b84d907/Icon-0-1x_U007ephone-0-0-0-1-0-0-85-220-0.png/512x512bb.jpg"
   },
   {
     "app": "Menuist: Right-Click & MenuBar",
