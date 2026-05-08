@@ -105,6 +105,54 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleRunRejectsUnownedPlanAvailabi
 	}
 }
 
+func TestWebSubscriptionsAvailabilityRemoveFromSaleRunUsesOwnedPlanAvailabilityID(t *testing.T) {
+	availabilityListCalls := 0
+	patchCalls := 0
+	restoreSession := webcmd.SetResolveWebSession(func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
+		return &webcore.AuthSession{
+			Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return webSubscriptionsAvailabilityResponse(t, req, &availabilityListCalls, &patchCalls)
+			})},
+		}, "cache", nil
+	})
+	t.Cleanup(restoreSession)
+
+	stdout, stderr := captureOutput(t, func() {
+		code := cmd.Run([]string{
+			"--profile", "test-web",
+			"web", "subscriptions", "availability", "remove-from-sale",
+			"--output", "json",
+			"--app", "app-1",
+			"--subscription-id", "availability",
+			"--plan-availability-id", "plan-1",
+			"--confirm",
+		}, "1.0.0")
+		if code != cmd.ExitSuccess {
+			t.Fatalf("exit code = %d, want %d", code, cmd.ExitSuccess)
+		}
+	})
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		PlanAvailabilityID string `json:"planAvailabilityId"`
+		RemovedFromSale    bool   `json:"removedFromSale"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("json.Unmarshal() error: %v; stdout=%q", err, stdout)
+	}
+	if payload.PlanAvailabilityID != "plan-1" || !payload.RemovedFromSale {
+		t.Fatalf("unexpected payload: %+v", payload)
+	}
+	if availabilityListCalls != 2 {
+		t.Fatalf("expected ownership and readback availability reads, got %d", availabilityListCalls)
+	}
+	if patchCalls != 1 {
+		t.Fatalf("expected one remove-from-sale patch, got %d", patchCalls)
+	}
+}
+
 func TestWebSubscriptionsAvailabilityRemoveFromSaleRunFailsWhenReadbackStillOnSale(t *testing.T) {
 	availabilityListCalls := 0
 	patchCalls := 0
