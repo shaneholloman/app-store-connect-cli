@@ -24,6 +24,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/buildlocalizations"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/builds"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/bundleids"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/capabilities"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/categories"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/certificates"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/completion"
@@ -171,6 +172,7 @@ func Subcommands(version string) []*ffcli.Command {
 		migrate.MigrateCommand(),
 		notify.NotifyCommand(),
 		gamecenter.GameCenterCommand(),
+		capabilities.Command(),
 		schema.SchemaCommand(),
 		snitch.SnitchCommand(version),
 		VersionCommand(version),
