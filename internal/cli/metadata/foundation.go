@@ -46,6 +46,7 @@ var metadataLocaleCandidatesByRoot = func() map[string][]string {
 
 var metadataLocaleCandidatesByLanguageName = map[string][]string{
 	"arabic":     {"ar-SA"},
+	"bangla":     {"bn-BD"},
 	"catalan":    {"ca"},
 	"chinese":    {"zh-Hans", "zh-Hant"},
 	"croatian":   {"hr"},
