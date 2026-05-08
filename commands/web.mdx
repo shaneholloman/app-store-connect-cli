@@ -21,6 +21,9 @@ asc web apps create --name "My App" --bundle-id "com.example.app" --sku "MYAPP12
 # Bootstrap app availability where the public API falls short
 asc web apps availability create --app "123456789" --territory "USA,GBR" --available-in-new-territories false
 
+# Remove an approved auto-renewable subscription from sale
+asc web subscriptions availability remove-from-sale --subscription-id "SUB_ID" --confirm
+
 # Declare that an app is not a regulated medical device
 asc web apps medical-device set --app "123456789" --declared false
 
@@ -125,6 +128,35 @@ Available commands:
 * `asc web review list` - list review submissions for an app
 * `asc web review show` - inspect one submission and related messages/screenshots
 * `asc web review subscriptions` - inspect and mutate next-version subscription review selection
+
+### `asc web subscriptions`
+
+Subscription sale availability workflows over Apple web-session `/iris` endpoints.
+
+Available commands:
+
+* `asc web subscriptions availability remove-from-sale` - remove an approved auto-renewable subscription from sale
+
+<Warning>
+  Removing an approved auto-renewable subscription from sale requires an Account Holder web session. App Store Connect rejects Admin and App Manager users for this action.
+</Warning>
+
+Example:
+
+```bash  theme={null}
+asc web subscriptions availability remove-from-sale \
+  --subscription-id "SUB_ID" \
+  --confirm
+```
+
+If you know the internal plan availability ID, pass it directly:
+
+```bash  theme={null}
+asc web subscriptions availability remove-from-sale \
+  --subscription-id "SUB_ID" \
+  --plan-availability-id "PLAN_AVAILABILITY_ID" \
+  --confirm
+```
 
 ### `asc web analytics`
 
