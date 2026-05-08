@@ -66,6 +66,84 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleRunWithAppSelector(t *testing
 	}
 }
 
+func TestWebSubscriptionsAvailabilityRemoveFromSaleRunRejectsUnownedPlanAvailabilityID(t *testing.T) {
+	availabilityListCalls := 0
+	patchCalls := 0
+	restoreSession := webcmd.SetResolveWebSession(func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
+		return &webcore.AuthSession{
+			Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return webSubscriptionsAvailabilityResponse(t, req, &availabilityListCalls, &patchCalls)
+			})},
+		}, "cache", nil
+	})
+	t.Cleanup(restoreSession)
+
+	stdout, stderr := captureOutput(t, func() {
+		code := cmd.Run([]string{
+			"--profile", "test-web",
+			"web", "subscriptions", "availability", "remove-from-sale",
+			"--app", "app-1",
+			"--subscription-id", "availability",
+			"--plan-availability-id", "plan-other",
+			"--confirm",
+		}, "1.0.0")
+		if code != cmd.ExitError {
+			t.Fatalf("exit code = %d, want %d", code, cmd.ExitError)
+		}
+	})
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, `plan availability "plan-other" was not found for subscription "sub-1"`) {
+		t.Fatalf("expected plan ownership error, got %q", stderr)
+	}
+	if availabilityListCalls != 1 {
+		t.Fatalf("expected one availability read before rejection, got %d", availabilityListCalls)
+	}
+	if patchCalls != 0 {
+		t.Fatalf("expected no patch for unowned plan availability, got %d", patchCalls)
+	}
+}
+
+func TestWebSubscriptionsAvailabilityRemoveFromSaleRunFailsWhenReadbackStillOnSale(t *testing.T) {
+	availabilityListCalls := 0
+	patchCalls := 0
+	restoreSession := webcmd.SetResolveWebSession(func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
+		return &webcore.AuthSession{
+			Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return webSubscriptionsAvailabilityResponse(t, req, &availabilityListCalls, &patchCalls, false)
+			})},
+		}, "cache", nil
+	})
+	t.Cleanup(restoreSession)
+
+	stdout, stderr := captureOutput(t, func() {
+		code := cmd.Run([]string{
+			"--profile", "test-web",
+			"web", "subscriptions", "availability", "remove-from-sale",
+			"--output", "json",
+			"--app", "app-1",
+			"--subscription-id", "availability",
+			"--confirm",
+		}, "1.0.0")
+		if code != cmd.ExitError {
+			t.Fatalf("exit code = %d, want %d", code, cmd.ExitError)
+		}
+	})
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, `plan availability "plan-1" is still available after patch`) {
+		t.Fatalf("expected readback verification error, got %q", stderr)
+	}
+	if availabilityListCalls != 2 {
+		t.Fatalf("expected pre-patch and post-patch availability reads, got %d", availabilityListCalls)
+	}
+	if patchCalls != 1 {
+		t.Fatalf("expected one remove-from-sale patch before verification failed, got %d", patchCalls)
+	}
+}
+
 func TestWebSubscriptionsAvailabilityRemoveFromSaleRunUsageErrors(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -115,8 +193,13 @@ func TestWebSubscriptionsAvailabilityRemoveFromSaleRunUsageErrors(t *testing.T) 
 	}
 }
 
-func webSubscriptionsAvailabilityResponse(t *testing.T, req *http.Request, availabilityListCalls *int, patchCalls *int) (*http.Response, error) {
+func webSubscriptionsAvailabilityResponse(t *testing.T, req *http.Request, availabilityListCalls *int, patchCalls *int, postPatchRemoved ...bool) (*http.Response, error) {
 	t.Helper()
+
+	shouldReturnRemovedAfterPatch := true
+	if len(postPatchRemoved) > 0 {
+		shouldReturnRemovedAfterPatch = postPatchRemoved[0]
+	}
 
 	switch {
 	case req.Method == http.MethodGet && req.URL.Path == "/iris/v1/apps/app-1/subscriptionGroups":
@@ -146,7 +229,7 @@ func webSubscriptionsAvailabilityResponse(t *testing.T, req *http.Request, avail
 		}`), nil
 	case req.Method == http.MethodGet && req.URL.Path == "/iris/v1/subscriptions/sub-1/planAvailabilities":
 		*availabilityListCalls++
-		if *availabilityListCalls == 1 {
+		if *availabilityListCalls == 1 || !shouldReturnRemovedAfterPatch {
 			return webSubscriptionsJSONResponse(`{
 				"data": [{
 					"id": "plan-1",
