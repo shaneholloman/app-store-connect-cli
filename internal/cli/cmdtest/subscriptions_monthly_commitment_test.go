@@ -1,11 +1,13 @@
 package cmdtest
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -51,9 +53,19 @@ func TestSubscriptionsPricingMonthlyCommitmentValidationErrors(t *testing.T) {
 			wantErr: "--price-territory cannot be USA or Singapore",
 		},
 		{
+			name:    "enable rejects excluded price territory with mixed flag order",
+			args:    []string{"subscriptions", "pricing", "monthly-commitment", "enable", "--territories", "Norway", "--price-territory", "USA", "--subscription-id", "sub-1", "--price", "9.99"},
+			wantErr: "--price-territory cannot be USA or Singapore",
+		},
+		{
 			name:    "disable missing territories",
 			args:    []string{"subscriptions", "pricing", "monthly-commitment", "disable", "--subscription-id", "sub-1"},
 			wantErr: "--territories is required",
+		},
+		{
+			name:    "disable treats subcommand name as flag value",
+			args:    []string{"subscriptions", "pricing", "monthly-commitment", "disable", "--subscription-id", "sub-1", "--territories", "list"},
+			wantErr: "territory \"list\" could not be mapped",
 		},
 		{
 			name:    "list missing subscription",
@@ -82,6 +94,63 @@ func TestSubscriptionsPricingMonthlyCommitmentValidationErrors(t *testing.T) {
 			}
 			if !strings.Contains(stderr, test.wantErr) {
 				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
+			}
+		})
+	}
+}
+
+func TestSubscriptionsPricingMonthlyCommitmentUsageExitCodes(t *testing.T) {
+	binaryPath := buildASCBlackBoxBinary(t)
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "subcommand flag before subcommand returns usage",
+			args:    []string{"subscriptions", "pricing", "monthly-commitment", "--subscription-id", "sub-1", "enable", "--price", "9.99", "--price-territory", "Norway", "--territories", "Norway"},
+			wantErr: "flag provided but not defined: -subscription-id",
+		},
+		{
+			name:    "mixed flag order invalid price territory returns usage",
+			args:    []string{"subscriptions", "pricing", "monthly-commitment", "enable", "--territories", "Norway", "--price-territory", "USA", "--subscription-id", "sub-1", "--price", "9.99"},
+			wantErr: "--price-territory cannot be USA or Singapore",
+		},
+		{
+			name:    "flag value matching subcommand returns usage when invalid",
+			args:    []string{"subscriptions", "pricing", "monthly-commitment", "disable", "--subscription-id", "sub-1", "--territories", "list"},
+			wantErr: "territory \"list\" could not be mapped",
+		},
+		{
+			name:    "availability edit invalid billing mode returns usage",
+			args:    []string{"subscriptions", "pricing", "availability", "edit", "--subscription-id", "sub-1", "--territories", "Norway", "--billing-mode", "list"},
+			wantErr: "--billing-mode must be one of: upfront, monthly-commitment",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := exec.Command(binaryPath, test.args...)
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected process exit error, got %v", err)
+			}
+			if exitErr.ExitCode() != 2 {
+				t.Fatalf("expected exit code 2, got %d", exitErr.ExitCode())
+			}
+			if stdout.String() != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), test.wantErr) {
+				t.Fatalf("expected error %q, got %q", test.wantErr, stderr.String())
 			}
 		})
 	}
@@ -116,10 +185,7 @@ func TestSubscriptionsPricingMonthlyCommitmentDisableFiltersExcludedTerritories(
 func TestSubscriptionsPricingMonthlyCommitmentEnableRejectsPriceOutsideRange(t *testing.T) {
 	setupAuth(t)
 
-	originalTransport := http.DefaultTransport
-	t.Cleanup(func() { http.DefaultTransport = originalTransport })
-
-	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	installDefaultTransport(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
 		case req.URL.Path == "/v1/subscriptions/8000000001" && req.Method == http.MethodGet:
 			body := `{"data":{"type":"subscriptions","id":"8000000001","attributes":{"name":"Yearly","productId":"com.example.yearly","subscriptionPeriod":"ONE_YEAR","state":"APPROVED"}}}`
@@ -148,7 +214,7 @@ func TestSubscriptionsPricingMonthlyCommitmentEnableRejectsPriceOutsideRange(t *
 			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
 			return nil, nil
 		}
-	})
+	}))
 
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
