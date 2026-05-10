@@ -57,7 +57,6 @@ func TestRun_CapabilitiesJSONReportsKnownGaps(t *testing.T) {
 	assertCapability(t, resp, "App Store release submission", "cli-supported", "asc publish appstore --submit")
 	assertCapability(t, resp, "App creation", "experimental-web", "asc web apps create")
 	assertCapability(t, resp, "App privacy data-use declarations", "experimental-web", "asc web privacy")
-	assertCapability(t, resp, "Monthly subscriptions with 12-month commitment", "not-public-api", "")
 	assertCapability(t, resp, "Transaction tax reports", "not-public-api", "")
 }
 
@@ -88,7 +87,6 @@ func TestRun_CapabilitiesFiltersByStatus(t *testing.T) {
 		}
 	}
 	assertCapability(t, resp, "Direct REST build upload", "not-public-api", "")
-	assertCapability(t, resp, "Monthly subscriptions with 12-month commitment", "not-public-api", "")
 }
 
 func TestRun_CapabilitiesFiltersByAreaInMarkdown(t *testing.T) {

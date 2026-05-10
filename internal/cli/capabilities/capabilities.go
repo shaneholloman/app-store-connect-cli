@@ -361,21 +361,6 @@ func capabilityRows() []Capability {
 			},
 		},
 		{
-			Area:       "monetization",
-			Capability: "Monthly subscriptions with 12-month commitment",
-			Status:     statusNotPublicAPI,
-			APIResources: []string{
-				"subscriptionAvailabilities",
-				"subscriptionPrices",
-			},
-			Notes: []string{
-				"Apple documents App Store Connect web UI setup for ONE_YEAR subscriptions outside the United States and Singapore.",
-				"The embedded public OpenAPI snapshot has no billing-mode field or monthly-commitment resource for subscriptionAvailabilities or subscriptionPrices.",
-				"StoreKit exposes pricing terms and billing plan types after configuration, but that does not create a public App Store Connect mutation surface.",
-			},
-			NextAction: "Configure in App Store Connect web UI and add an asc command only after Apple publishes a supported public API field or resource.",
-		},
-		{
 			Area:       "testflight",
 			Capability: "TestFlight distribution, feedback, and crashes",
 			Status:     statusCLISupported,
