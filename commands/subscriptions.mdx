@@ -362,6 +362,12 @@ asc subscriptions pricing availability edit \
 **Optional Flags:**
 
 * `--available-in-new-territories` - Automatically include new App Store territories
+* `--billing-mode` - Billing mode to target: `upfront` (default) or `monthly-commitment`
+
+`monthly-commitment` is reserved for Apple's Monthly with 12-Month Commitment
+subscription option. The public App Store Connect API does not yet expose the
+needed billing-mode resource/field, so the CLI validates inputs and returns a
+clear upstream-API error until Apple publishes support.
 
 ### List Available Territories
 
@@ -370,6 +376,46 @@ asc subscriptions pricing availability available-territories \
   --availability-id "AVAILABILITY_ID" \
   --paginate
 ```
+
+### Monthly With 12-Month Commitment
+
+Apple announced Monthly Subscriptions with a 12-Month Commitment on April 27,
+2026. This is a billing-mode option on a regular `ONE_YEAR` subscription, not a
+new product type or subscription period. App Store Connect shows both `1 Year
+Upfront` and `Monthly with 12-Month Commitment` availability for the same
+subscription product.
+
+```bash  theme={null}
+asc subscriptions pricing monthly-commitment enable \
+  --subscription-id "SUB_ID" \
+  --price "9.99" \
+  --price-territory "Norway" \
+  --territories "Norway,Germany,France"
+
+asc subscriptions pricing monthly-commitment disable \
+  --subscription-id "SUB_ID" \
+  --territories "Norway"
+
+asc subscriptions pricing monthly-commitment list \
+  --subscription-id "SUB_ID"
+```
+
+Current CLI behavior:
+
+* Validates that the subscription is `ONE_YEAR` for `enable`.
+* Treats `--price` as the monthly customer price and checks the 12-payment total
+  against the upfront annual price: total must be `>= upfront` and `<= 1.5x
+  upfront`.
+* Removes USA and Singapore from `--territories` with a warning because Apple
+  excludes those storefronts.
+* Returns a clear "not yet supported by Apple's public App Store Connect API"
+  error before attempting changes, because Apple's public REST schema currently
+  has no billing-mode field on `subscriptionAvailabilities` or
+  `subscriptionPrices`.
+
+Monthly with 12-Month Commitment is available only outside the United States and
+Singapore, requires devices on OS version 26.4 or later, excludes watchOS, and
+requires apps built with SDK 26.5 or later.
 
 ## Localizations
 
