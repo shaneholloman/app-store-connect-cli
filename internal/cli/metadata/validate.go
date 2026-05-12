@@ -136,14 +136,16 @@ func validateDir(dir string, subscriptionApp bool) (ValidateResult, error) {
 			if readErr != nil {
 				return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, readErr)
 			}
-			if blankErr := rejectBlankMetadataFieldsWithContent(data, appInfoPlanFields); blankErr != nil {
-				return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, blankErr)
+			fieldIntentIssues, fieldIntentErr := metadataFieldIntentIssues(data, appInfoPlanFields)
+			if fieldIntentErr != nil {
+				return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, fieldIntentErr)
 			}
 			loc, readErr := DecodeAppInfoLocalization(data)
 			if readErr != nil {
 				return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, readErr)
 			}
 			result.FilesScanned++
+			result.Issues = append(result.Issues, metadataIntentValidateIssues(appInfoDirName, filePath, resolvedLocale, "", fieldIntentIssues)...)
 
 			issues := ValidateAppInfoLocalization(loc, ValidationOptions{RequireName: resolvedLocale != DefaultLocale})
 			for _, issue := range issues {
@@ -197,14 +199,16 @@ func validateDir(dir string, subscriptionApp bool) (ValidateResult, error) {
 				if readErr != nil {
 					return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, readErr)
 				}
-				if blankErr := rejectBlankMetadataFieldsWithContent(data, versionPlanFields); blankErr != nil {
-					return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, blankErr)
+				fieldIntentIssues, fieldIntentErr := metadataFieldIntentIssues(data, versionPlanFields)
+				if fieldIntentErr != nil {
+					return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, fieldIntentErr)
 				}
 				loc, readErr := DecodeVersionLocalization(data)
 				if readErr != nil {
 					return ValidateResult{}, shared.UsageErrorf("invalid metadata schema in %s: %v", filePath, readErr)
 				}
 				result.FilesScanned++
+				result.Issues = append(result.Issues, metadataIntentValidateIssues(versionDirName, filePath, resolvedLocale, version, fieldIntentIssues)...)
 
 				issues := ValidateVersionLocalization(loc)
 				for _, issue := range issues {
@@ -258,40 +262,67 @@ func validateDir(dir string, subscriptionApp bool) (ValidateResult, error) {
 	return result, nil
 }
 
-func rejectBlankMetadataFieldsWithContent(data []byte, allowed []string) error {
+type metadataFieldIntentIssue struct {
+	Field   string
+	Message string
+}
+
+func metadataFieldIntentIssues(data []byte, allowed []string) ([]metadataFieldIntentIssue, error) {
 	var raw map[string]json.RawMessage
 	if err := decodeStrictJSON(data, &raw); err != nil {
-		return err
+		return nil, err
 	}
 
 	hasContent := false
-	blankField := ""
+	issues := make([]metadataFieldIntentIssue, 0)
 	for _, key := range sortedKeys(raw) {
 		rawValue := raw[key]
 		canonicalKey, err := canonicalStringFieldPatchKey(key, allowed)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		var value string
 		if err := json.Unmarshal(rawValue, &value); err != nil {
-			return err
+			return nil, err
 		}
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "__ASC_DELETE__" {
-			return fmt.Errorf("field %q uses unsupported clear token __ASC_DELETE__; omit the key to keep the remote value", canonicalKey)
+			hasContent = true
+			issues = append(issues, metadataFieldIntentIssue{
+				Field:   canonicalKey,
+				Message: fmt.Sprintf("field %q uses unsupported clear token __ASC_DELETE__; omit the key to keep the remote value", canonicalKey),
+			})
+			continue
 		}
 		if trimmed == "" {
-			if blankField == "" {
-				blankField = canonicalKey
-			}
+			issues = append(issues, metadataFieldIntentIssue{
+				Field:   canonicalKey,
+				Message: fmt.Sprintf("field %q cannot be empty; omit the key to leave the remote value unchanged", canonicalKey),
+			})
 			continue
 		}
 		hasContent = true
 	}
-	if hasContent && blankField != "" {
-		return fmt.Errorf("field %q cannot be empty; omit the key to leave the remote value unchanged", blankField)
+	if !hasContent {
+		return nil, nil
 	}
-	return nil
+	return issues, nil
+}
+
+func metadataIntentValidateIssues(scope, filePath, locale, version string, issues []metadataFieldIntentIssue) []ValidateIssue {
+	result := make([]ValidateIssue, 0, len(issues))
+	for _, issue := range issues {
+		result = append(result, ValidateIssue{
+			Scope:    scope,
+			File:     filePath,
+			Locale:   locale,
+			Version:  version,
+			Field:    issue.Field,
+			Severity: issueSeverityError,
+			Message:  issue.Message,
+		})
+	}
+	return result
 }
 
 func versionLengthIssues(filePath, version, locale string, loc VersionLocalization) []ValidateIssue {

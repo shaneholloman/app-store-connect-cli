@@ -37,8 +37,8 @@ func SubscriptionsPricingMonthlyCommitmentCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "monthly-commitment",
 		ShortUsage: "asc subscriptions pricing monthly-commitment <subcommand> [flags]",
-		ShortHelp:  "Prepare Monthly with 12-Month Commitment subscription billing.",
-		LongHelp: `Prepare Monthly with 12-Month Commitment subscription billing.
+		ShortHelp:  "[experimental] Prepare Monthly with 12-Month Commitment subscription billing.",
+		LongHelp: `[experimental] Prepare Monthly with 12-Month Commitment subscription billing.
 
 Apple announced Monthly Subscriptions with a 12-Month Commitment on April 27, 2026.
 The public App Store Connect API currently exposes standard subscription
@@ -76,8 +76,8 @@ func SubscriptionsPricingMonthlyCommitmentEnableCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "enable",
 		ShortUsage: "asc subscriptions pricing monthly-commitment enable [flags]",
-		ShortHelp:  "Validate monthly-commitment enable inputs.",
-		LongHelp: `Validate Monthly with 12-Month Commitment enable inputs.
+		ShortHelp:  "[experimental] Validate monthly-commitment enable inputs.",
+		LongHelp: `[experimental] Validate Monthly with 12-Month Commitment enable inputs.
 
 The subscription must use subscriptionPeriod ONE_YEAR. USA and Singapore are
 removed from --territories because Apple excludes those storefronts. The CLI
@@ -176,8 +176,8 @@ func SubscriptionsPricingMonthlyCommitmentDisableCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "disable",
 		ShortUsage: "asc subscriptions pricing monthly-commitment disable [flags]",
-		ShortHelp:  "Validate monthly-commitment disable inputs.",
-		LongHelp: `Validate Monthly with 12-Month Commitment disable inputs.
+		ShortHelp:  "[experimental] Validate monthly-commitment disable inputs.",
+		LongHelp: `[experimental] Validate Monthly with 12-Month Commitment disable inputs.
 
 Examples:
   asc subscriptions pricing monthly-commitment disable --subscription-id "SUB_ID" --territories "Norway"`,
@@ -216,8 +216,8 @@ func SubscriptionsPricingMonthlyCommitmentListCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "list",
 		ShortUsage: "asc subscriptions pricing monthly-commitment list --subscription-id \"SUB_ID\"",
-		ShortHelp:  "List monthly-commitment billing configuration when Apple exposes a public API.",
-		LongHelp: `List Monthly with 12-Month Commitment billing configuration.
+		ShortHelp:  "[experimental] List monthly-commitment billing configuration when Apple exposes a public API.",
+		LongHelp: `[experimental] List Monthly with 12-Month Commitment billing configuration.
 
 Examples:
   asc subscriptions pricing monthly-commitment list --subscription-id "SUB_ID"`,

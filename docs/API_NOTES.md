@@ -74,7 +74,7 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
   - https://developer.apple.com/news/?id=agq42lxe
   - https://developer.apple.com/help/app-store-connect/manage-subscriptions/set-availability-for-an-auto-renewable-subscription/
 - The App Store Connect help docs describe this as a billing option on a regular 1-year subscription, with separate `1 Year Upfront` and `Monthly with 12-Month Commitment` availability sections for the same product.
-- The public App Store Connect OpenAPI snapshot currently exposes `subscriptionAvailabilities` and `subscriptionPrices` without a billing-mode discriminator or a separate monthly-commitment resource. The CLI therefore exposes a guarded `asc subscriptions pricing monthly-commitment` surface that validates period, territory exclusions, and the 1.5x price rule, then returns a "not yet supported by Apple's public App Store Connect API" error before attempting mutation.
+- The public App Store Connect OpenAPI snapshot currently exposes `subscriptionAvailabilities` and `subscriptionPrices` without a billing-mode discriminator or a separate monthly-commitment resource. The CLI therefore exposes an experimental guarded `asc subscriptions pricing monthly-commitment` surface that validates period, territory exclusions, and the 1.5x price rule, then returns a "not yet supported by Apple's public App Store Connect API" error before attempting mutation.
 - The experimental web-session client can observe internal `subscriptionPlanAvailabilities` with a `planType` attribute, but that surface is private and should not be wired into the canonical JWT-backed subscription pricing commands until Apple documents a stable API.
 
 ## Pass Type IDs

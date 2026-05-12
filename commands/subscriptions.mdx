@@ -362,7 +362,7 @@ asc subscriptions pricing availability edit \
 **Optional Flags:**
 
 * `--available-in-new-territories` - Automatically include new App Store territories
-* `--billing-mode` - Billing mode to target: `upfront` (default) or `monthly-commitment`
+* `--billing-mode` - Experimental billing mode target: `upfront` (default) or `monthly-commitment`
 
 `monthly-commitment` is reserved for Apple's Monthly with 12-Month Commitment
 subscription option. The public App Store Connect API does not yet expose the
@@ -384,6 +384,9 @@ Apple announced Monthly Subscriptions with a 12-Month Commitment on April 27,
 new product type or subscription period. App Store Connect shows both `1 Year
 Upfront` and `Monthly with 12-Month Commitment` availability for the same
 subscription product.
+
+This command surface is experimental. It is intentionally guarded until Apple
+publishes a stable public API for the billing mode.
 
 ```bash  theme={null}
 asc subscriptions pricing monthly-commitment enable \

@@ -21,14 +21,14 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 **Highlights**:
 
 * `asc metadata init` can now scaffold App Store metadata templates with locale-aware files and validation-friendly defaults
-* Subscriptions add a guarded Monthly with 12-Month Commitment command surface for Apple's April 2026 subscription update while the public API lacks billing-mode fields
+* Subscriptions add an experimental guarded Monthly with 12-Month Commitment command surface for Apple's April 2026 subscription update while the public API lacks billing-mode fields
 * Xcode Cloud secret environment variables now fetch the client encryption key from the correct CI auth endpoint, fixing secret creation failures
 * Community surfaces keep growing with Fitnit: Health & Fitness, Spotter - The Travel Companion, and Greenie: Plant Identifier AI
 
 **Changes**:
 
-* `feat(subscriptions)`: Add a guarded Monthly with 12-Month Commitment command surface for Apple's April 27, 2026 subscription announcement (https://developer.apple.com/news/?id=agq42lxe), App Store Connect help docs (https://developer.apple.com/help/app-store-connect/manage-subscriptions/set-availability-for-an-auto-renewable-subscription/), and third-party coverage (https://9to5mac.com/2026/04/27/apple-introduces-monthly-subscriptions-with-12-month-commitment-on-the-app-store/), with client-side validation for ONE_YEAR subscriptions, excluded USA/Singapore territories, and the 1.5x upfront-price rule while the public App Store Connect API lacks billing-mode fields.
-* `feat(metadata)`: Add metadata init templates for version, app info, screenshots, and video previews
+* `feat(subscriptions)`: Add an experimental guarded Monthly with 12-Month Commitment command surface for Apple's April 27, 2026, subscription announcement (https://developer.apple.com/news/?id=agq42lxe), App Store Connect help docs (https://developer.apple.com/help/app-store-connect/manage-subscriptions/set-availability-for-an-auto-renewable-subscription/), and third-party coverage (https://9to5mac.com/2026/04/27/apple-introduces-monthly-subscriptions-with-12-month-commitment-on-the-app-store/), with client-side validation for ONE_YEAR subscriptions, excluded USA/Singapore territories, and the 1.5x upfront-price rule while the public App Store Connect API lacks billing-mode fields.
+* `feat(metadata)`: Add metadata init templates for app-info and version localizations
 * `fix(xcode-cloud)`: Fetch the secret environment-variable encryption key from the CI auth endpoint outside the `/ci/api` base path
 * `docs(metadata)`: Clarify when version localization IDs are available for `asc metadata validate`
 * `build(community)`: Add three new apps to the Wall of Apps
