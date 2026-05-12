@@ -179,14 +179,20 @@ func TestMetadataValidateRejectsEmptyTemplateKeys(t *testing.T) {
 		t.Fatalf("expected invalid report, got %+v", payload)
 	}
 	foundSubtitleIssue := false
+	foundKeywordsIssue := false
 	for _, issue := range payload.Issues {
 		if issue.Field == "subtitle" && strings.Contains(issue.Message, `field "subtitle" cannot be empty`) {
 			foundSubtitleIssue = true
-			break
+		}
+		if issue.Field == "keywords" && strings.Contains(issue.Message, `field "keywords" cannot be empty`) {
+			foundKeywordsIssue = true
 		}
 	}
 	if !foundSubtitleIssue {
 		t.Fatalf("expected empty subtitle issue, got %+v", payload.Issues)
+	}
+	if !foundKeywordsIssue {
+		t.Fatalf("expected empty keywords issue, got %+v", payload.Issues)
 	}
 }
 

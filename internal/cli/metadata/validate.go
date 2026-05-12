@@ -303,10 +303,13 @@ func metadataFieldIntentIssues(data []byte, allowed []string) ([]metadataFieldIn
 		}
 		hasContent = true
 	}
+	if len(issues) > 0 {
+		return issues, nil
+	}
 	if !hasContent {
 		return nil, nil
 	}
-	return issues, nil
+	return nil, nil
 }
 
 func metadataIntentValidateIssues(scope, filePath, locale, version string, issues []metadataFieldIntentIssue) []ValidateIssue {
