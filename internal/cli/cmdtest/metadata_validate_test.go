@@ -196,6 +196,72 @@ func TestMetadataValidateRejectsEmptyTemplateKeys(t *testing.T) {
 	}
 }
 
+func TestMetadataValidateBlankOnlyTemplateKeysFallBackToMissingMetadata(t *testing.T) {
+	dir := t.TempDir()
+	appInfoDir := filepath.Join(dir, "app-info")
+	versionDir := filepath.Join(dir, "version", "1.2.3")
+	if err := os.MkdirAll(appInfoDir, 0o755); err != nil {
+		t.Fatalf("mkdir app-info: %v", err)
+	}
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("mkdir version dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(appInfoDir, "en-US.json"), []byte(`{"name":"","subtitle":""}`), 0o644); err != nil {
+		t.Fatalf("write app-info file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(versionDir, "en-US.json"), []byte(`{"description":"","keywords":""}`), 0o644); err != nil {
+		t.Fatalf("write version file: %v", err)
+	}
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	var runErr error
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"metadata", "validate", "--dir", dir}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if runErr == nil {
+		t.Fatal("expected validation error")
+	}
+	if _, ok := errors.AsType[ReportedError](runErr); !ok {
+		t.Fatalf("expected ReportedError, got %v", runErr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		Issues []struct {
+			Field   string `json:"field"`
+			Message string `json:"message"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout=%q", err, stdout)
+	}
+
+	foundAppInfoMissing := false
+	foundVersionMissing := false
+	for _, issue := range payload.Issues {
+		if strings.Contains(issue.Message, "cannot be empty") {
+			t.Fatalf("did not expect field-level empty issue for blank-only template: %+v", payload.Issues)
+		}
+		if issue.Field == "metadata" && issue.Message == "at least one app-info field is required" {
+			foundAppInfoMissing = true
+		}
+		if issue.Field == "metadata" && issue.Message == "at least one version metadata field is required" {
+			foundVersionMissing = true
+		}
+	}
+	if !foundAppInfoMissing || !foundVersionMissing {
+		t.Fatalf("expected missing metadata issues, got %+v", payload.Issues)
+	}
+}
+
 func TestMetadataValidatePassesForValidFiles(t *testing.T) {
 	dir := t.TempDir()
 	appInfoDir := filepath.Join(dir, "app-info")
