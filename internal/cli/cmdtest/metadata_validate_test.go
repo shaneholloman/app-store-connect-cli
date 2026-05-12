@@ -154,14 +154,39 @@ func TestMetadataValidateRejectsEmptyTemplateKeys(t *testing.T) {
 		runErr = root.Run(context.Background())
 	})
 
-	if !errors.Is(runErr, flag.ErrHelp) {
-		t.Fatalf("expected ErrHelp, got %v", runErr)
+	if runErr == nil {
+		t.Fatal("expected validation error")
 	}
-	if stdout != "" {
-		t.Fatalf("expected empty stdout, got %q", stdout)
+	if _, ok := errors.AsType[ReportedError](runErr); !ok {
+		t.Fatalf("expected ReportedError, got %v", runErr)
 	}
-	if !strings.Contains(stderr, `field "subtitle" cannot be empty`) {
-		t.Fatalf("expected empty-field schema error, got %q", stderr)
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload struct {
+		Valid      bool `json:"valid"`
+		ErrorCount int  `json:"errorCount"`
+		Issues     []struct {
+			Field   string `json:"field"`
+			Message string `json:"message"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout=%q", err, stdout)
+	}
+	if payload.Valid || payload.ErrorCount == 0 {
+		t.Fatalf("expected invalid report, got %+v", payload)
+	}
+	foundSubtitleIssue := false
+	for _, issue := range payload.Issues {
+		if issue.Field == "subtitle" && strings.Contains(issue.Message, `field "subtitle" cannot be empty`) {
+			foundSubtitleIssue = true
+			break
+		}
+	}
+	if !foundSubtitleIssue {
+		t.Fatalf("expected empty subtitle issue, got %+v", payload.Issues)
 	}
 }
 

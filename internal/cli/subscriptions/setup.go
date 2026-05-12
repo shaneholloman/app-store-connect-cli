@@ -133,7 +133,7 @@ func SubscriptionsSetupCommand() *ffcli.Command {
 
 	territories := fs.String("territories", "", "Availability territories to enable after creation (comma-separated; accepts alpha-2, alpha-3, or exact English country names)")
 	availableInNewTerritories := fs.Bool("available-in-new-territories", false, "Include new territories automatically when creating availability")
-	enableMonthlyCommitment := fs.Bool("enable-monthly-commitment", false, "Also configure Monthly with 12-Month Commitment availability for ONE_YEAR subscriptions when Apple exposes a public API")
+	enableMonthlyCommitment := fs.Bool("enable-monthly-commitment", false, "[experimental] Also configure Monthly with 12-Month Commitment availability for ONE_YEAR subscriptions when Apple exposes a public API")
 	noVerify := fs.Bool("no-verify", false, "Skip post-create readback verification for faster execution")
 	output := shared.BindOutputFlags(fs)
 

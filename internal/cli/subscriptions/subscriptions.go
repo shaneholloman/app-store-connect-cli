@@ -1225,7 +1225,7 @@ func SubscriptionsAvailabilityEditCommand() *ffcli.Command {
 	appID := addSubscriptionLookupAppFlag(fs)
 	territories := fs.String("territories", "", "Territory IDs, comma-separated")
 	availableInNew := fs.Bool("available-in-new-territories", false, "Include new territories automatically")
-	billingMode := fs.String("billing-mode", string(subscriptionBillingModeUpfront), "Billing mode: upfront or monthly-commitment")
+	billingMode := fs.String("billing-mode", string(subscriptionBillingModeUpfront), "[experimental] Billing mode: upfront or monthly-commitment")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
