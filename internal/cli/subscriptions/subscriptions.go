@@ -569,6 +569,7 @@ func SubscriptionsUpdateCommand() *ffcli.Command {
 
 	subID := fs.String("id", "", "Subscription ID")
 	referenceName := fs.String("reference-name", "", "Reference name")
+	reviewNote := fs.String("review-note", "", "Review note for App Review")
 	subscriptionPeriod := fs.String("subscription-period", "", "Subscription period: "+strings.Join(subscriptionPeriodValues, ", "))
 	var groupLevel optionalInt
 	fs.Var(&groupLevel, "group-level", "Subscription ordering level (positive integer)")
@@ -583,6 +584,7 @@ func SubscriptionsUpdateCommand() *ffcli.Command {
 
 Examples:
   asc subscriptions update --id "SUB_ID" --reference-name "New Name"
+  asc subscriptions update --id "SUB_ID" --review-note "Same paywall structure, design may differ"
   asc subscriptions update --id "SUB_ID" --subscription-period ONE_YEAR
   asc subscriptions update --id "SUB_ID" --group-level 3
   asc subscriptions update --id "SUB_ID" --family-sharable`,
@@ -596,6 +598,15 @@ Examples:
 			}
 
 			name := strings.TrimSpace(*referenceName)
+			note := strings.TrimSpace(*reviewNote)
+			visited := map[string]bool{}
+			fs.Visit(func(f *flag.Flag) {
+				visited[f.Name] = true
+			})
+			if visited["review-note"] && note == "" {
+				fmt.Fprintln(os.Stderr, "Error: --review-note cannot be empty")
+				return flag.ErrHelp
+			}
 			period, err := normalizeSubscriptionPeriod(*subscriptionPeriod, false)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err.Error())
@@ -606,7 +617,7 @@ Examples:
 				return flag.ErrHelp
 			}
 
-			if name == "" && period == "" && !*familySharable && !groupLevel.IsSet() {
+			if name == "" && note == "" && period == "" && !*familySharable && !groupLevel.IsSet() {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
 				return flag.ErrHelp
 			}
@@ -622,6 +633,9 @@ Examples:
 			attrs := asc.SubscriptionUpdateAttributes{}
 			if name != "" {
 				attrs.Name = &name
+			}
+			if note != "" {
+				attrs.ReviewNote = &note
 			}
 			if period != "" {
 				periodValue := string(period)
@@ -1211,6 +1225,7 @@ func SubscriptionsAvailabilityEditCommand() *ffcli.Command {
 	appID := addSubscriptionLookupAppFlag(fs)
 	territories := fs.String("territories", "", "Territory IDs, comma-separated")
 	availableInNew := fs.Bool("available-in-new-territories", false, "Include new territories automatically")
+	billingMode := fs.String("billing-mode", string(subscriptionBillingModeUpfront), "[experimental] Billing mode: upfront or monthly-commitment")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -1220,7 +1235,8 @@ func SubscriptionsAvailabilityEditCommand() *ffcli.Command {
 		LongHelp: `Edit subscription availability in territories.
 
 Examples:
-  asc subscriptions availability edit --subscription-id "SUB_ID" --territories "US,Canada"`,
+  asc subscriptions availability edit --subscription-id "SUB_ID" --territories "US,Canada"
+  asc subscriptions availability edit --subscription-id "SUB_ID" --billing-mode monthly-commitment --territories "Norway,Germany"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -1241,6 +1257,18 @@ Examples:
 			if len(territoryIDs) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --territories is required")
 				return flag.ErrHelp
+			}
+			normalizedBillingMode, err := normalizeSubscriptionBillingMode(*billingMode)
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+			if normalizedBillingMode == subscriptionBillingModeMonthlyCommitment {
+				territoryIDs, excluded := filterMonthlyCommitmentTerritories(territoryIDs)
+				printMonthlyCommitmentTerritoryWarning(excluded)
+				if len(territoryIDs) == 0 {
+					return shared.UsageError("no eligible monthly-commitment territories remain after excluding USA and Singapore")
+				}
+				return fmt.Errorf("subscriptions availability edit: %w", errMonthlyCommitmentPublicAPINotAvailable)
 			}
 
 			client, err := shared.GetASCClient()

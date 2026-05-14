@@ -12,7 +12,47 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 ### Unreleased
 
-No unreleased changes yet.
+**Changes**:
+
+* No unreleased changes yet.
+
+### 1.4.1
+
+**Highlights**:
+
+* `asc metadata init` can now scaffold App Store metadata templates with locale-aware files and validation-friendly defaults
+* Subscriptions add an experimental guarded Monthly with 12-Month Commitment command surface for Apple's April 2026 subscription update while the public API lacks billing-mode fields
+* Xcode Cloud secret environment variables now fetch the client encryption key from the correct CI auth endpoint, fixing secret creation failures
+* Community surfaces keep growing with Fitnit: Health & Fitness, Spotter - The Travel Companion, and Greenie: Plant Identifier AI
+
+**Changes**:
+
+* `feat(subscriptions)`: Add an experimental guarded Monthly with 12-Month Commitment command surface for Apple's April 27, 2026, subscription announcement (https://developer.apple.com/news/?id=agq42lxe), App Store Connect help docs (https://developer.apple.com/help/app-store-connect/manage-subscriptions/set-availability-for-an-auto-renewable-subscription/), and third-party coverage (https://9to5mac.com/2026/04/27/apple-introduces-monthly-subscriptions-with-12-month-commitment-on-the-app-store/), with client-side validation for ONE_YEAR subscriptions, excluded USA/Singapore territories, and the 1.5x upfront-price rule while the public App Store Connect API lacks billing-mode fields.
+* `feat(metadata)`: Add metadata init templates for app-info and version localizations
+* `fix(xcode-cloud)`: Fetch the secret environment-variable encryption key from the CI auth endpoint outside the `/ci/api` base path
+* `docs(metadata)`: Clarify when version localization IDs are available for `asc metadata validate`
+* `build(community)`: Add three new apps to the Wall of Apps
+
+### 1.4.0
+
+**Highlights**:
+
+* `asc capabilities` adds a built-in coverage report for high-value App Store Connect workflows, with JSON, table, and markdown output plus `--status` and `--area` filters
+* `asc publish appstore --metadata-dir metadata` can now apply version metadata before App Store submission, making the one-shot publish flow safer for prepared metadata directories
+* Subscription and monetization workflows are stronger: free-trial offer codes no longer require prices, subscription review notes can be updated, and experimental web-session subscription availability removal is available with confirmation and verification guardrails
+* Analytics report relationship links now accept Apple-prefixed report IDs, and metadata locale handling includes the current Bangla `bn-BD` App Store locale
+* Community surfaces keep growing with Kilowatt, Floating Head, Pocket Mole Watch, Master Indicator, Margin, Sift, ZenJournal, MealMate, and DayCount
+
+**Changes**:
+
+* `feat(capabilities)`: Add `asc capabilities` for CLI, API, web-only, and public-API-limited workflow coverage reporting
+* `feat(publish)`: Add App Store publish metadata directory support with validation, dry-run planning, and version metadata application before submission
+* `feat(subscriptions)`: Add subscription review note updates and experimental web subscription remove-from-sale support
+* `fix(offer-codes)`: Allow `FREE_TRIAL` subscription offer codes without price payloads and reject incompatible price inputs
+* `fix(analytics)`: Accept prefixed analytics report IDs when fetching report relationship links
+* `fix(metadata)`: Add the Bangla `bn-BD` locale alias for App Store metadata workflows
+* `build(ci)`: Run govulncheck with a patched Go toolchain and refresh Go formatting/tooling dependencies
+* `build(community)`: Add nine new apps to the Wall of Apps
 
 ### 1.3.0
 

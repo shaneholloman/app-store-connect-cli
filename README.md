@@ -217,6 +217,7 @@ asc review doctor --app "123456789"
 
 ```bash
 asc localizations list --app "123456789" --type app-info
+asc metadata init --dir "./metadata" --version "1.2.3" --locale "en-US"
 asc metadata apply --app "123456789" --version "1.2.3" --dir "./metadata" --dry-run
 asc metadata keywords audit --app "123456789" --version "1.2.3" --blocked-terms-file "./blocked-terms.txt"
 asc apps info view --app "123456789" --output json --pretty
@@ -232,7 +233,7 @@ and optional blocked terms from repeated `--blocked-term` flags or a text file.
 ```bash
 asc screenshots plan --app "123456789" --version "1.2.3" --review-output-dir "./screenshots/review"
 asc screenshots apply --app "123456789" --version "1.2.3" --review-output-dir "./screenshots/review" --confirm
-asc screenshots list --version-localization "LOC_ID"
+asc screenshots list --version-localization "VERSION_LOCALIZATION_ID"
 asc video-previews list --app "123456789"
 ```
 
@@ -244,6 +245,9 @@ asc versions list --app "APP_ID"
 asc localizations list --version "VERSION_ID" --output json --locale "en-US" | jsonpp
 asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots/en-US" --device-type "IPHONE_65" --replace
 ```
+
+`VERSION_LOCALIZATION_ID` is the App Store version localization resource ID
+from `data[].id`, not the locale code from `attributes.locale`.
 
 ### Signing and bundle IDs
 
