@@ -16,6 +16,45 @@ The App Store Connect CLI follows semantic versioning. All releases are availabl
 
 * No unreleased changes yet.
 
+### 1.5.4
+
+**Highlights**:
+
+* `asc web review iaps attach` now matches App Review IAPs against the Iris resource ID and bundle-style `productId`, then always posts the resolved Iris resource ID so product-ID based attach flows work reliably
+* The IAP attach flow is safer for reruns, with narrower idempotent conflict handling and stronger guards for Apple's Iris response schema
+
+**Changes**:
+
+* `fix(web)`: Resolve non-renewing IAP review attach lookup and mutation mismatches across Iris resource IDs and product IDs
+* `fix(web)`: Narrow already-attached conflict handling so only true idempotent conflicts are treated as no-change results
+* `test(web)`: Add regression coverage for Iris-safe IAP fields, product-ID attach, conflict classification, and resource-ID/product-ID collision handling
+
+### 1.5.3
+
+**Highlights**:
+
+* `asc web review iaps attach` can now attach non-renewing in-app purchases to App Review submissions through the web-session workflow, matching the subscription review attach surface for IAPs that are not auto-renewable
+* The README now includes a macOS TestFlight distribution example for uploading `.pkg` builds and adding them to macOS tester groups
+* Community surfaces keep growing with PodSized: AI Podcast Summaries
+
+**Changes**:
+
+* `feat(web)`: Add web-session non-renewing IAP review attach with app-scoped lookup, idempotent already-attached handling, confirmation guardrails, and CLI/network regression coverage
+* `docs(testflight)`: Add a macOS TestFlight distribution example to the README
+* `build(community)`: Add PodSized: AI Podcast Summaries to the Wall of Apps
+
+### 1.5.2
+
+**Highlights**:
+
+* `asc status --platform MAC_OS` can now scope release dashboards to iOS, macOS, tvOS, or visionOS so universal apps report the correct builds, App Store version, and review submission state
+* Community surfaces keep growing with UrbanAir: Unlock all escooters
+
+**Changes**:
+
+* `feat(status)`: Add platform filtering across builds, App Store versions, review submissions, and status summaries
+* `build(community)`: Add UrbanAir: Unlock all escooters to the Wall of Apps
+
 ### 1.5.1
 
 **Highlights**:
