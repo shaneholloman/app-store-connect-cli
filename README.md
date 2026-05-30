@@ -53,7 +53,18 @@ brew install asc
 curl -fsSL https://asccli.sh/install | bash
 ```
 
-Windows users can download the signed release binaries directly from the
+```powershell
+# Windows (WinGet, once the package is accepted)
+winget install asc
+
+# Exact fallback when scripting
+winget install --id Rorkai.ASC --exact
+```
+
+The WinGet package is tracked in
+[GitHub Discussion #1552](https://github.com/rorkai/App-Store-Connect-CLI/discussions/1552).
+Until it appears in `winget search asc`, Windows users can download the signed
+release binaries directly from the
 [GitHub releases page](https://github.com/rorkai/App-Store-Connect-CLI/releases/latest).
 
 For source builds and contributor setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -133,6 +144,13 @@ depending on a command in CI or scripts:
 - Check which binary you are running: `which asc`
 - Confirm the installed version: `asc version`
 - If Homebrew is behind the latest GitHub release, use the install script from `https://asccli.sh/install`
+
+### WinGet
+
+- Refresh WinGet sources first: `winget source update`
+- Prefer the short install once available: `winget install asc`
+- If the short name ever becomes ambiguous, use the package identifier: `winget install --id Rorkai.ASC --exact`
+- Confirm the installed command resolves: `Get-Command asc` and `asc version`
 
 ### Authentication
 
@@ -257,7 +275,7 @@ Uploading screenshots for a single locale:
 asc apps list
 asc versions list --app "APP_ID"
 asc localizations list --version "VERSION_ID" --output json --locale "en-US" | jsonpp
-asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots/en-US" --device-type "IPHONE_65" --replace
+asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "./screenshots/en-US" --device-type "IPHONE_65" --replace --max-screenshots 10
 ```
 
 `VERSION_LOCALIZATION_ID` is the App Store version localization resource ID
@@ -282,7 +300,7 @@ asc workflow run --dry-run testflight_beta VERSION:1.2.3
 
 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for a copyable `.asc/workflow.json`
 and `ExportOptions.plist` that use `asc builds next-build-number`, `asc xcode archive`,
-`asc xcode export`, and `asc publish testflight --group ... --wait`. Add
+`asc xcode export --timeout 10m`, and `asc publish testflight --group ... --wait`. Add
 `--submit --confirm` when distributing to an external TestFlight group that needs
 beta app review submission.
 
