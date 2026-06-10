@@ -34,6 +34,18 @@ Automate iOS, macOS, tvOS, and visionOS release workflows from your terminal, ID
 Agent Skills for automating `asc` workflows including builds, TestFlight, metadata sync, submissions, and signing:
 https://github.com/rorkai/app-store-connect-cli-skills
 
+Install them globally so they are available across projects:
+
+```bash
+asc install-skills
+```
+
+Direct install:
+
+```bash
+npx skills add rorkai/app-store-connect-cli-skills --global --agent codex
+```
+
 ## Quick Start
 
 If you want to confirm the binary works before configuring authentication:
@@ -323,6 +335,21 @@ asc xcode-cloud run --source-run-id "BUILD_RUN_ID" --clean
 asc xcode-cloud build-runs get --id "BUILD_RUN_ID"
 ```
 
+### Apple Ads campaign management
+
+Apple Ads uses separate OAuth credentials from App Store Connect:
+
+```bash
+asc ads auth login --name "Marketing" --client-id "SEARCHADS_CLIENT_ID" --team-id "SEARCHADS_TEAM_ID" --key-id "KEY_ID" --private-key ./ads-key.pem --org "123456"
+asc ads auth discover --output json
+asc ads campaigns --org "123456" --limit 100 --output json
+asc ads reports campaigns --org "123456" --file reporting-request.json --output json
+```
+
+See [guides/apple-ads-playbooks.mdx](guides/apple-ads-playbooks.mdx) for
+operator playbooks covering credential safety, org inspection, read-only smoke
+tests, reporting, raw API usage, and guarded mutations.
+
 ## Commands and Reference
 
 Use built-in help as the source of truth:
@@ -348,6 +375,7 @@ For full command families, flags, and discovery patterns, see:
 - [docs/CI_CD.md](docs/CI_CD.md) - CI/CD integration guides (GitHub Actions, GitLab, Bitrise, CircleCI)
 - [docs/COMMANDS.md](docs/COMMANDS.md) - Command families and reference navigation
 - [docs/WORKFLOWS.md](docs/WORKFLOWS.md) - Reusable workflow patterns, including local Xcode to TestFlight
+- [guides/apple-ads-playbooks.mdx](guides/apple-ads-playbooks.mdx) - Apple Ads operator playbooks
 - [docs/API_NOTES.md](docs/API_NOTES.md) - API quirks and behaviors
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) - CLI development and testing notes
 - [docs/TESTING.md](docs/TESTING.md) - Testing patterns and conventions

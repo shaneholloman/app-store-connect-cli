@@ -1368,6 +1368,9 @@ func TestGetAppStoreVersions_WithFilters(t *testing.T) {
 		if values.Get("filter[appStoreState]") != "READY_FOR_REVIEW" {
 			t.Fatalf("expected filter[appStoreState]=READY_FOR_REVIEW, got %q", values.Get("filter[appStoreState]"))
 		}
+		if values.Get("filter[appVersionState]") != "READY_FOR_DISTRIBUTION" {
+			t.Fatalf("expected filter[appVersionState]=READY_FOR_DISTRIBUTION, got %q", values.Get("filter[appVersionState]"))
+		}
 		if values.Get("limit") != "5" {
 			t.Fatalf("expected limit=5, got %q", values.Get("limit"))
 		}
@@ -1381,6 +1384,7 @@ func TestGetAppStoreVersions_WithFilters(t *testing.T) {
 		WithAppStoreVersionsPlatforms([]string{"IOS"}),
 		WithAppStoreVersionsVersionStrings([]string{"1.0.0"}),
 		WithAppStoreVersionsStates([]string{"READY_FOR_REVIEW"}),
+		WithAppStoreVersionsVersionStates([]string{"READY_FOR_DISTRIBUTION"}),
 	); err != nil {
 		t.Fatalf("GetAppStoreVersions() error: %v", err)
 	}
@@ -6179,6 +6183,85 @@ func TestGetBundleIDs_WithIdentifierFilter(t *testing.T) {
 	}
 }
 
+func TestGetBundleIDs_SplitsLongIdentifierFilter(t *testing.T) {
+	identifiers := make([]string, 0, 1500)
+	for range 1500 {
+		identifiers = append(identifiers, "a")
+	}
+	rawIdentifierFilter := strings.Join(identifiers, ",")
+	if len(rawIdentifierFilter) > bundleIDsIdentifierFilterMaxLength {
+		t.Fatalf("test setup expected raw filter length <= %d, got %d", bundleIDsIdentifierFilterMaxLength, len(rawIdentifierFilter))
+	}
+
+	requests := 0
+	client := newTestClient(
+		t, func(req *http.Request) {
+			requests++
+			if req.Method != http.MethodGet {
+				t.Fatalf("expected GET, got %s", req.Method)
+			}
+			if req.URL.Path != "/v1/bundleIds" {
+				t.Fatalf("expected path /v1/bundleIds, got %s", req.URL.Path)
+			}
+			if requests == 2 {
+				if req.URL.Query().Get("cursor") != "chunk-one-next" {
+					t.Fatalf("expected next page cursor, got query %q", req.URL.RawQuery)
+				}
+				assertAuthorized(t, req)
+				return
+			}
+			filter := req.URL.Query().Get("filter[identifier]")
+			if filter == "" {
+				t.Fatal("expected filter[identifier]")
+			}
+			if len(req.URL.RequestURI()) > bundleIDsIdentifierFilterMaxLength {
+				t.Fatalf("expected encoded request URI to be chunked below %d chars, got %d", bundleIDsIdentifierFilterMaxLength, len(req.URL.RequestURI()))
+			}
+			assertAuthorized(t, req)
+		},
+		jsonResponse(http.StatusOK, `{"data":[{"type":"bundleIds","id":"bid-1","attributes":{"identifier":"com.example.one"}}],"links":{"next":"https://api.appstoreconnect.apple.com/v1/bundleIds?cursor=chunk-one-next"}}`),
+		jsonResponse(http.StatusOK, `{"data":[{"type":"bundleIds","id":"bid-2","attributes":{"identifier":"com.example.one.more"}}]}`),
+		jsonResponse(http.StatusOK, `{"data":[{"type":"bundleIds","id":"bid-3","attributes":{"identifier":"com.example.two"}}]}`),
+	)
+
+	resp, err := client.GetBundleIDs(context.Background(), WithBundleIDsFilterIdentifier(rawIdentifierFilter))
+	if err != nil {
+		t.Fatalf("GetBundleIDs() error: %v", err)
+	}
+	if requests != 3 {
+		t.Fatalf("expected split requests to paginate each chunk, got %d", requests)
+	}
+	if len(resp.Data) != 3 {
+		t.Fatalf("expected aggregated bundle IDs from split requests, got %d", len(resp.Data))
+	}
+}
+
+func TestGetBundleIDs_SplitIdentifierFilterRejectsRepeatedNextURL(t *testing.T) {
+	identifiers := make([]string, 0, 1500)
+	for range 1500 {
+		identifiers = append(identifiers, "a")
+	}
+	nextURL := "https://api.appstoreconnect.apple.com/v1/bundleIds?cursor=repeat"
+
+	requests := 0
+	client := newTestClient(
+		t, func(req *http.Request) {
+			requests++
+			assertAuthorized(t, req)
+		},
+		jsonResponse(http.StatusOK, `{"data":[{"type":"bundleIds","id":"bid-1","attributes":{"identifier":"com.example.one"}}],"links":{"next":"`+nextURL+`"}}`),
+		jsonResponse(http.StatusOK, `{"data":[{"type":"bundleIds","id":"bid-2","attributes":{"identifier":"com.example.two"}}],"links":{"next":"`+nextURL+`"}}`),
+	)
+
+	_, err := client.GetBundleIDs(context.Background(), WithBundleIDsFilterIdentifier(strings.Join(identifiers, ",")))
+	if !errors.Is(err, ErrRepeatedPaginationURL) {
+		t.Fatalf("expected ErrRepeatedPaginationURL, got %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("expected repeated next URL to stop after two requests, got %d", requests)
+	}
+}
+
 func TestGetInAppPurchasesV2_WithLimit(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":[{"type":"inAppPurchases","id":"iap-1","attributes":{"name":"Pro","productId":"com.example.pro","inAppPurchaseType":"CONSUMABLE"}}]}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -7106,6 +7189,9 @@ func TestGetProfiles_WithFilter(t *testing.T) {
 		if values.Get("filter[profileType]") != "IOS_APP_DEVELOPMENT,IOS_APP_STORE" {
 			t.Fatalf("expected filter[profileType] to be set, got %q", values.Get("filter[profileType]"))
 		}
+		if values.Get("filter[profileState]") != "ACTIVE,INVALID" {
+			t.Fatalf("expected filter[profileState] to be set, got %q", values.Get("filter[profileState]"))
+		}
 		if values.Get("limit") != "5" {
 			t.Fatalf("expected limit=5, got %q", values.Get("limit"))
 		}
@@ -7115,6 +7201,7 @@ func TestGetProfiles_WithFilter(t *testing.T) {
 	if _, err := client.GetProfiles(
 		context.Background(),
 		WithProfilesTypes([]string{"IOS_APP_DEVELOPMENT", "IOS_APP_STORE"}),
+		WithProfilesStates([]string{"ACTIVE", "INVALID"}),
 		WithProfilesLimit(5),
 	); err != nil {
 		t.Fatalf("GetProfiles() error: %v", err)
@@ -10463,6 +10550,25 @@ func TestCreateWinBackOffer_SendsRequest(t *testing.T) {
 		if len(payload.Data.Relationships.Prices.Data) != 1 {
 			t.Fatalf("expected 1 price relationship, got %d", len(payload.Data.Relationships.Prices.Data))
 		}
+		if payload.Data.Relationships.Prices.Data[0].ID != "${price-1}" {
+			t.Fatalf("expected temporary price id ${price-1}, got %q", payload.Data.Relationships.Prices.Data[0].ID)
+		}
+		if len(payload.Included) != 1 {
+			t.Fatalf("expected 1 included price, got %d", len(payload.Included))
+		}
+		included := payload.Included[0]
+		if included.Type != ResourceTypeWinBackOfferPrices || included.ID != "${price-1}" {
+			t.Fatalf("unexpected included item: %+v", included)
+		}
+		if included.Relationships == nil {
+			t.Fatal("expected included price relationships")
+		}
+		if included.Relationships.Territory.Data.Type != ResourceTypeTerritories || included.Relationships.Territory.Data.ID != "USA" {
+			t.Fatalf("unexpected included territory relationship: %+v", included.Relationships.Territory.Data)
+		}
+		if included.Relationships.SubscriptionPricePoint.Data.Type != ResourceTypeSubscriptionPricePoints || included.Relationships.SubscriptionPricePoint.Data.ID != "price-point-1" {
+			t.Fatalf("unexpected included subscriptionPricePoint relationship: %+v", included.Relationships.SubscriptionPricePoint.Data)
+		}
 		assertAuthorized(t, req)
 	}, response)
 
@@ -10487,8 +10593,22 @@ func TestCreateWinBackOffer_SendsRequest(t *testing.T) {
 					Data: ResourceData{Type: ResourceTypeSubscriptions, ID: "sub-1"},
 				},
 				Prices: RelationshipList{Data: []ResourceData{
-					{Type: ResourceTypeWinBackOfferPrices, ID: "price-1"},
+					{Type: ResourceTypeWinBackOfferPrices, ID: "${price-1}"},
 				}},
+			},
+		},
+		Included: []WinBackOfferPriceInlineCreate{
+			{
+				Type: ResourceTypeWinBackOfferPrices,
+				ID:   "${price-1}",
+				Relationships: &WinBackOfferPriceRelationships{
+					Territory: Relationship{
+						Data: ResourceData{Type: ResourceTypeTerritories, ID: "USA"},
+					},
+					SubscriptionPricePoint: Relationship{
+						Data: ResourceData{Type: ResourceTypeSubscriptionPricePoints, ID: "price-point-1"},
+					},
+				},
 			},
 		},
 	}

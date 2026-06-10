@@ -374,9 +374,7 @@ Examples:
 			listCmd,
 			BuildsCountCommand(),
 			BuildsNextBuildNumberCommand(),
-			BuildsLatestCommand(),
 			BuildsWaitCommand(),
-			RemovedBuildsFindCommand(),
 			BuildsInfoCommand(),
 			BuildsExpireCommand(),
 			BuildsExpireAllCommand(),
@@ -414,6 +412,8 @@ func BuildsListCommand() *ffcli.Command {
 	buildNumber := fs.String("build-number", "", "Filter by build number (CFBundleVersion)")
 	platform := fs.String("platform", "", "Filter by platform: IOS, MAC_OS, TV_OS, VISION_OS")
 	processingState := fs.String("processing-state", "", "Filter by processing state: VALID, PROCESSING, FAILED, INVALID, or all")
+	excludeExpired := fs.Bool("exclude-expired", false, "Exclude expired builds")
+	notExpired := fs.Bool("not-expired", false, "Alias for --exclude-expired")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
@@ -435,6 +435,7 @@ Examples:
   asc builds list --app "123456789" --platform IOS --version "1.2.3"
   asc builds list --app "123456789" --processing-state "PROCESSING"
   asc builds list --app "123456789" --processing-state "all"
+  asc builds list --app "123456789" --exclude-expired
   asc builds list --app "123456789" --version "1.2.3" --build-number "123"
   asc builds list --app "123456789" --limit 10
   asc builds list --app "123456789" --paginate`,
@@ -516,6 +517,9 @@ Examples:
 			}
 			if len(processingStateValues) > 0 {
 				opts = append(opts, asc.WithBuildsProcessingStates(processingStateValues))
+			}
+			if *excludeExpired || *notExpired {
+				opts = append(opts, asc.WithBuildsExpired(false))
 			}
 			if len(preReleaseVersionIDs) > 0 {
 				opts = append(opts, asc.WithBuildsPreReleaseVersions(preReleaseVersionIDs))
@@ -764,20 +768,6 @@ Examples:
 			return shared.PrintOutput(build, format, *output.Pretty)
 		},
 	}
-}
-
-func RemovedBuildsFindCommand() *ffcli.Command {
-	cmd := BuildsInfoCommand()
-	cmd.Name = "find"
-	cmd.ShortUsage = "asc builds find [--build-id BUILD_ID | --app APP --latest | --app APP --build-number BUILD_NUMBER] [flags]"
-	cmd.ShortHelp = "DEPRECATED: removed; use `asc builds info`."
-	cmd.LongHelp = "Removed legacy command. Use `asc builds info` instead."
-	cmd.UsageFunc = shared.DeprecatedUsageFunc
-	cmd.Exec = func(ctx context.Context, args []string) error {
-		fmt.Fprintln(os.Stderr, "Error: `asc builds find` was removed. Use `asc builds info` instead.")
-		return flag.ErrHelp
-	}
-	return cmd
 }
 
 // BuildsExpireCommand returns a build expiration subcommand.

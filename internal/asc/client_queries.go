@@ -210,10 +210,12 @@ type backgroundAssetsQuery struct {
 	listQuery
 	archived             []string
 	assetPackIdentifiers []string
+	versionsLocales      []string
 }
 
 type backgroundAssetVersionsQuery struct {
 	listQuery
+	locales []string
 }
 
 type backgroundAssetUploadFilesQuery struct {
@@ -239,10 +241,11 @@ type winBackOfferPricesQuery struct {
 
 type appStoreVersionsQuery struct {
 	listQuery
-	platforms      []string
-	versionStrings []string
-	states         []string
-	include        []string
+	platforms        []string
+	versionStrings   []string
+	states           []string
+	appVersionStates []string
+	include          []string
 }
 
 type appStoreVersionQuery struct {
@@ -463,9 +466,10 @@ type merchantIDCertificatesQuery struct {
 
 type profilesQuery struct {
 	listQuery
-	bundleID     string
-	profileTypes []string
-	include      []string
+	bundleID      string
+	profileTypes  []string
+	profileStates []string
+	include       []string
 }
 
 type usersQuery struct {
@@ -973,6 +977,7 @@ func buildProfilesQuery(query *profilesQuery) string {
 		values.Set("filter[bundleId]", strings.TrimSpace(query.bundleID))
 	}
 	addCSV(values, "filter[profileType]", query.profileTypes)
+	addCSV(values, "filter[profileState]", query.profileStates)
 	addCSV(values, "include", query.include)
 	addLimit(values, query.limit)
 	return values.Encode()
@@ -1265,12 +1270,14 @@ func buildBackgroundAssetsQuery(query *backgroundAssetsQuery) string {
 	values := url.Values{}
 	addCSV(values, "filter[archived]", query.archived)
 	addCSV(values, "filter[assetPackIdentifier]", query.assetPackIdentifiers)
+	addCSV(values, "filter[versions.locale]", query.versionsLocales)
 	addLimit(values, query.limit)
 	return values.Encode()
 }
 
 func buildBackgroundAssetVersionsQuery(query *backgroundAssetVersionsQuery) string {
 	values := url.Values{}
+	addCSV(values, "filter[locale]", query.locales)
 	addLimit(values, query.limit)
 	return values.Encode()
 }
@@ -1317,6 +1324,7 @@ func buildAppStoreVersionsQuery(query *appStoreVersionsQuery) string {
 	addCSV(values, "filter[platform]", query.platforms)
 	addCSV(values, "filter[versionString]", query.versionStrings)
 	addCSV(values, "filter[appStoreState]", query.states)
+	addCSV(values, "filter[appVersionState]", query.appVersionStates)
 	addCSV(values, "include", query.include)
 	addLimit(values, query.limit)
 	return values.Encode()

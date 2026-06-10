@@ -9,6 +9,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/accessibility"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/account"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/actors"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/ads"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/agerating"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/agreements"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/alternativedistribution"
@@ -19,7 +20,6 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/apps"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/auth"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/backgroundassets"
-	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/betabuildlocalizations"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/buildbundles"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/buildlocalizations"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/builds"
@@ -118,6 +118,7 @@ func Subcommands(version string) []*ffcli.Command {
 		reviews.ReviewsCommand(),
 		reviews.ReviewCommand(),
 		analytics.AnalyticsCommand(),
+		ads.AdsCommand(),
 		performance.PerformanceCommand(),
 		finance.FinanceCommand(),
 		apps.AppsCommand(),
@@ -157,7 +158,6 @@ func Subcommands(version string) []*ffcli.Command {
 		videopreviews.VideoPreviewsCommand(),
 		backgroundassets.BackgroundAssetsCommand(),
 		buildlocalizations.BuildLocalizationsCommand(),
-		betabuildlocalizations.BetaBuildLocalizationsCommand(),
 		sandbox.SandboxCommand(),
 		signing.SigningCommand(),
 		notarization.NotarizationCommand(),
