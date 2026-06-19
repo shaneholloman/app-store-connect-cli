@@ -58,6 +58,74 @@ func TestRun_ReportFlagValidationError(t *testing.T) {
 	}
 }
 
+func TestRun_ReportFlagValidationErrorEmitsTelemetry(t *testing.T) {
+	resetReportFlags(t)
+
+	originalEmitTelemetry := emitTelemetry
+	t.Cleanup(func() { emitTelemetry = originalEmitTelemetry })
+	var calls int
+	var commandName string
+	var duration time.Duration
+	var exitCode int
+	emitTelemetry = func(command, _ string, elapsed time.Duration, code int) {
+		calls++
+		commandName = command
+		duration = elapsed
+		exitCode = code
+	}
+
+	captureCommandOutput(t, func() {
+		Run([]string{"--report-file", filepath.Join(t.TempDir(), "junit.xml"), "builds", "list"}, "1.0.0")
+	})
+
+	if calls != 1 {
+		t.Fatalf("telemetry calls = %d, want 1", calls)
+	}
+	if commandName != "asc builds list" {
+		t.Fatalf("telemetry command = %q, want %q", commandName, "asc builds list")
+	}
+	if duration != 0 {
+		t.Fatalf("telemetry duration = %s, want 0", duration)
+	}
+	if exitCode != ExitUsage {
+		t.Fatalf("telemetry exit code = %d, want %d", exitCode, ExitUsage)
+	}
+}
+
+func TestRun_ParseErrorEmitsTelemetry(t *testing.T) {
+	resetReportFlags(t)
+
+	originalEmitTelemetry := emitTelemetry
+	t.Cleanup(func() { emitTelemetry = originalEmitTelemetry })
+	var calls int
+	var commandName string
+	var duration time.Duration
+	var exitCode int
+	emitTelemetry = func(command, _ string, elapsed time.Duration, code int) {
+		calls++
+		commandName = command
+		duration = elapsed
+		exitCode = code
+	}
+
+	captureCommandOutput(t, func() {
+		Run([]string{"builds", "--definitely-invalid"}, "1.0.0")
+	})
+
+	if calls != 1 {
+		t.Fatalf("telemetry calls = %d, want 1", calls)
+	}
+	if commandName != "asc builds" {
+		t.Fatalf("telemetry command = %q, want %q", commandName, "asc builds")
+	}
+	if duration != 0 {
+		t.Fatalf("telemetry duration = %s, want 0", duration)
+	}
+	if exitCode != ExitUsage {
+		t.Fatalf("telemetry exit code = %d, want %d", exitCode, ExitUsage)
+	}
+}
+
 func TestRun_ReportWriteFailureReturnsExitError(t *testing.T) {
 	resetReportFlags(t)
 
@@ -88,6 +156,33 @@ func TestRun_UnknownCommandReturnsUsage(t *testing.T) {
 	code := Run([]string{"unknown-command"}, "1.0.0")
 	if code != ExitUsage {
 		t.Fatalf("Run() exit code = %d, want %d", code, ExitUsage)
+	}
+}
+
+func TestRun_AlternativeDistributionHelpIncludesEUAddendumAgentGuidance(t *testing.T) {
+	resetReportFlags(t)
+
+	stdout, stderr, exitCode := runHelpSubprocess(
+		t,
+		t.TempDir(),
+		"alternative-distribution", "--help",
+	)
+
+	if exitCode != ExitSuccess {
+		t.Fatalf("help exit code = %d, want %d; stdout=%q stderr=%q", exitCode, ExitSuccess, stdout, stderr)
+	}
+	combined := stdout + stderr
+	for _, expected := range []string{
+		"Agent guidance:",
+		"Alternative Distribution Addendum for EU Apps",
+		"https://appstoreconnect.apple.com/agreements/#/",
+	} {
+		if !strings.Contains(combined, expected) {
+			t.Fatalf("expected help output to contain %q, got stdout=%q stderr=%q", expected, stdout, stderr)
+		}
+	}
+	if strings.Contains(combined, "\n  agreements  ") {
+		t.Fatalf("did not expect agreements subcommand in help, got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
 
@@ -335,6 +430,36 @@ func TestRun_HelpSkipsAuthResolution(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRun_HelpEmitsTelemetry(t *testing.T) {
+	originalEmitTelemetry := emitTelemetry
+	t.Cleanup(func() { emitTelemetry = originalEmitTelemetry })
+
+	var commandName string
+	var duration time.Duration
+	var exitCode int
+	emitTelemetry = func(command, _ string, elapsed time.Duration, code int) {
+		commandName = command
+		duration = elapsed
+		exitCode = code
+	}
+
+	emitImmediateTelemetry(
+		[]string{"builds", "--help"},
+		RootCommand("1.0.0"),
+		"1.0.0",
+		ExitSuccess,
+	)
+	if commandName != "asc builds" {
+		t.Fatalf("telemetry command = %q, want %q", commandName, "asc builds")
+	}
+	if duration != 0 {
+		t.Fatalf("telemetry duration = %s, want 0 for help", duration)
+	}
+	if exitCode != ExitSuccess {
+		t.Fatalf("telemetry exit code = %d, want %d", exitCode, ExitSuccess)
 	}
 }
 
