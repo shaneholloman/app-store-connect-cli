@@ -8,12 +8,9 @@ import (
 	"flag"
 	"io"
 	"net/http"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
-
-	rootcmd "github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
 )
 
 func TestSubscriptionsPricingEqualizeValidationErrors(t *testing.T) {
@@ -70,8 +67,6 @@ func TestSubscriptionsPricingEqualizeValidationErrors(t *testing.T) {
 }
 
 func TestSubscriptionsPricingEqualizeBooleanFlagExitCodes(t *testing.T) {
-	bin := buildCLIBinary(t)
-
 	tests := []struct {
 		name       string
 		args       []string
@@ -103,39 +98,9 @@ func TestSubscriptionsPricingEqualizeBooleanFlagExitCodes(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := exec.Command(bin, test.args...)
-			var stdout, stderr strings.Builder
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-			err := cmd.Run()
-
-			var exitErr *exec.ExitError
-			if !errors.As(err, &exitErr) {
-				t.Fatalf("expected exit error, got %v", err)
-			}
-			if code := exitErr.ExitCode(); code != rootcmd.ExitUsage {
-				t.Fatalf("exit code = %d, want %d", code, rootcmd.ExitUsage)
-			}
-			if stdout.String() != "" {
-				t.Fatalf("expected empty stdout, got %q", stdout.String())
-			}
-			if !strings.Contains(stderr.String(), test.wantStderr) {
-				t.Fatalf("expected stderr to contain %q, got %q", test.wantStderr, stderr.String())
-			}
+			assertUsageExit(t, test.args, test.wantStderr)
 		})
 	}
-}
-
-func buildCLIBinary(t *testing.T) string {
-	t.Helper()
-
-	bin := t.TempDir() + "/asc"
-	cmd := exec.Command("go", "build", "-o", bin, "../../..")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("go build failed: %v\n%s", err, output)
-	}
-	return bin
 }
 
 func TestSubscriptionsPricingEqualize_RequiresConfirmUnlessDryRun(t *testing.T) {
@@ -652,8 +617,11 @@ func TestSubscriptionsPricingEqualize_ApplyFailsWhenAvailabilityDoesNotCoverAllT
 	}
 }
 
-func TestSubscriptionsPricingEqualize_InitialPriceUsesPatchThenCreatesRemainingTerritories(t *testing.T) {
+func TestSubscriptionsPricingEqualize_RetriesInitialPriceAfterNegativeReadback(t *testing.T) {
 	setupAuth(t)
+	t.Setenv("ASC_MAX_RETRIES", "1")
+	t.Setenv("ASC_BASE_DELAY", "1ms")
+	t.Setenv("ASC_MAX_DELAY", "1ms")
 
 	originalTransport := http.DefaultTransport
 	t.Cleanup(func() {
@@ -686,9 +654,15 @@ func TestSubscriptionsPricingEqualize_InitialPriceUsesPatchThenCreatesRemainingT
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"territories","id":"USA"},{"type":"territories","id":"CAN"}],"links":{}}`), nil
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/subscriptions/8000000001/relationships/prices":
 			return jsonHTTPResponse(http.StatusOK, `{"data":[],"links":{}}`), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/subscriptions/8000000001/prices":
+			steps = append(steps, "verify")
+			return jsonHTTPResponse(http.StatusOK, `{"data":[],"included":[],"links":{}}`), nil
 		case req.Method == http.MethodPatch && req.URL.Path == "/v1/subscriptions/8000000001":
 			steps = append(steps, "patch")
 			patchCount++
+			if patchCount == 1 {
+				return jsonHTTPResponse(http.StatusGatewayTimeout, `{"errors":[{"status":"504","code":"UNEXPECTED_ERROR","detail":"ambiguous timeout"}]}`), nil
+			}
 			return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"subscriptions","id":"8000000001"}}`), nil
 		case req.Method == http.MethodPost && req.URL.Path == "/v1/subscriptionPrices":
 			steps = append(steps, "price")
@@ -716,6 +690,7 @@ func TestSubscriptionsPricingEqualize_InitialPriceUsesPatchThenCreatesRemainingT
 			"--subscription-id", "8000000001",
 			"--base-price", "0.99",
 			"--confirm",
+			"--output", "json",
 		}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -724,13 +699,13 @@ func TestSubscriptionsPricingEqualize_InitialPriceUsesPatchThenCreatesRemainingT
 		}
 	})
 
-	if patchCount != 1 {
-		t.Fatalf("expected one initial PATCH, got %d", patchCount)
+	if patchCount != 2 {
+		t.Fatalf("expected one replay after negative readback, got %d PATCHes", patchCount)
 	}
 	if postCount != 1 {
 		t.Fatalf("expected one follow-up POST, got %d", postCount)
 	}
-	if strings.Join(steps, ",") != "availability,pricing-territories,territories,patch,price" {
+	if strings.Join(steps, ",") != "availability,pricing-territories,territories,patch,verify,verify,patch,price" {
 		t.Fatalf("expected availability validation before pricing, got %v", steps)
 	}
 
@@ -1310,6 +1285,8 @@ func TestSubscriptionsPricingEqualize_RetriesRetryableTerritoryFailures(t *testi
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"subscriptionPrices","id":"price-existing"}],"links":{}}`), nil
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/subscriptions/8000000001":
 			return jsonHTTPResponse(http.StatusOK, `{"data":{"type":"subscriptions","id":"8000000001","attributes":{"state":"READY_TO_SUBMIT"}}}`), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/subscriptions/8000000001/prices":
+			return jsonHTTPResponse(http.StatusOK, `{"data":[],"included":[],"links":{}}`), nil
 		case req.Method == http.MethodPost && req.URL.Path == "/v1/subscriptionPrices":
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -1416,14 +1393,11 @@ func TestSubscriptionsPricingEqualize_RetriesRetryableFailuresButKeepsNonRetryab
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/subscriptions/8000000001/prices":
 			body := `{
 				"data":[
-					{"type":"subscriptionPrices","id":"price-usa","attributes":{"startDate":"2025-01-01","preserved":false},"relationships":{"territory":{"data":{"type":"territories","id":"USA"}},"subscriptionPricePoint":{"data":{"type":"subscriptionPricePoints","id":"` + basePricePointID + `"}}}},
-					{"type":"subscriptionPrices","id":"price-can","attributes":{"startDate":"2025-01-01","preserved":false},"relationships":{"territory":{"data":{"type":"territories","id":"CAN"}},"subscriptionPricePoint":{"data":{"type":"subscriptionPricePoints","id":"` + canPricePointID + `"}}}}
+					{"type":"subscriptionPrices","id":"price-usa","attributes":{"startDate":"2025-01-01","preserved":false},"relationships":{"territory":{"data":{"type":"territories","id":"USA"}},"subscriptionPricePoint":{"data":{"type":"subscriptionPricePoints","id":"` + basePricePointID + `"}}}}
 				],
 				"included":[
 					{"type":"subscriptionPricePoints","id":"` + basePricePointID + `","attributes":{"customerPrice":"0.99","proceeds":"0.70","proceedsYear2":"0.84"}},
-					{"type":"subscriptionPricePoints","id":"` + canPricePointID + `","attributes":{"customerPrice":"1.29","proceeds":"0.90","proceedsYear2":"1.05"}},
-					{"type":"territories","id":"USA","attributes":{"currency":"USD"}},
-					{"type":"territories","id":"CAN","attributes":{"currency":"CAD"}}
+					{"type":"territories","id":"USA","attributes":{"currency":"USD"}}
 				],
 				"links":{"next":""}
 			}`
@@ -1504,7 +1478,7 @@ func TestSubscriptionsPricingEqualize_RetriesRetryableFailuresButKeepsNonRetryab
 	}
 }
 
-func TestSubscriptionsPricingEqualize_ReconcilesConflictAfterRetryableFailure(t *testing.T) {
+func TestSubscriptionsPricingEqualize_ReconcilesBeforeRetryingMutation(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_MAX_RETRIES", "0")
 
@@ -1563,10 +1537,10 @@ func TestSubscriptionsPricingEqualize_ReconcilesConflictAfterRetryableFailure(t 
 				return jsonHTTPResponse(http.StatusCreated, `{"data":{"type":"subscriptionPrices","id":"price-usa"}}`), nil
 			case strings.Contains(string(body), `"id":"CAN"`):
 				canAttempts++
-				if canAttempts == 1 {
-					return jsonHTTPResponse(http.StatusTooManyRequests, `{"errors":[{"status":"429","code":"RATE_LIMIT_EXCEEDED","title":"Too Many Requests","detail":"retry later"}]}`), nil
+				if canAttempts > 1 {
+					t.Fatalf("unsafe replay: CAN was already visible during reconciliation")
 				}
-				return jsonHTTPResponse(http.StatusConflict, `{"errors":[{"status":"409","code":"ENTITY_ERROR","title":"Conflict","detail":"duplicate"}]}`), nil
+				return jsonHTTPResponse(http.StatusTooManyRequests, `{"errors":[{"status":"429","code":"RATE_LIMIT_EXCEEDED","title":"Too Many Requests","detail":"retry later"}]}`), nil
 			default:
 				t.Fatalf("unexpected subscription price body: %s", string(body))
 				return nil, nil
@@ -1587,6 +1561,7 @@ func TestSubscriptionsPricingEqualize_ReconcilesConflictAfterRetryableFailure(t 
 			"--base-price", "0.99",
 			"--confirm",
 			"--workers", "2",
+			"--output", "json",
 		}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}
@@ -1595,8 +1570,8 @@ func TestSubscriptionsPricingEqualize_ReconcilesConflictAfterRetryableFailure(t 
 		}
 	})
 
-	if canAttempts != 2 {
-		t.Fatalf("expected CAN create to be retried once before reconciliation, got %d attempts", canAttempts)
+	if canAttempts != 1 {
+		t.Fatalf("expected CAN create not to replay after successful readback, got %d attempts", canAttempts)
 	}
 	if verifyReads != 1 {
 		t.Fatalf("expected one verification read, got %d", verifyReads)
@@ -1692,6 +1667,7 @@ func TestSubscriptionsPricingEqualize_ReconcilesInitialPriceFailureBeforeStoppin
 			"--subscription-id", "8000000001",
 			"--base-price", "0.99",
 			"--confirm",
+			"--output", "json",
 		}); err != nil {
 			t.Fatalf("parse error: %v", err)
 		}

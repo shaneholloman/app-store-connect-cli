@@ -186,7 +186,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			client, err := shared.GetASCClient()
@@ -259,7 +259,7 @@ Examples:
 			trimmedPricePointID := strings.TrimSpace(*pricePointID)
 			if trimmedPricePointID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --price-point is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			client, err := shared.GetASCClient()
@@ -357,7 +357,7 @@ Examples:
 			}
 			if idValue == "" && appValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app or --id is required (or set ASC_APP_ID)")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if idValue != "" && strings.TrimSpace(*appID) != "" {
 				fmt.Fprintln(os.Stderr, "Error: --id and --app are mutually exclusive")
@@ -444,7 +444,7 @@ Examples:
 			trimmedScheduleID := strings.TrimSpace(*scheduleID)
 			if trimmedScheduleID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --schedule is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			client, err := shared.GetASCClient()
@@ -534,7 +534,7 @@ Examples:
 			trimmedScheduleID := strings.TrimSpace(*scheduleID)
 			if trimmedScheduleID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --schedule is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			client, err := shared.GetASCClient()
@@ -602,7 +602,7 @@ Examples:
 
 Note:
   Pricing availability commands operate on existing availability records.
-  For initial bootstrap, use App Store Connect or the experimental
+  For initial bootstrap, use App Store Connect or the
   "asc web apps availability create" flow.`,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -643,7 +643,7 @@ Examples:
 			}
 			if idValue == "" && appValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app or --id is required (or set ASC_APP_ID)")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if idValue != "" && strings.TrimSpace(*appID) != "" {
 				fmt.Fprintln(os.Stderr, "Error: --id and --app are mutually exclusive")
@@ -743,7 +743,7 @@ Examples:
 Note:
   This command only updates an existing app availability. If the app has no
   availability record yet, initialize availability in App Store Connect first,
-  or use the experimental "asc web apps availability create" flow.`,
+  or use the "asc web apps availability create" flow.`,
 		ErrorPrefix:                      "pricing availability set",
 		IncludeAvailableInNewTerritories: true,
 	})

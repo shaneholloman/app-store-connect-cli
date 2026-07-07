@@ -103,7 +103,7 @@ Examples:
 			appIDValue := strings.TrimSpace(*appID)
 			if appIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			bundleIDValue := strings.TrimSpace(*bundleID)
@@ -139,7 +139,7 @@ Examples:
 			}
 			if hasLocalization && localeValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --locale is required for app info localization updates")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if localeValue != "" {
 				if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
@@ -421,7 +421,7 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if strings.TrimSpace(*path) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --path is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			normalizedType, err := shared.NormalizeLocalizationType(*locType)
@@ -435,7 +435,18 @@ Examples:
 			case shared.LocalizationTypeVersion:
 				if strings.TrimSpace(*versionID) == "" {
 					fmt.Fprintln(os.Stderr, "Error: --version is required for version localizations")
-					return flag.ErrHelp
+					return shared.MissingRequiredUsageError()
+				}
+
+				valuesByLocale, err := shared.ReadLocalizationStrings(*path, locales)
+				if err != nil {
+					if shared.IsLocalizationInputError(err) {
+						return shared.UsageError(err.Error())
+					}
+					return fmt.Errorf("app-setup localizations upload: %w", err)
+				}
+				if err := shared.ValidateVersionLocalizationValueSet(valuesByLocale); err != nil {
+					return shared.UsageError(err.Error())
 				}
 
 				client, err := shared.GetASCClient()
@@ -443,32 +454,50 @@ Examples:
 					return fmt.Errorf("app-setup localizations upload: %w", err)
 				}
 
-				requestCtx, cancel := shared.ContextWithTimeout(ctx)
-				defer cancel()
-
-				valuesByLocale, err := shared.ReadLocalizationStrings(*path, locales)
-				if err != nil {
+				results, err := shared.UploadVersionLocalizations(ctx, client, strings.TrimSpace(*versionID), valuesByLocale, *dryRun)
+				if err != nil && len(results) == 0 {
+					if shared.IsLocalizationInputError(err) {
+						return shared.UsageError(err.Error())
+					}
 					return fmt.Errorf("app-setup localizations upload: %w", err)
 				}
-
-				results, err := shared.UploadVersionLocalizations(requestCtx, client, strings.TrimSpace(*versionID), valuesByLocale, *dryRun)
-				if err != nil {
-					return fmt.Errorf("app-setup localizations upload: %w", err)
-				}
+				uploadErr := err
 
 				result := asc.LocalizationUploadResult{
 					Type:      normalizedType,
 					VersionID: strings.TrimSpace(*versionID),
 					DryRun:    *dryRun,
+					InputPath: strings.TrimSpace(*path),
 					Results:   results,
 				}
+				shared.FinalizeLocalizationUploadResult(&result, "app-setup localizations upload")
 
-				return shared.PrintOutput(&result, *output.Output, *output.Pretty)
+				if err := shared.PrintOutputWithRenderers(
+					&result, *output.Output, *output.Pretty,
+					func() error { return shared.RenderLocalizationUploadResult(&result, false) },
+					func() error { return shared.RenderLocalizationUploadResult(&result, true) },
+				); err != nil {
+					return err
+				}
+				if uploadErr != nil || result.FailureArtifactError != "" {
+					return appSetupLocalizationUploadReportedError(result.Failed, uploadErr, result.FailureArtifactError)
+				}
+				return nil
 			case shared.LocalizationTypeAppInfo:
 				resolvedAppID := shared.ResolveAppID(*appID)
 				if resolvedAppID == "" {
 					fmt.Fprintln(os.Stderr, "Error: --app is required for app-info localizations")
-					return flag.ErrHelp
+					return shared.MissingRequiredUsageError()
+				}
+				valuesByLocale, err := shared.ReadLocalizationStrings(*path, locales)
+				if err != nil {
+					if shared.IsLocalizationInputError(err) {
+						return shared.UsageError(err.Error())
+					}
+					return fmt.Errorf("app-setup localizations upload: %w", err)
+				}
+				if err := shared.ValidateAppInfoLocalizationValueSet(valuesByLocale); err != nil {
+					return shared.UsageError(err.Error())
 				}
 
 				client, err := shared.GetASCClient()
@@ -476,36 +505,57 @@ Examples:
 					return fmt.Errorf("app-setup localizations upload: %w", err)
 				}
 
-				requestCtx, cancel := shared.ContextWithTimeout(ctx)
-				defer cancel()
-
-				appInfo, err := shared.ResolveAppInfoID(requestCtx, client, resolvedAppID, strings.TrimSpace(*appInfoID))
+				appInfo, err := shared.RetryReadWithFreshTimeout(ctx, func(resolveCtx context.Context) (string, error) {
+					return shared.ResolveAppInfoID(resolveCtx, client, resolvedAppID, strings.TrimSpace(*appInfoID))
+				})
 				if err != nil {
 					return fmt.Errorf("app-setup localizations upload: %w", err)
 				}
 
-				valuesByLocale, err := shared.ReadLocalizationStrings(*path, locales)
-				if err != nil {
+				results, err := shared.UploadAppInfoLocalizations(ctx, client, appInfo, valuesByLocale, *dryRun)
+				if err != nil && len(results) == 0 {
+					if shared.IsLocalizationInputError(err) {
+						return shared.UsageError(err.Error())
+					}
 					return fmt.Errorf("app-setup localizations upload: %w", err)
 				}
-
-				results, err := shared.UploadAppInfoLocalizations(requestCtx, client, appInfo, valuesByLocale, *dryRun)
-				if err != nil {
-					return fmt.Errorf("app-setup localizations upload: %w", err)
-				}
+				uploadErr := err
 
 				result := asc.LocalizationUploadResult{
 					Type:      normalizedType,
 					AppID:     resolvedAppID,
 					AppInfoID: appInfo,
 					DryRun:    *dryRun,
+					InputPath: strings.TrimSpace(*path),
 					Results:   results,
 				}
+				shared.FinalizeLocalizationUploadResult(&result, "app-setup localizations upload")
 
-				return shared.PrintOutput(&result, *output.Output, *output.Pretty)
+				if err := shared.PrintOutputWithRenderers(
+					&result, *output.Output, *output.Pretty,
+					func() error { return shared.RenderLocalizationUploadResult(&result, false) },
+					func() error { return shared.RenderLocalizationUploadResult(&result, true) },
+				); err != nil {
+					return err
+				}
+				if uploadErr != nil || result.FailureArtifactError != "" {
+					return appSetupLocalizationUploadReportedError(result.Failed, uploadErr, result.FailureArtifactError)
+				}
+				return nil
 			default:
 				return fmt.Errorf("app-setup localizations upload: unsupported type %q", normalizedType)
 			}
 		},
 	}
+}
+
+func appSetupLocalizationUploadReportedError(failed int, uploadErr error, artifactError string) error {
+	message := fmt.Sprintf("app-setup localizations upload: %d locale(s) failed", failed)
+	if uploadErr != nil {
+		message += ": " + uploadErr.Error()
+	}
+	if strings.TrimSpace(artifactError) != "" {
+		message += "; write failure artifact: " + artifactError
+	}
+	return shared.NewReportedError(fmt.Errorf("%s", message))
 }

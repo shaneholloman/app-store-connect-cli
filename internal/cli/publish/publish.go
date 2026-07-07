@@ -107,7 +107,7 @@ Examples:
 			resolvedAppInput := shared.ResolveAppID(*appID)
 			if resolvedAppInput == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			setFlags := collectSetFlags(fs)
@@ -154,11 +154,11 @@ Examples:
 			parsedGroupIDs := shared.SplitCSV(*groupIDs)
 			if len(parsedGroupIDs) == 0 {
 				fmt.Fprintf(os.Stderr, "Error: --group is required\n\n")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if *submit && !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required with --submit")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if *confirm && !*submit {
 				fmt.Fprintln(os.Stderr, "Error: --confirm requires --submit")
@@ -169,11 +169,11 @@ Examples:
 			localeValue := strings.TrimSpace(*locale)
 			if testNotesValue != "" && localeValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --locale is required with --test-notes")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if testNotesValue == "" && localeValue != "" {
 				fmt.Fprintln(os.Stderr, "Error: --test-notes is required with --locale")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if testNotesValue != "" {
 				if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
@@ -407,7 +407,7 @@ func PublishAppStoreCommand() *ffcli.Command {
 	dryRun := fs.Bool("dry-run", false, "Preview high-level publish plan without uploading or submitting")
 	wait := fs.Bool("wait", false, "Wait for build processing")
 	pollInterval := fs.Duration("poll-interval", shared.PublishDefaultPollInterval, "Polling interval for --wait and build discovery")
-	timeout := fs.Duration("timeout", 0, "Override upload + processing timeout (e.g., 30m)")
+	timeout := fs.Duration("timeout", 0, "Override upload + processing timeout; also applies to submission with --submit (e.g., 30m)")
 	localBuild := bindPublishLocalBuildFlags(fs)
 	output := shared.BindOutputFlags(fs)
 
@@ -441,13 +441,13 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if *submit && !*confirm && !*dryRun {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required with --submit")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			resolvedAppInput := shared.ResolveAppID(*appID)
 			if resolvedAppInput == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			setFlags := collectSetFlags(fs)
@@ -475,7 +475,7 @@ Examples:
 				}
 			case ipaValue == "":
 				fmt.Fprintf(os.Stderr, "Error: --ipa is required\n\n")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if *pollInterval <= 0 {
 				return shared.UsageError("--poll-interval must be greater than 0")
@@ -583,8 +583,6 @@ Examples:
 				if err != nil {
 					return fmt.Errorf("publish appstore: %w", err)
 				}
-				requestCtx, cancel = newPublishRequestCtx()
-				defer cancel()
 				buildResp = localBuildResult.Build
 				versionValue = localBuildResult.Version
 				buildNumberValue = localBuildResult.BuildNumber
@@ -601,25 +599,32 @@ Examples:
 			}
 
 			if *wait {
+				cancel()
+				requestCtx, cancel = newPublishRequestCtx()
+				defer cancel()
 				buildResp, err = waitForPublishBuildProcessingFn(requestCtx, client, buildResp.Data.ID, *pollInterval)
 				if err != nil {
 					return fmt.Errorf("publish appstore: %w", err)
 				}
 			}
 
-			versionResp, err := client.FindOrCreateAppStoreVersion(requestCtx, resolvedPublishAppID, versionValue, platformValue)
+			versionResp, err := findOrCreatePublishAppStoreVersion(ctx, client, resolvedPublishAppID, versionValue, platformValue)
 			if err != nil {
 				return fmt.Errorf("publish appstore: %w", err)
 			}
 
 			if metadataDirValue != "" {
-				if _, err := applyPublishVersionMetadataFn(requestCtx, client, publishVersionMetadataOptions{
+				_, metadataErr := applyPublishVersionMetadataFn(ctx, client, publishVersionMetadataOptions{
 					VersionID:      versionResp.Data.ID,
 					Version:        versionValue,
 					Dir:            metadataDirValue,
 					ValuesByLocale: metadataValuesByLocale,
-				}); err != nil {
-					return fmt.Errorf("publish appstore: apply metadata: %w", err)
+				})
+				if metadataErr != nil {
+					if shared.IsLocalizationInputError(metadataErr) {
+						return shared.UsageErrorf("--metadata-dir %q: %v", metadataDirValue, metadataErr)
+					}
+					return fmt.Errorf("publish appstore: apply metadata: %w", metadataErr)
 				}
 			}
 
@@ -654,6 +659,10 @@ Examples:
 				}
 			}
 
+			cancel()
+			requestCtx, cancel = newPublishRequestCtx()
+			defer cancel()
+
 			submitCtx := requestCtx
 			submitRequestTimeout := time.Duration(0)
 			if *submit && *timeout > 0 {
@@ -679,13 +688,19 @@ Examples:
 				}
 			}
 
-			attachResult, err := submitcli.EnsureBuildAttached(requestCtx, client, versionResp.Data.ID, buildResp.Data.ID, false)
+			attachResult, err := submitcli.EnsureBuildAttached(ctx, client, versionResp.Data.ID, buildResp.Data.ID, false)
 			if err != nil {
 				return fmt.Errorf("publish appstore: %w", err)
 			}
 			result.Attached = attachResult.Attached || attachResult.AlreadyAttached
 
 			if *submit {
+				if submitRequestTimeout == 0 {
+					cancel()
+					requestCtx, cancel = newPublishRequestCtx()
+					defer cancel()
+					submitCtx = requestCtx
+				}
 
 				localizationPreflight := func() error {
 					if submitRequestTimeout > 0 {

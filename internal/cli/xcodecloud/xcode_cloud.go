@@ -136,11 +136,11 @@ Examples:
 			} else {
 				if !hasWorkflowName && !hasWorkflowID {
 					fmt.Fprintln(os.Stderr, "Error: --workflow or --workflow-id is required")
-					return flag.ErrHelp
+					return shared.MissingRequiredUsageError()
 				}
 				if !hasBranch && !hasGitRefID && !hasPullRequestID {
 					fmt.Fprintln(os.Stderr, "Error: --branch, --git-reference-id, or --pull-request-id is required")
-					return flag.ErrHelp
+					return shared.MissingRequiredUsageError()
 				}
 			}
 			if *timeout < 0 {
@@ -153,7 +153,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if hasWorkflowName && !hasSourceRunID && resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required when using --workflow (or set ASC_APP_ID)")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			client, err := shared.GetASCClient()
@@ -217,7 +217,7 @@ Examples:
 					}
 				}
 			} else {
-				sourceRunResp, err := getCiBuildRunWithRetry(
+				sourceRunResp, err := getCiBuildRun(
 					requestCtx,
 					client,
 					resolvedSourceRunID,
@@ -341,7 +341,7 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if strings.TrimSpace(*runID) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --run-id is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if *timeout < 0 {
 				return shared.UsageError("--timeout must be greater than or equal to 0")
@@ -363,7 +363,7 @@ Examples:
 			}
 
 			// Single status check
-			resp, err := getCiBuildRunWithRetry(requestCtx, client, strings.TrimSpace(*runID))
+			resp, err := getCiBuildRun(requestCtx, client, strings.TrimSpace(*runID))
 			if err != nil {
 				return fmt.Errorf("xcode-cloud status: %w", err)
 			}

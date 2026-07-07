@@ -26,6 +26,7 @@ func fetchResolvedSubscriptionPrices(
 	nextURL string,
 	now time.Time,
 	planType asc.SubscriptionPlanType,
+	territory string,
 ) (*shared.ResolvedPricesResult, error) {
 	if limit <= 0 {
 		limit = 200
@@ -34,6 +35,7 @@ func fetchResolvedSubscriptionPrices(
 	opts := []asc.SubscriptionPricesOption{
 		asc.WithSubscriptionPricesLimit(limit),
 		asc.WithSubscriptionPricesNextURL(nextURL),
+		asc.WithSubscriptionPricesFields([]string{"startDate", "preserved", "planType", "territory", "subscriptionPricePoint"}),
 		asc.WithSubscriptionPricesInclude([]string{"subscriptionPricePoint", "territory"}),
 		asc.WithSubscriptionPricesPricePointFields([]string{"customerPrice", "proceeds", "proceedsYear2"}),
 		asc.WithSubscriptionPricesTerritoryFields([]string{"currency"}),
@@ -41,33 +43,42 @@ func fetchResolvedSubscriptionPrices(
 	if planType != "" {
 		opts = append(opts, asc.WithSubscriptionPricesPlanType(planType))
 	}
+	if strings.TrimSpace(territory) != "" {
+		opts = append(opts, asc.WithSubscriptionPricesTerritory(territory))
+	}
 
-	firstPage, err := client.GetSubscriptionPrices(ctx, subscriptionID, opts...)
+	firstPage, err := shared.RetryReadWithFreshTimeout(ctx, func(requestCtx context.Context) (*asc.SubscriptionPricesResponse, error) {
+		return client.GetSubscriptionPrices(requestCtx, subscriptionID, opts...)
+	})
 	if err != nil {
 		return nil, err
 	}
 
 	candidates := make(map[string]resolvedSubscriptionPriceCandidate)
-	if err := asc.PaginateEach(ctx, firstPage, func(ctx context.Context, next string) (asc.PaginatedResponse, error) {
-		nextURL, err := mergeSubscriptionPricesNextQuery(next, resolvedSubscriptionPricesQuery(limit, planType))
+	if err := asc.PaginateEach(ctx, firstPage, func(_ context.Context, next string) (asc.PaginatedResponse, error) {
+		nextURL, err := mergeSubscriptionPricesNextQuery(next, resolvedSubscriptionPricesQuery(limit, planType, territory))
 		if err != nil {
 			return nil, err
 		}
-		return client.GetSubscriptionPrices(
-			ctx,
-			subscriptionID,
-			asc.WithSubscriptionPricesNextURL(nextURL),
-			asc.WithSubscriptionPricesInclude([]string{"subscriptionPricePoint", "territory"}),
-			asc.WithSubscriptionPricesPricePointFields([]string{"customerPrice", "proceeds", "proceedsYear2"}),
-			asc.WithSubscriptionPricesTerritoryFields([]string{"currency"}),
-			asc.WithSubscriptionPricesPlanType(planType),
-		)
+		return shared.RetryReadWithFreshTimeout(ctx, func(requestCtx context.Context) (*asc.SubscriptionPricesResponse, error) {
+			return client.GetSubscriptionPrices(
+				requestCtx,
+				subscriptionID,
+				asc.WithSubscriptionPricesNextURL(nextURL),
+				asc.WithSubscriptionPricesFields([]string{"startDate", "preserved", "planType", "territory", "subscriptionPricePoint"}),
+				asc.WithSubscriptionPricesInclude([]string{"subscriptionPricePoint", "territory"}),
+				asc.WithSubscriptionPricesPricePointFields([]string{"customerPrice", "proceeds", "proceedsYear2"}),
+				asc.WithSubscriptionPricesTerritoryFields([]string{"currency"}),
+				asc.WithSubscriptionPricesPlanType(planType),
+				asc.WithSubscriptionPricesTerritory(territory),
+			)
+		})
 	}, func(page asc.PaginatedResponse) error {
 		resp, ok := page.(*asc.SubscriptionPricesResponse)
 		if !ok {
 			return fmt.Errorf("unexpected subscription prices response type %T", page)
 		}
-		return consumeResolvedSubscriptionPricePageForPlanType(candidates, resp, now, planType)
+		return consumeResolvedSubscriptionPricePage(candidates, resp, now, planType)
 	}); err != nil {
 		return nil, err
 	}
@@ -80,9 +91,10 @@ func fetchResolvedSubscriptionPrices(
 	return &shared.ResolvedPricesResult{Prices: rows}, nil
 }
 
-func resolvedSubscriptionPricesQuery(limit int, planType asc.SubscriptionPlanType) url.Values {
+func resolvedSubscriptionPricesQuery(limit int, planType asc.SubscriptionPlanType, territory string) url.Values {
 	values := url.Values{}
 	values.Set("include", "subscriptionPricePoint,territory")
+	values.Set("fields[subscriptionPrices]", "startDate,preserved,planType,territory,subscriptionPricePoint")
 	values.Set("fields[subscriptionPricePoints]", "customerPrice,proceeds,proceedsYear2")
 	values.Set("fields[territories]", "currency")
 	if limit > 0 {
@@ -91,18 +103,13 @@ func resolvedSubscriptionPricesQuery(limit int, planType asc.SubscriptionPlanTyp
 	if planType != "" {
 		values.Set("filter[planType]", string(planType))
 	}
+	if strings.TrimSpace(territory) != "" {
+		values.Set("filter[territory]", strings.ToUpper(strings.TrimSpace(territory)))
+	}
 	return values
 }
 
 func consumeResolvedSubscriptionPricePage(
-	candidates map[string]resolvedSubscriptionPriceCandidate,
-	page *asc.SubscriptionPricesResponse,
-	now time.Time,
-) error {
-	return consumeResolvedSubscriptionPricePageForPlanType(candidates, page, now, "")
-}
-
-func consumeResolvedSubscriptionPricePageForPlanType(
 	candidates map[string]resolvedSubscriptionPriceCandidate,
 	page *asc.SubscriptionPricesResponse,
 	now time.Time,
@@ -132,17 +139,15 @@ func consumeResolvedSubscriptionPricePageForPlanType(
 		}
 
 		startAt := parseSubscriptionPricingDate(price.Attributes.StartDate)
-		// Preserve the legacy undated-price skip unless a plan-specific view was requested.
-		if startAt == nil {
-			if planType == "" {
-				continue
-			}
-		}
 		if startAt != nil && startAt.After(asOf) {
 			continue
 		}
 
 		territoryID = strings.ToUpper(strings.TrimSpace(territoryID))
+		rowPlanType := strings.TrimSpace(string(price.Attributes.PlanType))
+		if rowPlanType == "" {
+			rowPlanType = strings.TrimSpace(string(planType))
+		}
 		currency := currencies[territoryID]
 		if currency == "" {
 			currency = territoryToCurrency(territoryID)
@@ -151,6 +156,7 @@ func consumeResolvedSubscriptionPricePageForPlanType(
 		candidate := resolvedSubscriptionPriceCandidate{
 			row: shared.ResolvedPriceRow{
 				Territory:     territoryID,
+				PlanType:      rowPlanType,
 				PriceID:       strings.TrimSpace(price.ID),
 				PricePointID:  strings.TrimSpace(pricePointID),
 				CustomerPrice: value.CustomerPrice,
@@ -164,13 +170,22 @@ func consumeResolvedSubscriptionPricePageForPlanType(
 			preserved: price.Attributes.Preserved,
 		}
 
-		existing, ok := candidates[territoryID]
+		candidateKey := resolvedSubscriptionPriceCandidateKey(territoryID, rowPlanType)
+		existing, ok := candidates[candidateKey]
 		if !ok || subscriptionResolvedCandidateIsNewer(candidate, existing) {
-			candidates[territoryID] = candidate
+			candidates[candidateKey] = candidate
 		}
 	}
 
 	return nil
+}
+
+func resolvedSubscriptionPriceCandidateKey(territoryID, planType string) string {
+	normalizedPlanType := strings.ToUpper(strings.TrimSpace(planType))
+	if normalizedPlanType == "" {
+		return territoryID
+	}
+	return territoryID + "\x00" + normalizedPlanType
 }
 
 func subscriptionResolvedCandidateIsNewer(candidate, existing resolvedSubscriptionPriceCandidate) bool {

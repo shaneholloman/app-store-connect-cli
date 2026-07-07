@@ -42,9 +42,9 @@ asc <subcommand> [flags]
 - `init` - Initialize asc helper docs in the current repo.
 - `docs` - Access embedded documentation guides and reference helpers.
 
-### Experimental Commands
+### Web Session Commands
 
-- `web` - [experimental] Unofficial web-session workflows (discouraged).
+- `web` - Apple web-session workflows.
 
 ### Analytics and Finance
 
@@ -105,6 +105,7 @@ asc <subcommand> [flags]
 ### Monetization
 
 - `iap` - Manage in-app purchases in App Store Connect.
+- `storekit` - Manage StoreKit server APIs with In-App Purchase API keys.
 - `app-events` - Manage App Store in-app events.
 - `subscriptions` - Manage subscription groups and subscriptions.
 

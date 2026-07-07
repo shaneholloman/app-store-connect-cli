@@ -3,9 +3,11 @@ package apps
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -103,7 +105,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if strings.TrimSpace(*versionID) == "" && resolvedAppID == "" && infoIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app or --info-id is required (or set ASC_APP_ID)")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			includeValues, err := normalizeAppInfoInclude(*include)
@@ -128,7 +130,7 @@ Examples:
 			}
 			if strings.TrimSpace(*version) != "" && len(platforms) != 1 {
 				fmt.Fprintln(os.Stderr, "Error: --platform is required with --version")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			if len(includeValues) > 0 {
@@ -260,7 +262,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if strings.TrimSpace(*versionID) == "" && resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			platforms, err := shared.NormalizeAppStoreVersionPlatforms(shared.SplitCSVUpper(*platform))
@@ -276,7 +278,7 @@ Examples:
 			}
 			if strings.TrimSpace(*version) != "" && len(platforms) != 1 {
 				fmt.Fprintln(os.Stderr, "Error: --platform is required with --version")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 
 			localeValue := strings.TrimSpace(*locale)
@@ -292,7 +294,7 @@ Examples:
 			}
 			if fromDirValue == "" && localeValue == "" && len(localesValue) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --locale is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if localeValue != "" {
 				if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
@@ -331,7 +333,7 @@ Examples:
 			}
 			if fromDirValue == "" && !hasInlineUpdates && copyFromLocaleValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return flag.ErrHelp
+				return shared.MissingRequiredUsageError()
 			}
 			if err := shared.ValidateVersionLocalizationAttributes(inlineAttrs); err != nil {
 				return shared.UsageError(err.Error())
@@ -482,8 +484,10 @@ func runAppInfoSetSingleLocale(
 	promotionalTextValue := strings.TrimSpace(attrs.PromotionalText)
 	whatsNewValue := strings.TrimSpace(attrs.WhatsNew)
 
+	var sourceLocalization asc.Resource[asc.AppStoreVersionLocalizationAttributes]
 	if copyFromLocale != "" {
-		sourceLocalization, found := findAppInfoSetLocalizationByLocale(localizations.Data, copyFromLocale)
+		var found bool
+		sourceLocalization, found = findAppInfoSetLocalizationByLocale(localizations.Data, copyFromLocale)
 		if !found {
 			return fmt.Errorf("apps info edit: --copy-from-locale %q was not found for this app version", copyFromLocale)
 		}
@@ -530,15 +534,63 @@ func runAppInfoSetSingleLocale(
 		updateAttrs.Locale = locale
 		resp, createErr := client.CreateAppStoreVersionLocalization(ctx, versionID, updateAttrs)
 		if createErr != nil {
-			return fmt.Errorf("apps info edit: %w", createErr)
+			if !appInfoSetIsConflictError(createErr) {
+				return fmt.Errorf("apps info edit: %w", createErr)
+			}
+			refetchedLocalization, found, fetchErr := fetchAppInfoSetLocalizationByLocale(ctx, client, versionID, locale)
+			if fetchErr != nil {
+				return fmt.Errorf("apps info edit: create conflicted and failed to refetch localization: %w", fetchErr)
+			}
+			if !found {
+				return fmt.Errorf("apps info edit: %w", createErr)
+			}
+			targetLocalization = refetchedLocalization
+			effectiveAttrs = targetLocalization.Attributes
+			effectiveAttrs.Locale = locale
+			if copyFromLocale != "" {
+				descriptionValue = strings.TrimSpace(attrs.Description)
+				keywordsValue = strings.TrimSpace(attrs.Keywords)
+				supportURLValue = strings.TrimSpace(attrs.SupportURL)
+				marketingURLValue = strings.TrimSpace(attrs.MarketingURL)
+				promotionalTextValue = strings.TrimSpace(attrs.PromotionalText)
+				whatsNewValue = strings.TrimSpace(attrs.WhatsNew)
+				if shouldBackfillAppInfoSetField(descriptionValue, true, targetLocalization.Attributes.Description) {
+					descriptionValue = strings.TrimSpace(sourceLocalization.Attributes.Description)
+				}
+				if shouldBackfillAppInfoSetField(keywordsValue, true, targetLocalization.Attributes.Keywords) {
+					keywordsValue = strings.TrimSpace(sourceLocalization.Attributes.Keywords)
+				}
+				if shouldBackfillAppInfoSetField(supportURLValue, true, targetLocalization.Attributes.SupportURL) {
+					supportURLValue = strings.TrimSpace(sourceLocalization.Attributes.SupportURL)
+				}
+			}
+			updateAttrs = applyAppInfoSetValues(
+				asc.AppStoreVersionLocalizationAttributes{},
+				descriptionValue,
+				keywordsValue,
+				supportURLValue,
+				marketingURLValue,
+				promotionalTextValue,
+				whatsNewValue,
+			)
+			effectiveAttrs = applyAppInfoSetValues(
+				effectiveAttrs,
+				descriptionValue,
+				keywordsValue,
+				supportURLValue,
+				marketingURLValue,
+				promotionalTextValue,
+				whatsNewValue,
+			)
+		} else {
+			if err := shared.PrintOutput(resp, *output.Output, *output.Pretty); err != nil {
+				return err
+			}
+			if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, effectiveAttrs, shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
+				return shared.PrintSubmitReadinessCreateWarnings(os.Stderr, []shared.SubmitReadinessCreateWarning{warning})
+			}
+			return nil
 		}
-		if err := shared.PrintOutput(resp, *output.Output, *output.Pretty); err != nil {
-			return err
-		}
-		if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, effectiveAttrs, shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
-			return shared.PrintSubmitReadinessCreateWarnings(os.Stderr, []shared.SubmitReadinessCreateWarning{warning})
-		}
-		return nil
 	}
 
 	localizationID := strings.TrimSpace(targetLocalization.ID)
@@ -551,6 +603,12 @@ func runAppInfoSetSingleLocale(
 	}
 	if err := shared.PrintOutput(resp, *output.Output, *output.Pretty); err != nil {
 		return err
+	}
+	if !targetExists {
+		if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, effectiveAttrs, shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
+			return shared.PrintSubmitReadinessCreateWarnings(os.Stderr, []shared.SubmitReadinessCreateWarning{warning})
+		}
+		return nil
 	}
 	warnAppInfoSetSubmitIncompleteLocale(locale, effectiveAttrs)
 	return nil
@@ -623,6 +681,7 @@ func runAppInfoSetBatch(
 	}
 	sem := make(chan struct{}, workers)
 	var wg sync.WaitGroup
+	createWarningAttrs := make([]asc.AppStoreVersionLocalizationAttributes, len(locales))
 	for idx, locale := range locales {
 		idx := idx
 		locale := locale
@@ -644,19 +703,51 @@ func runAppInfoSetBatch(
 				Action: action,
 				Status: "success",
 			}
+			effectiveCreateAttrs := attrs
+			effectiveCreateAttrs.Locale = locale
 
 			if existingID == "" {
 				attrs.Locale = locale
 				resp, createErr := client.CreateAppStoreVersionLocalization(ctx, versionID, attrs)
 				if createErr != nil {
-					localeResult.Status = "failed"
-					localeResult.Error = createErr.Error()
+					if !appInfoSetIsConflictError(createErr) {
+						localeResult.Status = "failed"
+						localeResult.Error = createErr.Error()
+						results[idx] = localeResult
+						return
+					}
+					refetchedLocalization, found, fetchErr := fetchAppInfoSetLocalizationByLocale(ctx, client, versionID, locale)
+					if fetchErr != nil {
+						localeResult.Status = "failed"
+						localeResult.Error = fetchErr.Error()
+						results[idx] = localeResult
+						return
+					}
+					if !found {
+						localeResult.Status = "failed"
+						localeResult.Error = createErr.Error()
+						results[idx] = localeResult
+						return
+					}
+					existingID = strings.TrimSpace(refetchedLocalization.ID)
+					action = "update"
+					localeResult.Action = action
+					effectiveCreateAttrs = applyAppInfoSetValues(
+						refetchedLocalization.Attributes,
+						attrs.Description,
+						attrs.Keywords,
+						attrs.SupportURL,
+						attrs.MarketingURL,
+						attrs.PromotionalText,
+						attrs.WhatsNew,
+					)
+					effectiveCreateAttrs.Locale = locale
+				} else {
+					localeResult.LocalizationID = strings.TrimSpace(resp.Data.ID)
+					createWarningAttrs[idx] = effectiveCreateAttrs
 					results[idx] = localeResult
 					return
 				}
-				localeResult.LocalizationID = strings.TrimSpace(resp.Data.ID)
-				results[idx] = localeResult
-				return
 			}
 
 			resp, updateErr := client.UpdateAppStoreVersionLocalization(ctx, existingID, attrs)
@@ -672,6 +763,9 @@ func runAppInfoSetBatch(
 				localizationID = existingID
 			}
 			localeResult.LocalizationID = localizationID
+			if existingByLocale[strings.ToLower(locale)] == "" {
+				createWarningAttrs[idx] = effectiveCreateAttrs
+			}
 			results[idx] = localeResult
 		}()
 	}
@@ -679,15 +773,34 @@ func runAppInfoSetBatch(
 
 	warnings := make([]shared.SubmitReadinessCreateWarning, 0, len(locales))
 	for idx, locale := range locales {
-		if results[idx].Action != "create" || results[idx].Status != "success" {
+		if existingByLocale[strings.ToLower(locale)] != "" || results[idx].Status != "success" {
 			continue
 		}
-		if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, valuesByLocale[locale], shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
+		if warning, ok := shared.SubmitReadinessCreateWarningForLocaleWithOptions(locale, createWarningAttrs[idx], shared.SubmitReadinessCreateModeApplied, submitOpts); ok {
 			warnings = append(warnings, warning)
 		}
 	}
 
 	return buildAppInfoSetBatchResult(appID, versionID, false, results), shared.NormalizeSubmitReadinessCreateWarnings(warnings), nil
+}
+
+func fetchAppInfoSetLocalizationByLocale(ctx context.Context, client *asc.Client, versionID, locale string) (asc.Resource[asc.AppStoreVersionLocalizationAttributes], bool, error) {
+	localizations, err := client.GetAppStoreVersionLocalizations(
+		ctx,
+		versionID,
+		asc.WithAppStoreVersionLocalizationsLimit(200),
+		asc.WithAppStoreVersionLocalizationLocales([]string{locale}),
+	)
+	if err != nil {
+		return asc.Resource[asc.AppStoreVersionLocalizationAttributes]{}, false, err
+	}
+	localization, found := findAppInfoSetLocalizationByLocale(localizations.Data, locale)
+	return localization, found, nil
+}
+
+func appInfoSetIsConflictError(err error) bool {
+	var apiErr *asc.APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict
 }
 
 func buildAppInfoSetBatchResult(appID string, versionID string, dryRun bool, results []asc.AppInfoSetLocaleResult) *asc.AppInfoSetBatchResult {

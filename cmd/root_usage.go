@@ -22,7 +22,7 @@ var rootUsageGroups = []rootCommandGroup{
 		commands: []string{"auth", "doctor", "install-skills", "init", "docs"},
 	},
 	{
-		title:    "EXPERIMENTAL COMMANDS",
+		title:    "WEB SESSION COMMANDS",
 		commands: []string{"web"},
 	},
 	{
@@ -54,7 +54,7 @@ var rootUsageGroups = []rootCommandGroup{
 	},
 	{
 		title:    "MONETIZATION COMMANDS",
-		commands: []string{"iap", "app-events", "subscriptions"},
+		commands: []string{"iap", "storekit", "app-events", "subscriptions"},
 	},
 	{
 		title:    "SIGNING COMMANDS",
