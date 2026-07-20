@@ -49,13 +49,13 @@ Examples:
   asc reviews --app "123456789" --only-unresponded
   asc reviews --next "<links.next>"
   asc reviews --app "123456789" --paginate
-  asc reviews get --id "REVIEW_ID"
+  asc reviews view --id "REVIEW_ID"
   asc reviews ratings --app "123456789"
   asc reviews ratings --app "123456789" --all
   asc reviews summarizations --app "123456789" --platform IOS --territory US
   asc reviews respond --review-id "REVIEW_ID" --response "Thanks!"
   asc reviews respond-batch --app "123456789" --file replies.json --dry-run
-  asc reviews response get --id "RESPONSE_ID"
+  asc reviews response view --id "RESPONSE_ID"
   asc reviews response delete --id "RESPONSE_ID" --confirm
   asc reviews response for-review --review-id "REVIEW_ID"`,
 		FlagSet:   fs,
@@ -122,7 +122,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			return executeReviewsList(ctx, resolvedAppID, *output.Output, *output.Pretty, *stars, *territory, *sort, *limit, *next, *paginate, *responseState, *onlyUnresponded, *includeResponse, *responseFields)

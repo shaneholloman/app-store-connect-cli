@@ -2,13 +2,24 @@ package cmd
 
 import (
 	"bytes"
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
 	"encoding/xml"
 	"errors"
 	"flag"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +30,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
 
 func TestExitCodeFromError(t *testing.T) {
@@ -50,6 +62,11 @@ func TestExitCodeFromError(t *testing.T) {
 		{
 			name:     "ErrForbidden returns auth failure",
 			err:      asc.ErrForbidden,
+			expected: ExitAuth,
+		},
+		{
+			name:     "wrapped invalid Apple Account credentials return auth failure",
+			err:      fmt.Errorf("SRP login failed: %w", webcore.ErrInvalidAppleAccountCredentials),
 			expected: ExitAuth,
 		},
 		{
@@ -134,6 +151,127 @@ func TestAPIErrorCodeToExitCode(t *testing.T) {
 				t.Errorf("APIErrorCodeToExitCode(%q) = %d, want %d", tt.code, result, tt.expected)
 			}
 		})
+	}
+}
+
+// rewriteHostTransport redirects every request to the test server so client
+// requests built against the production base URL hit the httptest server.
+type rewriteHostTransport struct {
+	target *url.URL
+}
+
+func (t *rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.URL.Scheme = t.target.Scheme
+	clone.URL.Host = t.target.Host
+	return http.DefaultTransport.RoundTrip(clone)
+}
+
+// newHTTPStatusTestClient builds an asc.Client whose requests are routed to
+// the given httptest server URL.
+func newHTTPStatusTestClient(t *testing.T, serverURL string) *asc.Client {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error: %v", err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("MarshalPKCS8PrivateKey() error: %v", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+	keyPath := filepath.Join(t.TempDir(), "AuthKey_TEST.p8")
+	if err := os.WriteFile(keyPath, pemBytes, 0o600); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	target, err := url.Parse(serverURL)
+	if err != nil {
+		t.Fatalf("url.Parse(%q) error: %v", serverURL, err)
+	}
+	client, err := asc.NewClientWithHTTPClient("KEY123", "ISS456", keyPath, &http.Client{
+		Transport: &rewriteHostTransport{target: target},
+	})
+	if err != nil {
+		t.Fatalf("NewClientWithHTTPClient() error: %v", err)
+	}
+	return client
+}
+
+// TestExitCodeFromError_RetryExhaustedStatuses exercises the full retry path:
+// a server that persistently fails with a retryable status must surface that
+// status in both the exit code and the telemetry HTTP status once retries are
+// exhausted, instead of collapsing to the generic exit code 1.
+func TestExitCodeFromError_RetryExhaustedStatuses(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       int
+		body         string
+		expectedExit int
+	}{
+		{
+			name:         "persistent 503 exits with service unavailable",
+			status:       http.StatusServiceUnavailable,
+			body:         `{"errors":[{"code":"UNEXPECTED_ERROR","title":"Service Unavailable","detail":"try again later"}]}`,
+			expectedExit: ExitHTTPServiceUnavailable,
+		},
+		{
+			name:         "persistent 429 exits with rate limit code",
+			status:       http.StatusTooManyRequests,
+			body:         `{"errors":[{"code":"RATE_LIMIT_EXCEEDED","title":"Too Many Requests","detail":"rate limit exceeded"}]}`,
+			expectedExit: 39, // 10 + (429 - 400)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("ASC_MAX_RETRIES", "1")
+			t.Setenv("ASC_BASE_DELAY", "1ms")
+			t.Setenv("ASC_MAX_DELAY", "1ms")
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			t.Cleanup(server.Close)
+
+			client := newHTTPStatusTestClient(t, server.URL)
+			_, err := client.GetApps(context.Background())
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if got := ExitCodeFromError(err); got != tt.expectedExit {
+				t.Errorf("ExitCodeFromError() = %d, want %d (error: %v)", got, tt.expectedExit, err)
+			}
+			if got := httpStatusFromError(err); got != tt.status {
+				t.Errorf("httpStatusFromError() = %d, want %d (error: %v)", got, tt.status, err)
+			}
+		})
+	}
+}
+
+// TestExitCodeFromError_AppleNotAuthorizedPayload verifies that a real-shaped
+// Apple 401 response (code NOT_AUTHORIZED, not UNAUTHORIZED) maps to ExitAuth.
+func TestExitCodeFromError_AppleNotAuthorizedPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"errors":[{"status":"401","code":"NOT_AUTHORIZED","title":"Authentication credentials are missing or invalid.","detail":"Provide a properly configured and signed bearer token, and make sure that it has not expired."}]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := newHTTPStatusTestClient(t, server.URL)
+	_, err := client.GetApps(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got := ExitCodeFromError(err); got != ExitAuth {
+		t.Errorf("ExitCodeFromError() = %d, want %d (ExitAuth) (error: %v)", got, ExitAuth, err)
+	}
+	if got := httpStatusFromError(err); got != http.StatusUnauthorized {
+		t.Errorf("httpStatusFromError() = %d, want %d (error: %v)", got, http.StatusUnauthorized, err)
 	}
 }
 
@@ -634,6 +772,68 @@ func TestAuthTokenConfirmInvalidBooleanExitCode(t *testing.T) {
 	}
 }
 
+func TestAuthLoginInvalidPrivateKeyExitCodes(t *testing.T) {
+	tmpDir := t.TempDir()
+	binaryPath := buildASCBlackboxBinary(t)
+	missingKeyPath := filepath.Join(tmpDir, "missing-key.p8")
+
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "app store connect",
+			args: []string{
+				"auth", "login", "--name", "demo", "--key-id", "KEY", "--issuer-id", "ISS",
+				"--private-key", missingKeyPath, "--bypass-keychain", "--local",
+			},
+		},
+		{
+			name: "apple ads",
+			args: []string{
+				"ads", "auth", "login", "--name", "demo", "--client-id", "CLIENT", "--team-id", "TEAM",
+				"--key-id", "KEY", "--private-key", missingKeyPath, "--bypass-keychain", "--local",
+			},
+		},
+		{
+			name: "storekit",
+			args: []string{
+				"storekit", "auth", "login", "--name", "demo", "--key-id", "KEY", "--issuer-id", "ISS",
+				"--private-key", missingKeyPath, "--bundle-id", "com.example.app", "--bypass-keychain", "--local",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runCmd := exec.Command(binaryPath, test.args...)
+			runCmd.Env = isolatedCLITestEnv(filepath.Join(tmpDir, test.name+"-config.json"))
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			runCmd.Stdout = &stdout
+			runCmd.Stderr = &stderr
+
+			err := runCmd.Run()
+			if err == nil {
+				t.Fatalf("expected invalid private key to fail, got stdout %q", stdout.String())
+			}
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected *exec.ExitError, got %T (%v)", err, err)
+			}
+			if exitErr.ExitCode() != ExitUsage {
+				t.Fatalf("exit code = %d, want %d; stderr=%q", exitErr.ExitCode(), ExitUsage, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), "invalid private key") {
+				t.Fatalf("stderr = %q, want invalid private key diagnostic", stderr.String())
+			}
+		})
+	}
+}
+
 func TestWebAuthLoginPromptInterruptDoesNotFallBackToUsageError(t *testing.T) {
 	tmpDir := t.TempDir()
 	binaryPath := buildASCBlackboxBinary(t)
@@ -796,6 +996,151 @@ func TestWebAuthLoginPromptInterruptSkipsSkillsAutoCheck(t *testing.T) {
 
 	if strings.Contains(output.String(), "skills updates may be available") {
 		t.Fatalf("expected no skills update notice after interrupt, got %q", output.String())
+	}
+}
+
+func TestSkillsAutoCheckDoesNotDelayForegroundCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("PTY timing regression requires a Unix shell")
+	}
+
+	tmpDir := t.TempDir()
+	binaryPath := buildASCBlackboxBinary(t)
+	configPath := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"skills_checked_at":"2000-01-01T00:00:00Z"}`), 0o600); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	scriptDir := filepath.Join(tmpDir, "bin")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("failed to create fake skills dir: %v", err)
+	}
+	markerPath := filepath.Join(tmpDir, "skills-check-ran")
+	sleepPIDPath := filepath.Join(tmpDir, "skills-check-sleep-pid")
+	t.Cleanup(func() {
+		pidBytes, err := os.ReadFile(sleepPIDPath)
+		if err != nil {
+			return
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+		if err != nil {
+			return
+		}
+		if process, err := os.FindProcess(pid); err == nil {
+			_ = process.Kill()
+		}
+	})
+	scriptPath := filepath.Join(scriptDir, "skills")
+	script := "#!/bin/sh\n" +
+		"printf 'ran' > \"$SKILLS_MARKER\"\n" +
+		"sleep 10 &\n" +
+		"printf '%s' \"$!\" > \"$SKILLS_SLEEP_PID\"\n" +
+		"printf '2 updates available\\n'\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("failed to write fake skills command: %v", err)
+	}
+
+	runCmd := exec.Command(binaryPath, "completion", "--shell", "bash")
+	runCmd.Env = append(
+		isolatedCLITestEnv(configPath),
+		"ASC_SKILLS_AUTO_CHECK=1",
+		"CI=",
+		"SKILLS_MARKER="+markerPath,
+		"SKILLS_SLEEP_PID="+sleepPIDPath,
+		"PATH="+scriptDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+	)
+
+	startedAt := time.Now()
+	ptmx, err := pty.Start(runCmd)
+	if err != nil {
+		t.Fatalf("failed to start PTY command: %v", err)
+	}
+	defer func() { _ = ptmx.Close() }()
+	output, _, readDone := startPTYCapture(ptmx, "")
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- runCmd.Wait()
+	}()
+
+	select {
+	case err = <-waitDone:
+	case <-time.After(2 * time.Second):
+		_ = runCmd.Process.Kill()
+		_ = ptmx.Close()
+		<-waitDone
+		t.Fatalf("foreground command waited for 10-second checker descendant\noutput:\n%s", output.String())
+	}
+	if err != nil {
+		t.Fatalf("foreground command failed: %v\noutput:\n%s", err, output.String())
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 2*time.Second {
+		t.Fatalf("foreground command took %s, want under 2s", elapsed)
+	}
+
+	select {
+	case <-readDone:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("PTY stayed open after foreground exit\noutput:\n%s", output.String())
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, statErr := os.Stat(markerPath); statErr == nil {
+			break
+		} else if !os.IsNotExist(statErr) {
+			t.Fatalf("failed to stat skills marker: %v", statErr)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("detached skills checker did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	cachePath := filepath.Join(tmpDir, "skills-check.json")
+	lockPath := filepath.Join(tmpDir, "skills-check.lock")
+	deadline = time.Now().Add(3 * time.Second)
+	for {
+		_, cacheErr := os.Stat(cachePath)
+		_, lockErr := os.Stat(lockPath)
+		if cacheErr == nil && os.IsNotExist(lockErr) {
+			break
+		}
+		if cacheErr != nil && !os.IsNotExist(cacheErr) {
+			t.Fatalf("stat skills cache: %v", cacheErr)
+		}
+		if lockErr != nil && !os.IsNotExist(lockErr) {
+			t.Fatalf("stat skills worker lock: %v", lockErr)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("detached worker did not finish cache publication (cache: %v, lock: %v)", cacheErr, lockErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		pidBytes, readErr := os.ReadFile(sleepPIDPath)
+		if readErr == nil {
+			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
+			if parseErr != nil {
+				t.Fatalf("parse checker sleep PID: %v", parseErr)
+			}
+			process, findErr := os.FindProcess(pid)
+			if findErr != nil {
+				t.Fatalf("find checker sleep process: %v", findErr)
+			}
+			_ = process.Kill()
+			_ = os.Remove(sleepPIDPath)
+			break
+		}
+		if !os.IsNotExist(readErr) {
+			t.Fatalf("read checker sleep PID: %v", readErr)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("checker did not record descendant PID")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

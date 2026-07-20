@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"encoding/json"
 	"runtime"
 	"strconv"
 	"strings"
@@ -28,7 +29,26 @@ type Event struct {
 	InvocationShape  InvocationShape  `json:"invocation_shape"`
 	ErrorKind        *ErrorKind       `json:"error_kind"`
 	FailureStage     *FailureStage    `json:"failure_stage"`
+	FailureParameter *string          `json:"failure_parameter"`
+	OutcomeKind      OutcomeKind      `json:"outcome_kind,omitempty"`
+	HTTPStatus       *int             `json:"http_status,omitempty"`
 }
+
+type OutcomeKind string
+
+const (
+	OutcomeSuccess          OutcomeKind = "success"
+	OutcomeExpectedNegative OutcomeKind = "expected_negative"
+	OutcomeUsageError       OutcomeKind = "usage_error"
+	OutcomeAuthError        OutcomeKind = "auth_error"
+	OutcomeNotFound         OutcomeKind = "not_found"
+	OutcomeConflict         OutcomeKind = "conflict"
+	OutcomeAPIClientError   OutcomeKind = "api_client_error"
+	OutcomeAPIServerError   OutcomeKind = "api_server_error"
+	OutcomeTransportError   OutcomeKind = "transport_error"
+	OutcomeCancelled        OutcomeKind = "cancelled"
+	OutcomeInternalError    OutcomeKind = "internal_error"
+)
 
 type InvocationShape string
 
@@ -61,9 +81,12 @@ const (
 )
 
 type EventContext struct {
-	InvocationShape InvocationShape
-	ErrorKind       ErrorKind
-	FailureStage    FailureStage
+	InvocationShape  InvocationShape
+	ErrorKind        ErrorKind
+	FailureStage     FailureStage
+	FailureParameter string
+	OutcomeKind      OutcomeKind
+	HTTPStatus       int
 }
 
 // processSessionID groups events from one CLI process without linking separate
@@ -104,7 +127,7 @@ func BuildEventWithContext(
 
 	return Event{
 		EventID:          uuid.NewString(),
-		SchemaVersion:    2,
+		SchemaVersion:    4,
 		ASCVersion:       strings.TrimSpace(version),
 		OS:               runtime.GOOS,
 		Arch:             runtime.GOARCH,
@@ -121,6 +144,9 @@ func BuildEventWithContext(
 		InvocationShape:  eventContext.InvocationShape,
 		ErrorKind:        optionalErrorKind(eventContext.ErrorKind),
 		FailureStage:     optionalFailureStage(eventContext.FailureStage),
+		FailureParameter: optionalFailureParameter(eventContext.FailureParameter, exitCode),
+		OutcomeKind:      eventContext.OutcomeKind,
+		HTTPStatus:       optionalHTTPStatus(eventContext.HTTPStatus),
 	}, true
 }
 
@@ -131,9 +157,14 @@ func normalizeEventContext(eventContext EventContext, exitCode int) EventContext
 		eventContext.InvocationShape = InvocationShapeLeaf
 	}
 
+	eventContext.HTTPStatus = sanitizeHTTPStatus(eventContext.HTTPStatus)
+
 	if exitCode == 0 {
 		eventContext.ErrorKind = ""
 		eventContext.FailureStage = ""
+		eventContext.FailureParameter = ""
+		eventContext.OutcomeKind = OutcomeSuccess
+		eventContext.HTTPStatus = 0
 		return eventContext
 	}
 	if eventContext.ErrorKind == "" {
@@ -156,7 +187,55 @@ func normalizeEventContext(eventContext EventContext, exitCode int) EventContext
 		eventContext.ErrorKind = ErrorKindOther
 		eventContext.FailureStage = FailureStageExecution
 	}
+	eventContext.OutcomeKind = normalizeOutcomeKind(eventContext, exitCode)
 	return eventContext
+}
+
+func normalizeOutcomeKind(eventContext EventContext, exitCode int) OutcomeKind {
+	status := eventContext.HTTPStatus
+	switch {
+	case status == 401 || status == 403:
+		return OutcomeAuthError
+	case status == 404:
+		return OutcomeNotFound
+	case status == 409:
+		return OutcomeConflict
+	case status >= 400 && status < 500:
+		return OutcomeAPIClientError
+	case status >= 500:
+		return OutcomeAPIServerError
+	}
+	switch eventContext.ErrorKind {
+	case ErrorKindAPIConflict:
+		return OutcomeConflict
+	case ErrorKindAPI5xx:
+		return OutcomeAPIServerError
+	}
+
+	switch eventContext.OutcomeKind {
+	case OutcomeExpectedNegative:
+		if eventContext.FailureStage == FailureStageValidation {
+			return OutcomeExpectedNegative
+		}
+	case OutcomeUsageError:
+		if exitCode == 2 && (eventContext.FailureStage == FailureStageParse || eventContext.FailureStage == FailureStageValidation) {
+			return OutcomeUsageError
+		}
+	case OutcomeAuthError, OutcomeNotFound, OutcomeConflict, OutcomeAPIClientError, OutcomeAPIServerError, OutcomeCancelled, OutcomeInternalError:
+		return eventContext.OutcomeKind
+	case OutcomeTransportError:
+		if eventContext.FailureStage == FailureStageRequest {
+			return OutcomeTransportError
+		}
+	}
+
+	if exitCode == 2 && (eventContext.FailureStage == FailureStageParse || eventContext.FailureStage == FailureStageValidation) {
+		return OutcomeUsageError
+	}
+	if eventContext.FailureStage == FailureStageRequest {
+		return OutcomeTransportError
+	}
+	return OutcomeInternalError
 }
 
 func optionalErrorKind(kind ErrorKind) *ErrorKind {
@@ -171,6 +250,140 @@ func optionalFailureStage(stage FailureStage) *FailureStage {
 		return nil
 	}
 	return &stage
+}
+
+func optionalFailureParameter(parameter string, exitCode int) *string {
+	if exitCode == 0 {
+		return nil
+	}
+	parameter = sanitizeFailureParameter(parameter)
+	if parameter == "" {
+		return nil
+	}
+	return &parameter
+}
+
+func optionalHTTPStatus(status int) *int {
+	status = sanitizeHTTPStatus(status)
+	if status == 0 {
+		return nil
+	}
+	return &status
+}
+
+func sanitizeHTTPStatus(status int) int {
+	if status < 400 || status > 599 {
+		return 0
+	}
+	return status
+}
+
+// MarshalJSON keeps queued schema-v3 records wire-compatible while ensuring
+// nullable schema-v4 fields are present even when their value is null.
+func (event Event) MarshalJSON() ([]byte, error) {
+	type eventAlias Event
+	if event.SchemaVersion != 4 {
+		return json.Marshal(eventAlias(event))
+	}
+	return json.Marshal(struct {
+		eventAlias
+		HTTPStatus *int `json:"http_status"`
+	}{
+		eventAlias: eventAlias(event),
+		HTTPStatus: event.HTTPStatus,
+	})
+}
+
+func sanitizeFailureParameter(parameter string) string {
+	parameter = strings.TrimSpace(parameter)
+	if parameter == "" {
+		return ""
+	}
+	name := strings.SplitN(parameter, "=", 2)[0]
+	name = strings.TrimLeft(name, "-")
+	if name == "" || len(name) > 64 {
+		return ""
+	}
+	if name[0] < 'a' || name[0] > 'z' || isUUIDLike(name) {
+		return ""
+	}
+	if !isKnownFailureParameter(name) {
+		return ""
+	}
+	for i, r := range name {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			continue
+		}
+		if r == '-' && i > 0 {
+			continue
+		}
+		return ""
+	}
+	return "--" + name
+}
+
+func isKnownFailureParameter(name string) bool {
+	_, ok := knownFailureParameters[name]
+	return ok
+}
+
+// Keep this list deliberately small: failure_parameter is a telemetry
+// dimension, so only public flags and compatibility aliases that help diagnose
+// common agent failures belong here.
+var knownFailureParameters = map[string]struct{}{
+	"all":             {},
+	"app":             {},
+	"app-id":          {},
+	"build":           {},
+	"build-id":        {},
+	"bundle-id":       {},
+	"confirm":         {},
+	"cursor":          {},
+	"dry-run":         {},
+	"email":           {},
+	"file":            {},
+	"group-id":        {},
+	"id":              {},
+	"ipa":             {},
+	"issuer-id":       {},
+	"key-id":          {},
+	"limit":           {},
+	"locale":          {},
+	"localization-id": {},
+	"next":            {},
+	"org":             {},
+	"output":          {},
+	"output-dir":      {},
+	"paginate":        {},
+	"platform":        {},
+	"profile":         {},
+	"review-id":       {},
+	"subscription-id": {},
+	"team-id":         {},
+	"tester-id":       {},
+	"version":         {},
+	"version-id":      {},
+	"workflow-id":     {},
+	"xcodebuild-flag": {},
+}
+
+func isUUIDLike(name string) bool {
+	if len(name) != 36 {
+		return false
+	}
+	for i, r := range name {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if r != '-' {
+				return false
+			}
+			continue
+		}
+		if r >= '0' && r <= '9' || r >= 'a' && r <= 'f' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func sanitizeCommandName(commandName string) string {

@@ -45,6 +45,12 @@ func TestBuildEventSanitizesCommand(t *testing.T) {
 	if payload["invocation_source"] != string(SourceTerminal) {
 		t.Fatalf("invocation_source = %v, want %q", payload["invocation_source"], SourceTerminal)
 	}
+	if payload["outcome_kind"] != string(OutcomeSuccess) {
+		t.Fatalf("unexpected v4 event context: %v", payload)
+	}
+	if value, exists := payload["http_status"]; !exists || value != nil {
+		t.Fatalf("http_status = %v (exists=%t), want explicit null", value, exists)
+	}
 	if _, exists := payload["execution_context"]; exists {
 		t.Fatal("legacy execution_context field should not be emitted")
 	}
@@ -65,20 +71,27 @@ func TestBuildEventWithContextEmitsOnlyLowCardinalityClassifications(t *testing.
 		0,
 		2,
 		EventContext{
-			InvocationShape: InvocationShapeLeaf,
-			ErrorKind:       ErrorKindUnknownFlag,
-			FailureStage:    FailureStageParse,
+			InvocationShape:  InvocationShapeLeaf,
+			ErrorKind:        ErrorKindUnknownFlag,
+			FailureStage:     FailureStageParse,
+			FailureParameter: "--build-id=BUILD_ID",
 		},
 	)
 	if !ok {
 		t.Fatal("expected event")
 	}
-	if ev.SchemaVersion != 2 {
-		t.Fatalf("SchemaVersion = %d, want 2", ev.SchemaVersion)
+	if ev.SchemaVersion != 4 {
+		t.Fatalf("SchemaVersion = %d, want 4", ev.SchemaVersion)
 	}
 	if ev.InvocationShape != InvocationShapeLeaf || ev.ErrorKind == nil || *ev.ErrorKind != ErrorKindUnknownFlag ||
 		ev.FailureStage == nil || *ev.FailureStage != FailureStageParse {
 		t.Fatalf("unexpected classifications: %+v", ev)
+	}
+	if ev.FailureParameter == nil || *ev.FailureParameter != "--build-id" {
+		t.Fatalf("FailureParameter = %v, want --build-id", ev.FailureParameter)
+	}
+	if ev.OutcomeKind != OutcomeUsageError || ev.HTTPStatus != nil {
+		t.Fatalf("unexpected v4 outcome context: %+v", ev)
 	}
 
 	data, err := json.Marshal(ev)
@@ -89,6 +102,136 @@ func TestBuildEventWithContextEmitsOnlyLowCardinalityClassifications(t *testing.
 		if strings.Contains(string(data), forbidden) {
 			t.Fatalf("payload contains forbidden field %q: %s", forbidden, data)
 		}
+	}
+}
+
+func TestBuildEventWithContextCapturesBoundedHTTPContext(t *testing.T) {
+	clearContextEnv(t)
+	setTelemetryTestHome(t)
+
+	ev, ok := BuildEventWithContext(
+		"asc analytics sales",
+		"2.7.0",
+		time.Second,
+		12,
+		EventContext{
+			InvocationShape: InvocationShapeLeaf,
+			ErrorKind:       ErrorKindOther,
+			FailureStage:    FailureStageRequest,
+			OutcomeKind:     OutcomeAuthError,
+			HTTPStatus:      403,
+		},
+	)
+	if !ok {
+		t.Fatal("expected event")
+	}
+	if ev.HTTPStatus == nil || *ev.HTTPStatus != 403 {
+		t.Fatalf("HTTPStatus = %v, want 403", ev.HTTPStatus)
+	}
+	if ev.OutcomeKind != OutcomeAuthError {
+		t.Fatalf("OutcomeKind = %q, want %q", ev.OutcomeKind, OutcomeAuthError)
+	}
+}
+
+func TestBuildEventWithContextPreservesAPIOutcomesWithoutHTTPStatus(t *testing.T) {
+	clearContextEnv(t)
+	setTelemetryTestHome(t)
+
+	tests := []struct {
+		name    string
+		context EventContext
+		want    OutcomeKind
+	}{
+		{
+			name: "explicit client error",
+			context: EventContext{
+				ErrorKind:    ErrorKindOther,
+				FailureStage: FailureStageRequest,
+				OutcomeKind:  OutcomeAPIClientError,
+			},
+			want: OutcomeAPIClientError,
+		},
+		{
+			name: "explicit server error",
+			context: EventContext{
+				ErrorKind:    ErrorKindOther,
+				FailureStage: FailureStageRequest,
+				OutcomeKind:  OutcomeAPIServerError,
+			},
+			want: OutcomeAPIServerError,
+		},
+		{
+			name: "conflict error kind",
+			context: EventContext{
+				ErrorKind: ErrorKindAPIConflict,
+			},
+			want: OutcomeConflict,
+		},
+		{
+			name: "server error kind",
+			context: EventContext{
+				ErrorKind: ErrorKindAPI5xx,
+			},
+			want: OutcomeAPIServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ev, ok := BuildEventWithContext("asc builds list", "2.7.0", time.Second, 1, tt.context)
+			if !ok {
+				t.Fatal("expected event")
+			}
+			if ev.OutcomeKind != tt.want {
+				t.Fatalf("OutcomeKind = %q, want %q", ev.OutcomeKind, tt.want)
+			}
+			if ev.HTTPStatus != nil {
+				t.Fatalf("HTTPStatus = %v, want nil", ev.HTTPStatus)
+			}
+		})
+	}
+}
+
+func TestSchemaV3SpoolRecordOmitsSchemaV4Fields(t *testing.T) {
+	data, err := json.Marshal(Event{
+		SchemaVersion:   3,
+		InvocationShape: InvocationShapeLeaf,
+	})
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	for _, field := range []string{"outcome_kind", "http_status"} {
+		if strings.Contains(string(data), `"`+field+`"`) {
+			t.Fatalf("schema-v3 payload contains schema-v4 field %q: %s", field, data)
+		}
+	}
+}
+
+func TestBuildEventWithContextAllowsKnownFailureParameters(t *testing.T) {
+	clearContextEnv(t)
+	setTelemetryTestHome(t)
+
+	for _, parameter := range []string{"--id", "--app", "--app-id"} {
+		t.Run(parameter, func(t *testing.T) {
+			ev, ok := BuildEventWithContext(
+				"asc apps view",
+				"1.2.3",
+				0,
+				2,
+				EventContext{
+					InvocationShape:  InvocationShapeLeaf,
+					ErrorKind:        ErrorKindUnknownFlag,
+					FailureStage:     FailureStageParse,
+					FailureParameter: parameter,
+				},
+			)
+			if !ok {
+				t.Fatal("expected event")
+			}
+			if ev.FailureParameter == nil || *ev.FailureParameter != parameter {
+				t.Fatalf("FailureParameter = %v, want %q", ev.FailureParameter, parameter)
+			}
+		})
 	}
 }
 
@@ -125,15 +268,17 @@ func TestBuildEventWithContextRejectsUnboundedContextValues(t *testing.T) {
 		0,
 		2,
 		EventContext{
-			InvocationShape: InvocationShape("unknown_child:private-app-name"),
-			ErrorKind:       ErrorKind("unknown_flag:--private-value"),
-			FailureStage:    FailureStage("stderr:private-error"),
+			InvocationShape:  InvocationShape("unknown_child:private-app-name"),
+			ErrorKind:        ErrorKind("unknown_flag:--private-value"),
+			FailureStage:     FailureStage("stderr:private-error"),
+			FailureParameter: "--private_value=SECRET",
 		},
 	)
 	if !ok || ev.ErrorKind == nil || ev.FailureStage == nil {
 		t.Fatal("expected canonicalized event")
 	}
-	if ev.InvocationShape != InvocationShapeLeaf || *ev.ErrorKind != ErrorKindOther || *ev.FailureStage != FailureStageExecution {
+	if ev.InvocationShape != InvocationShapeLeaf || *ev.ErrorKind != ErrorKindOther || *ev.FailureStage != FailureStageExecution ||
+		ev.FailureParameter != nil {
 		t.Fatalf("unexpected canonicalized context: %+v", ev)
 	}
 
@@ -141,10 +286,74 @@ func TestBuildEventWithContextRejectsUnboundedContextValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal event: %v", err)
 	}
-	for _, privateValue := range []string{"private-app-name", "private-value", "private-error"} {
+	for _, privateValue := range []string{"private-app-name", "private-value", "private-error", "SECRET"} {
 		if strings.Contains(string(data), privateValue) {
 			t.Fatalf("payload leaked unbounded context %q: %s", privateValue, data)
 		}
+	}
+}
+
+func TestBuildEventWithContextRejectsIdentifierShapedFailureParameters(t *testing.T) {
+	clearContextEnv(t)
+	setTelemetryTestHome(t)
+
+	for _, parameter := range []string{
+		"--6759231657",
+		"--123e4567-e89b-12d3-a456-426614174000",
+		"--a1b2c3d4-e5f6-47a8-9012-3456789abcde",
+	} {
+		t.Run(parameter, func(t *testing.T) {
+			ev, ok := BuildEventWithContext(
+				"asc builds",
+				"1.2.3",
+				0,
+				2,
+				EventContext{
+					InvocationShape:  InvocationShapeLeaf,
+					ErrorKind:        ErrorKindUnknownFlag,
+					FailureStage:     FailureStageParse,
+					FailureParameter: parameter,
+				},
+			)
+			if !ok {
+				t.Fatal("expected event")
+			}
+			if ev.FailureParameter != nil {
+				t.Fatalf("FailureParameter for %q = %q, want nil", parameter, *ev.FailureParameter)
+			}
+
+			data, err := json.Marshal(ev)
+			if err != nil {
+				t.Fatalf("marshal event: %v", err)
+			}
+			if strings.Contains(string(data), strings.TrimPrefix(parameter, "--")) {
+				t.Fatalf("payload leaked identifier-shaped parameter %q: %s", parameter, data)
+			}
+		})
+	}
+}
+
+func TestBuildEventWithContextRejectsUnknownFailureParameterNames(t *testing.T) {
+	clearContextEnv(t)
+	setTelemetryTestHome(t)
+
+	ev, ok := BuildEventWithContext(
+		"asc builds",
+		"1.2.3",
+		0,
+		2,
+		EventContext{
+			InvocationShape:  InvocationShapeLeaf,
+			ErrorKind:        ErrorKindUnknownFlag,
+			FailureStage:     FailureStageParse,
+			FailureParameter: "--my-secret-project",
+		},
+	)
+	if !ok {
+		t.Fatal("expected event")
+	}
+	if ev.FailureParameter != nil {
+		t.Fatalf("FailureParameter = %q, want nil", *ev.FailureParameter)
 	}
 }
 

@@ -74,3 +74,47 @@ func TestReleaseWorkflowKeepsDocsGuardrails(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseWorkflowBuildsStrippedTrimmedBinaries(t *testing.T) {
+	data, err := os.ReadFile(".github/workflows/release.yml")
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+
+	buildLines := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.Contains(line, "go build") {
+			continue
+		}
+		buildLines++
+		if !strings.Contains(line, "-trimpath") {
+			t.Errorf("release build line missing -trimpath: %s", strings.TrimSpace(line))
+		}
+		if !strings.Contains(line, "-s -w") {
+			t.Errorf("release build line missing -s -w: %s", strings.TrimSpace(line))
+		}
+	}
+	if buildLines == 0 {
+		t.Fatal("release workflow contains no go build lines")
+	}
+}
+
+func TestReleaseWorkflowDoesNotInterpolateDispatchInputIntoShell(t *testing.T) {
+	data, err := os.ReadFile(".github/workflows/release.yml")
+	if err != nil {
+		t.Fatalf("read release workflow: %v", err)
+	}
+
+	workflow := string(data)
+	if strings.Contains(workflow, `TAG="${{ github.event_name == 'workflow_dispatch'`) {
+		t.Fatal("release workflow interpolates dispatch input directly into shell")
+	}
+	for _, want := range []string{
+		`RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}`,
+		`TAG="${RELEASE_TAG}"`,
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Fatalf("release workflow missing safe dispatch handling %q", want)
+		}
+	}
+}

@@ -58,6 +58,8 @@ func SubscriptionsIntroductoryOffersListCommand() *ffcli.Command {
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
+	subscriptionFields := fs.String("subscription-fields", "", "Included subscription fields (comma-separated)")
+	pricePointFields := fs.String("price-point-fields", "", "Included subscription price point fields (comma-separated)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -78,6 +80,19 @@ Examples:
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("subscriptions introductory-offers list: %w", err)
 			}
+			if err := validateNextExclusiveFlags(fs, *next, "subscription-id", "app", "limit", "subscription-fields", "price-point-fields"); err != nil {
+				return err
+			}
+			selectedSubscriptionFields, err := normalizeSparseFieldsFlag(fs, *next, "subscription-fields", *subscriptionFields, subscriptionFieldsList())
+			if err != nil {
+				return err
+			}
+			selectedPricePointFields, err := normalizeSparseFieldsFlag(fs, *next, "price-point-fields", *pricePointFields, subscriptionPricePointFieldsList())
+			if err != nil {
+				return err
+			}
+			include := includeRelationshipForFields(selectedSubscriptionFields, "subscription")
+			include = appendIncludeForFields(include, selectedPricePointFields, "subscriptionPricePoint")
 
 			id := strings.TrimSpace(*subscriptionID)
 			if id == "" && strings.TrimSpace(*next) == "" {
@@ -103,10 +118,16 @@ Examples:
 			opts := []asc.SubscriptionIntroductoryOffersOption{
 				asc.WithSubscriptionIntroductoryOffersLimit(*limit),
 				asc.WithSubscriptionIntroductoryOffersNextURL(*next),
+				asc.WithSubscriptionIntroductoryOffersSubscriptionFields(selectedSubscriptionFields),
+				asc.WithSubscriptionIntroductoryOffersPricePointFields(selectedPricePointFields),
+				asc.WithSubscriptionIntroductoryOffersInclude(include),
 			}
 
 			if *paginate {
-				paginateOpts := append(opts, asc.WithSubscriptionIntroductoryOffersLimit(200))
+				paginateOpts := opts
+				if strings.TrimSpace(*next) == "" {
+					paginateOpts = append(paginateOpts, asc.WithSubscriptionIntroductoryOffersLimit(200))
+				}
 				firstPage, err := client.GetSubscriptionIntroductoryOffers(requestCtx, id, paginateOpts...)
 				if err != nil {
 					return fmt.Errorf("subscriptions introductory-offers list: failed to fetch: %w", err)
@@ -134,19 +155,19 @@ Examples:
 
 // SubscriptionsIntroductoryOffersGetCommand returns the introductory offers get subcommand.
 func SubscriptionsIntroductoryOffersGetCommand() *ffcli.Command {
-	fs := flag.NewFlagSet("introductory-offers get", flag.ExitOnError)
+	fs := flag.NewFlagSet("introductory-offers view", flag.ExitOnError)
 
 	offerID := fs.String("id", "", "Introductory offer ID")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
-		Name:       "get",
-		ShortUsage: "asc subscriptions introductory-offers get --id \"OFFER_ID\"",
-		ShortHelp:  "Get an introductory offer by ID.",
-		LongHelp: `Get an introductory offer by ID.
+		Name:       "view",
+		ShortUsage: "asc subscriptions introductory-offers view --id \"OFFER_ID\"",
+		ShortHelp:  "View an introductory offer by ID.",
+		LongHelp: `View an introductory offer by ID.
 
 Examples:
-  asc subscriptions introductory-offers get --id "OFFER_ID"`,
+  asc subscriptions introductory-offers view --id "OFFER_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -158,7 +179,7 @@ Examples:
 
 			client, err := shared.GetASCClient()
 			if err != nil {
-				return fmt.Errorf("subscriptions introductory-offers get: %w", err)
+				return fmt.Errorf("subscriptions introductory-offers view: %w", err)
 			}
 
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
@@ -166,7 +187,7 @@ Examples:
 
 			resp, err := client.GetSubscriptionIntroductoryOffer(requestCtx, id)
 			if err != nil {
-				return fmt.Errorf("subscriptions introductory-offers get: failed to fetch: %w", err)
+				return fmt.Errorf("subscriptions introductory-offers view: failed to fetch: %w", err)
 			}
 
 			return shared.PrintOutput(resp, *output.Output, *output.Pretty)

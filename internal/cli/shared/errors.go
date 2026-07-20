@@ -31,6 +31,11 @@ type validationError struct {
 	err error
 }
 
+type errorWithCause struct {
+	err   error
+	cause error
+}
+
 type UsageErrorKind string
 
 const (
@@ -76,6 +81,14 @@ func (e validationError) ValidationFailure() bool {
 	return true
 }
 
+func (e errorWithCause) Error() string {
+	return e.err.Error()
+}
+
+func (e errorWithCause) Unwrap() []error {
+	return []error{e.err, e.cause}
+}
+
 // NewReportedError wraps an error that has already been printed.
 func NewReportedError(err error) error {
 	if err == nil {
@@ -100,6 +113,18 @@ func NewValidationReportedError(err error) error {
 	return NewReportedError(NewValidationError(err))
 }
 
+// NewErrorWithCause preserves err's rendered message and classification while
+// retaining an additional cause for errors.Is/errors.As and telemetry.
+func NewErrorWithCause(err, cause error) error {
+	if err == nil {
+		return cause
+	}
+	if cause == nil {
+		return err
+	}
+	return errorWithCause{err: err, cause: cause}
+}
+
 func IsValidationError(err error) bool {
 	var validationErr ValidationFailure
 	return errors.As(err, &validationErr) && validationErr.ValidationFailure()
@@ -122,8 +147,12 @@ func UsageErrorf(format string, args ...any) error {
 
 // MissingRequiredUsageError classifies a required-input failure after the
 // command has already written its diagnostic to stderr.
-func MissingRequiredUsageError() error {
-	return classifiedUsageError{kind: UsageErrorMissingRequired}
+func MissingRequiredUsageError(parameters ...string) error {
+	parameter := ""
+	if len(parameters) > 0 {
+		parameter = strings.TrimSpace(parameters[0])
+	}
+	return classifiedUsageError{kind: UsageErrorMissingRequired, message: parameter}
 }
 
 func ClassifyUsageError(err error) UsageErrorKind {

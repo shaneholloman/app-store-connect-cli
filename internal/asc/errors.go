@@ -57,6 +57,13 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("%s\n\n%s", baseMessage, associated)
 }
 
+func (e *APIError) HTTPStatusCode() int {
+	if e == nil {
+		return 0
+	}
+	return e.StatusCode
+}
+
 func formatAssociatedErrors(values map[string][]APIAssociatedError) string {
 	if len(values) == 0 {
 		return ""
@@ -106,9 +113,11 @@ func (e *APIError) Is(target error) bool {
 	case ErrNotFound:
 		return strings.EqualFold(e.Code, "NOT_FOUND") || e.StatusCode == 404
 	case ErrUnauthorized:
-		return strings.EqualFold(e.Code, "UNAUTHORIZED")
+		// Apple returns 401 with code NOT_AUTHORIZED, so match on the
+		// status code as well as the canonical code string.
+		return strings.EqualFold(e.Code, "UNAUTHORIZED") || e.StatusCode == 401
 	case ErrForbidden:
-		return strings.EqualFold(e.Code, "FORBIDDEN")
+		return strings.EqualFold(e.Code, "FORBIDDEN") || e.StatusCode == 403
 	case ErrBadRequest:
 		return strings.EqualFold(e.Code, "BAD_REQUEST")
 	case ErrConflict:

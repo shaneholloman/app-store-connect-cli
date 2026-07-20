@@ -13,6 +13,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared/suggest"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/telemetry"
+	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
 
 type invocationAnalysis struct {
@@ -115,15 +116,19 @@ func isHelpToken(token string) bool {
 
 func parseFailureContext(analysis invocationAnalysis) telemetry.EventContext {
 	kind := telemetry.ErrorKindInvalidValue
+	parameter := ""
 	if analysis.unknownFlag {
 		kind = telemetry.ErrorKindUnknownFlag
+		parameter = analysis.unknownToken
 	} else if analysis.shape == telemetry.InvocationShapeUnknownChild {
 		kind = telemetry.ErrorKindOther
 	}
 	return telemetry.EventContext{
-		InvocationShape: analysis.shape,
-		ErrorKind:       kind,
-		FailureStage:    telemetry.FailureStageParse,
+		InvocationShape:  analysis.shape,
+		ErrorKind:        kind,
+		FailureStage:     telemetry.FailureStageParse,
+		FailureParameter: parameter,
+		OutcomeKind:      telemetry.OutcomeUsageError,
 	}
 }
 
@@ -139,9 +144,11 @@ func validationFailureContext(analysis invocationAnalysis, err error) telemetry.
 		kind = telemetry.ErrorKindOther
 	}
 	return telemetry.EventContext{
-		InvocationShape: analysis.shape,
-		ErrorKind:       kind,
-		FailureStage:    telemetry.FailureStageValidation,
+		InvocationShape:  analysis.shape,
+		ErrorKind:        kind,
+		FailureStage:     telemetry.FailureStageValidation,
+		FailureParameter: failureParameterFromError(err),
+		OutcomeKind:      telemetry.OutcomeUsageError,
 	}
 }
 
@@ -154,6 +161,7 @@ func runtimeFailureContext(analysis invocationAnalysis, err error, exitCode int)
 		InvocationShape: analysis.shape,
 		ErrorKind:       telemetry.ErrorKindOther,
 		FailureStage:    telemetry.FailureStageExecution,
+		HTTPStatus:      httpStatusFromError(err),
 	}
 	switch {
 	case errors.Is(err, shared.ErrMissingAuth):
@@ -161,6 +169,14 @@ func runtimeFailureContext(analysis invocationAnalysis, err error, exitCode int)
 	case shared.IsValidationError(err):
 		eventContext.FailureStage = telemetry.FailureStageValidation
 	case errors.Is(err, context.DeadlineExceeded):
+		eventContext.FailureStage = telemetry.FailureStageRequest
+	case eventContext.HTTPStatus == 409:
+		eventContext.ErrorKind = telemetry.ErrorKindAPIConflict
+		eventContext.FailureStage = telemetry.FailureStageRequest
+	case eventContext.HTTPStatus >= 500:
+		eventContext.ErrorKind = telemetry.ErrorKindAPI5xx
+		eventContext.FailureStage = telemetry.FailureStageRequest
+	case eventContext.HTTPStatus >= 400:
 		eventContext.FailureStage = telemetry.FailureStageRequest
 	case exitCode == ExitConflict:
 		eventContext.ErrorKind = telemetry.ErrorKindAPIConflict
@@ -171,7 +187,62 @@ func runtimeFailureContext(analysis invocationAnalysis, err error, exitCode int)
 	case exitCode == ExitAuth || exitCode == ExitNotFound || (exitCode >= 10 && exitCode <= 59):
 		eventContext.FailureStage = telemetry.FailureStageRequest
 	}
+	eventContext.OutcomeKind = runtimeOutcomeKind(err, exitCode, eventContext)
 	return eventContext
+}
+
+func runtimeOutcomeKind(err error, exitCode int, eventContext telemetry.EventContext) telemetry.OutcomeKind {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return telemetry.OutcomeCancelled
+	case errors.Is(err, shared.ErrMissingAuth), errors.Is(err, webcore.ErrInvalidAppleAccountCredentials), exitCode == ExitAuth:
+		return telemetry.OutcomeAuthError
+	case shared.IsValidationError(err):
+		return telemetry.OutcomeExpectedNegative
+	case eventContext.HTTPStatus == 401 || eventContext.HTTPStatus == 403:
+		return telemetry.OutcomeAuthError
+	case eventContext.HTTPStatus == 404:
+		return telemetry.OutcomeNotFound
+	case eventContext.HTTPStatus == 409:
+		return telemetry.OutcomeConflict
+	case eventContext.HTTPStatus >= 400 && eventContext.HTTPStatus < 500:
+		return telemetry.OutcomeAPIClientError
+	case eventContext.HTTPStatus >= 500:
+		return telemetry.OutcomeAPIServerError
+	case exitCode == ExitNotFound:
+		return telemetry.OutcomeNotFound
+	case exitCode == ExitConflict:
+		return telemetry.OutcomeConflict
+	case errors.Is(err, context.DeadlineExceeded), eventContext.FailureStage == telemetry.FailureStageRequest:
+		return telemetry.OutcomeTransportError
+	default:
+		return telemetry.OutcomeInternalError
+	}
+}
+
+func httpStatusFromError(err error) int {
+	var statusError interface{ HTTPStatusCode() int }
+	if !errors.As(err, &statusError) {
+		return 0
+	}
+	status := statusError.HTTPStatusCode()
+	if status < 400 || status > 599 {
+		return 0
+	}
+	return status
+}
+
+func failureParameterFromError(err error) string {
+	if err == nil {
+		return ""
+	}
+	for _, field := range strings.Fields(err.Error()) {
+		candidate := strings.Trim(field, "`'\"(),:;.")
+		if strings.HasPrefix(candidate, "--") {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func shouldRenderGroupHelp(analysis invocationAnalysis, err error) bool {
@@ -199,11 +270,12 @@ func printUnknownFlagSuggestion(analysis invocationAnalysis) {
 		return
 	}
 	input := strings.TrimLeft(strings.SplitN(analysis.unknownToken, "=", 2)[0], "-")
-	candidates := make([]string, 0)
-	analysis.command.FlagSet.VisitAll(func(f *flag.Flag) {
+	visibleFlags := shared.VisibleHelpFlags(analysis.command.FlagSet)
+	candidates := make([]string, 0, len(visibleFlags))
+	for _, f := range visibleFlags {
 		candidates = append(candidates, f.Name)
-	})
-	printSuggestions(input, candidates, "--")
+	}
+	printFlagSuggestions(input, candidates)
 }
 
 func printUnknownSubcommandSuggestion(analysis invocationAnalysis) {
@@ -219,6 +291,14 @@ func printUnknownSubcommandSuggestion(analysis invocationAnalysis) {
 
 func printSuggestions(input string, candidates []string, prefix string) {
 	suggestions := suggest.Commands(input, candidates)
+	printSuggestionList(suggestions, prefix)
+}
+
+func printFlagSuggestions(input string, candidates []string) {
+	printSuggestionList(suggest.Flags(input, candidates), "--")
+}
+
+func printSuggestionList(suggestions []string, prefix string) {
 	if len(suggestions) == 0 {
 		return
 	}

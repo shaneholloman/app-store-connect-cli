@@ -4,8 +4,15 @@
 BINARY_NAME := asc
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+# Keep local build metadata stable so unchanged builds can reuse Go's link cache.
+# Release builds set their actual build timestamp in the release workflow.
+DATE := $(shell git show -s --format=%cI HEAD 2>/dev/null || echo "unknown")
 LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
+# Release builds strip symbol/DWARF tables (-s -w) and file-system paths
+# (-trimpath) for smaller, reproducible binaries. Dev builds (`make build`)
+# stay unstripped for debuggability.
+RELEASE_LDFLAGS := -s -w $(LDFLAGS)
+RELEASE_BUILD_FLAGS := -trimpath
 
 # Go variables
 GO := go
@@ -50,7 +57,7 @@ build-all: clean
 		os="$$1"; arch="$$2"; label="$$3"; suffix=""; \
 		if [ "$$os" = "windows" ]; then suffix=".exe"; fi; \
 		echo "Building $$label/$$arch..."; \
-		GOOS="$$os" GOARCH="$$arch" $(GO) build -ldflags "$(LDFLAGS)" -o "$(RELEASE_DIR)/$(BINARY_NAME)_$(VERSION)_$${label}_$${arch}$${suffix}" .; \
+		GOOS="$$os" GOARCH="$$arch" $(GO) build $(RELEASE_BUILD_FLAGS) -ldflags "$(RELEASE_LDFLAGS)" -o "$(RELEASE_DIR)/$(BINARY_NAME)_$(VERSION)_$${label}_$${arch}$${suffix}" .; \
 	done
 	@echo "$(GREEN)✓ Release binaries written to $(RELEASE_DIR)/$(NC)"
 
@@ -155,31 +162,6 @@ deps:
 	$(GO) mod download
 	$(GO) mod tidy
 
-.PHONY: studio-frontend-install
-studio-frontend-install:
-	@echo "$(BLUE)Installing ASC Studio frontend dependencies...$(NC)"
-	cd apps/studio/frontend && npm install
-
-.PHONY: studio-frontend-test
-studio-frontend-test:
-	@echo "$(BLUE)Running ASC Studio frontend tests...$(NC)"
-	cd apps/studio/frontend && npm run test -- --run
-
-.PHONY: studio-frontend-build
-studio-frontend-build:
-	@echo "$(BLUE)Building ASC Studio frontend assets...$(NC)"
-	cd apps/studio/frontend && npm run build
-
-.PHONY: studio-test
-studio-test:
-	@echo "$(BLUE)Running ASC Studio Go tests...$(NC)"
-	$(GO) test ./apps/studio/...
-
-.PHONY: studio-build
-studio-build:
-	@echo "$(BLUE)Building ASC Studio bootstrap binary...$(NC)"
-	$(GO) build ./apps/studio
-
 # Update dependencies
 .PHONY: update-deps
 update-deps:
@@ -228,8 +210,16 @@ check-agent-skills:
 	python3 ./scripts/test_check_agent_skills.py
 	python3 ./scripts/check_agent_skills.py
 
+.PHONY: check-openapi
+check-openapi:
+	@echo "$(BLUE)Checking OpenAPI generated artifacts...$(NC)"
+	python3 ./scripts/test_update_openapi_index.py
+	python3 ./scripts/test_generate_schema_index.py
+	python3 ./scripts/update-openapi-index.py --check
+	python3 ./scripts/generate-schema-index.py --check
+
 .PHONY: check-docs
-check-docs: check-command-docs check-repo-docs check-website-docs check-agent-skills
+check-docs: check-command-docs check-repo-docs check-website-docs check-agent-skills check-openapi
 
 .PHONY: check-wall-of-apps
 check-wall-of-apps:
@@ -289,18 +279,15 @@ help:
 	@echo "  tools          Install dev tools"
 	@echo "  install-hooks  Install local git hooks"
 	@echo "  deps           Install dependencies"
-	@echo "  studio-frontend-install  Install ASC Studio frontend dependencies"
-	@echo "  studio-frontend-test  Run ASC Studio frontend tests"
-	@echo "  studio-frontend-build  Build ASC Studio frontend assets"
-	@echo "  studio-test    Run ASC Studio Go tests"
-	@echo "  studio-build   Build ASC Studio bootstrap binary"
 	@echo "  update-deps    Update dependencies"
 	@echo "  update-openapi Update OpenAPI paths index"
+	@echo "  update-schema-index Update runtime schema index"
 	@echo "  generate-command-docs Generate docs/COMMANDS.md from live CLI help"
 	@echo "  check-command-docs Validate docs command lists against live CLI help"
 	@echo "  check-repo-docs Validate local links in repository markdown docs"
 	@echo "  check-website-docs Validate Mintlify website navigation, links, and CLI examples"
 	@echo "  check-agent-skills Validate repository-scoped Codex skills"
+	@echo "  check-openapi  Validate generated OpenAPI indexes"
 	@echo "  check-docs     Run all documentation checks"
 	@echo "  clean          Clean build artifacts"
 	@echo "  install        Install binary"

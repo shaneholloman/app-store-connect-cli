@@ -31,7 +31,7 @@ func XcodeCloudProductsCommand() *ffcli.Command {
 Examples:
   asc xcode-cloud products --app "APP_ID"
   asc xcode-cloud products list --app "APP_ID"
-  asc xcode-cloud products get --id "PRODUCT_ID"
+  asc xcode-cloud products view --id "PRODUCT_ID"
   asc xcode-cloud products delete --id "PRODUCT_ID" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -77,18 +77,18 @@ Examples:
 
 func XcodeCloudProductsGetCommand() *ffcli.Command {
 	return shared.BuildIDGetCommand(shared.IDGetCommandConfig{
-		FlagSetName: "get",
-		Name:        "get",
-		ShortUsage:  "asc xcode-cloud products get --id \"PRODUCT_ID\"",
-		ShortHelp:   "Get details for a product.",
-		LongHelp: `Get details for a product.
+		FlagSetName: "view",
+		Name:        "view",
+		ShortUsage:  "asc xcode-cloud products view --id \"PRODUCT_ID\"",
+		ShortHelp:   "View details for a product.",
+		LongHelp: `View details for a product.
 
 Examples:
-  asc xcode-cloud products get --id "PRODUCT_ID"
-  asc xcode-cloud products get --id "PRODUCT_ID" --output table`,
+  asc xcode-cloud products view --id "PRODUCT_ID"
+  asc xcode-cloud products view --id "PRODUCT_ID" --output table`,
 		IDFlag:      "id",
 		IDUsage:     "Product ID",
-		ErrorPrefix: "xcode-cloud products get",
+		ErrorPrefix: "xcode-cloud products view",
 		ContextTimeout: func(ctx context.Context) (context.Context, context.CancelFunc) {
 			return contextWithXcodeCloudTimeout(ctx, 0)
 		},
@@ -99,26 +99,73 @@ Examples:
 }
 
 func XcodeCloudProductsAppCommand() *ffcli.Command {
-	return shared.BuildIDGetCommand(shared.IDGetCommandConfig{
-		FlagSetName: "app",
-		Name:        "app",
-		ShortUsage:  "asc xcode-cloud products app --id \"PRODUCT_ID\"",
-		ShortHelp:   "Get the app for a product.",
+	fs := flag.NewFlagSet("app", flag.ExitOnError)
+	id := fs.String("id", "", "Product ID")
+	appInfoFields := fs.String("app-info-fields", "", "Sparse fields for included app info records: kidsAgeBand (deprecated; prefer age-rating data)")
+	iapFields := fs.String("iap-fields", "", "Sparse fields for included in-app purchases: versions")
+	subscriptionGroupFields := fs.String("subscription-group-fields", "", "Sparse fields for included subscription groups: versions")
+	output := shared.BindOutputFlags(fs)
+
+	return &ffcli.Command{
+		Name:       "app",
+		ShortUsage: "asc xcode-cloud products app --id \"PRODUCT_ID\"",
+		ShortHelp:  "Get the app for a product.",
 		LongHelp: `Get the app for a product.
 
 Examples:
   asc xcode-cloud products app --id "PRODUCT_ID"
+  asc xcode-cloud products app --id "PRODUCT_ID" --app-info-fields kidsAgeBand --iap-fields versions
   asc xcode-cloud products app --id "PRODUCT_ID" --output table`,
-		IDFlag:      "id",
-		IDUsage:     "Product ID",
-		ErrorPrefix: "xcode-cloud products app",
-		ContextTimeout: func(ctx context.Context) (context.Context, context.CancelFunc) {
-			return contextWithXcodeCloudTimeout(ctx, 0)
+		FlagSet:   fs,
+		UsageFunc: shared.DefaultUsageFunc,
+		Exec: func(ctx context.Context, args []string) error {
+			idValue := strings.TrimSpace(*id)
+			if idValue == "" {
+				return shared.UsageError("--id is required")
+			}
+			appInfoFieldValues, err := normalizeCiProductAppSparseField(fs, *appInfoFields, ciProductAppInfoSparseFields441, "--app-info-fields")
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+			iapFieldValues, err := normalizeCiProductAppSparseField(fs, *iapFields, ciProductAppInAppPurchaseSparseFields441, "--iap-fields")
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+			groupFieldValues, err := normalizeCiProductAppSparseField(fs, *subscriptionGroupFields, ciProductAppSubscriptionGroupSparseFields441, "--subscription-group-fields")
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+
+			client, err := shared.GetASCClient()
+			if err != nil {
+				return fmt.Errorf("xcode-cloud products app: %w", err)
+			}
+			requestCtx, cancel := contextWithXcodeCloudTimeout(ctx, 0)
+			defer cancel()
+
+			includeValues := []string{}
+			if len(appInfoFieldValues) > 0 {
+				includeValues = addCiProductAppInclude(includeValues, "appInfos")
+			}
+			if len(iapFieldValues) > 0 {
+				includeValues = addCiProductAppInclude(includeValues, "inAppPurchases")
+			}
+			if len(groupFieldValues) > 0 {
+				includeValues = addCiProductAppInclude(includeValues, "subscriptionGroups")
+			}
+			resp, err := client.GetCiProductApp(
+				requestCtx, idValue,
+				asc.WithCiProductAppAppInfoFields(appInfoFieldValues),
+				asc.WithCiProductAppInAppPurchaseFields(iapFieldValues),
+				asc.WithCiProductAppSubscriptionGroupFields(groupFieldValues),
+				asc.WithCiProductAppInclude(includeValues),
+			)
+			if err != nil {
+				return fmt.Errorf("xcode-cloud products app: failed to fetch: %w", err)
+			}
+			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
 		},
-		Fetch: func(ctx context.Context, client *asc.Client, id string) (any, error) {
-			return client.GetCiProductApp(ctx, id)
-		},
-	})
+	}
 }
 
 func XcodeCloudProductsBuildRunsCommand() *ffcli.Command {
@@ -403,7 +450,7 @@ func XcodeCloudMacOSVersionsCommand() *ffcli.Command {
 Examples:
   asc xcode-cloud macos-versions
   asc xcode-cloud macos-versions list
-  asc xcode-cloud macos-versions get --id "MACOS_VERSION_ID"
+  asc xcode-cloud macos-versions view --id "MACOS_VERSION_ID"
   asc xcode-cloud macos-versions xcode-versions --id "MACOS_VERSION_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -443,18 +490,18 @@ Examples:
 
 func XcodeCloudMacOSVersionsGetCommand() *ffcli.Command {
 	return shared.BuildIDGetCommand(shared.IDGetCommandConfig{
-		FlagSetName: "get",
-		Name:        "get",
-		ShortUsage:  "asc xcode-cloud macos-versions get --id \"MACOS_VERSION_ID\"",
-		ShortHelp:   "Get details for a macOS version.",
-		LongHelp: `Get details for a macOS version.
+		FlagSetName: "view",
+		Name:        "view",
+		ShortUsage:  "asc xcode-cloud macos-versions view --id \"MACOS_VERSION_ID\"",
+		ShortHelp:   "View details for a macOS version.",
+		LongHelp: `View details for a macOS version.
 
 Examples:
-  asc xcode-cloud macos-versions get --id "MACOS_VERSION_ID"
-  asc xcode-cloud macos-versions get --id "MACOS_VERSION_ID" --output table`,
+  asc xcode-cloud macos-versions view --id "MACOS_VERSION_ID"
+  asc xcode-cloud macos-versions view --id "MACOS_VERSION_ID" --output table`,
 		IDFlag:      "id",
 		IDUsage:     "macOS version ID",
-		ErrorPrefix: "xcode-cloud macos-versions get",
+		ErrorPrefix: "xcode-cloud macos-versions view",
 		ContextTimeout: func(ctx context.Context) (context.Context, context.CancelFunc) {
 			return contextWithXcodeCloudTimeout(ctx, 0)
 		},
@@ -530,8 +577,8 @@ func XcodeCloudXcodeVersionsCommand() *ffcli.Command {
 Examples:
   asc xcode-cloud xcode-versions
   asc xcode-cloud xcode-versions list
-  asc xcode-cloud xcode-versions get --id \"XCODE_VERSION_ID\"
-  asc xcode-cloud xcode-versions macos-versions --id \"XCODE_VERSION_ID\"`,
+  asc xcode-cloud xcode-versions view --id "XCODE_VERSION_ID"
+  asc xcode-cloud xcode-versions macos-versions --id "XCODE_VERSION_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -570,18 +617,18 @@ Examples:
 
 func XcodeCloudXcodeVersionsGetCommand() *ffcli.Command {
 	return shared.BuildIDGetCommand(shared.IDGetCommandConfig{
-		FlagSetName: "get",
-		Name:        "get",
-		ShortUsage:  "asc xcode-cloud xcode-versions get --id \"XCODE_VERSION_ID\"",
-		ShortHelp:   "Get details for an Xcode version.",
-		LongHelp: `Get details for an Xcode version.
+		FlagSetName: "view",
+		Name:        "view",
+		ShortUsage:  "asc xcode-cloud xcode-versions view --id \"XCODE_VERSION_ID\"",
+		ShortHelp:   "View details for an Xcode version.",
+		LongHelp: `View details for an Xcode version.
 
 Examples:
-  asc xcode-cloud xcode-versions get --id "XCODE_VERSION_ID"
-  asc xcode-cloud xcode-versions get --id "XCODE_VERSION_ID" --output table`,
+  asc xcode-cloud xcode-versions view --id "XCODE_VERSION_ID"
+  asc xcode-cloud xcode-versions view --id "XCODE_VERSION_ID" --output table`,
 		IDFlag:      "id",
 		IDUsage:     "Xcode version ID",
-		ErrorPrefix: "xcode-cloud xcode-versions get",
+		ErrorPrefix: "xcode-cloud xcode-versions view",
 		ContextTimeout: func(ctx context.Context) (context.Context, context.CancelFunc) {
 			return contextWithXcodeCloudTimeout(ctx, 0)
 		},
@@ -600,9 +647,9 @@ func XcodeCloudXcodeVersionsMacOSVersionsCommand() *ffcli.Command {
 		LongHelp: `List macOS versions for an Xcode version.
 
 Examples:
-  asc xcode-cloud xcode-versions macos-versions --id \"XCODE_VERSION_ID\"
-  asc xcode-cloud xcode-versions macos-versions --id \"XCODE_VERSION_ID\" --limit 50
-  asc xcode-cloud xcode-versions macos-versions --id \"XCODE_VERSION_ID\" --paginate`,
+  asc xcode-cloud xcode-versions macos-versions --id "XCODE_VERSION_ID"
+  asc xcode-cloud xcode-versions macos-versions --id "XCODE_VERSION_ID" --limit 50
+  asc xcode-cloud xcode-versions macos-versions --id "XCODE_VERSION_ID" --paginate`,
 		ParentFlag:  "id",
 		ParentUsage: "Xcode version ID",
 		LimitMax:    200,
