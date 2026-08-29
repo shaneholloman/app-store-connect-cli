@@ -26,7 +26,10 @@ var (
 	statusValidateCredential = validateStoredCredential
 	listStoredCredentials    = authsvc.ListCredentials
 	listCredentialSummaries  = authsvc.ListCredentialSummaries
+	keychainAvailable        = authsvc.KeychainAvailable
 	migrateKeychainToConfig  = authsvc.MigrateKeychainToConfig
+	removeStoredCredential   = authsvc.RemoveCredentials
+	removeStoredCredentials  = authsvc.RemoveAllCredentials
 )
 
 // Auth command factory
@@ -42,14 +45,17 @@ func AuthCommand() *ffcli.Command {
 Authentication is handled via App Store Connect API keys. Generate keys at:
 https://appstoreconnect.apple.com/access/integrations/api
 
-Credentials are stored in the system keychain when available, with a config fallback.
-A repo-local ./.asc/config.json (if present) takes precedence.
+Credentials can come from the system keychain, the active config file, or environment variables.
 
-Credential resolution order:
-  1) Selected profile (keychain/config)
-  2) Environment variables (fallback for missing fields)
+Credential resolution:
+  - --profile or ASC_PROFILE selects a stored profile and disables the env-only fast path.
+  - With no profile and keychain bypass disabled, a complete environment set skips stored lookup.
+  - After stored selection succeeds, environment variables can fill eligible missing fields.
+  - ASC_BYPASS_KEYCHAIN skips keychain; env fallback follows only missing/default-selection config errors.
 
-Use --strict-auth or ASC_STRICT_AUTH=true (also: 1, yes, y, on) to fail when sources are mixed.
+Config selection: ASC_CONFIG_PATH; otherwise nearest ancestor .asc/config.json; otherwise ~/.asc/config.json.
+
+Use --strict-auth or ASC_STRICT_AUTH=true (also: 1, yes, y, on) to reject split-source fields.
 Set ASC_BYPASS_KEYCHAIN to 1/true/yes/on to bypass keychain.
 
 Use "asc auth status" to see which credentials/profile are currently active.
@@ -57,6 +63,7 @@ Use "asc auth status" to see which credentials/profile are currently active.
 Examples:
   asc auth status
   asc auth status --verbose
+  asc --profile work apps list
   asc auth switch --name work
   asc auth export-to-config --confirm`,
 		FlagSet:   fs,
@@ -184,7 +191,11 @@ Examples:
 			}
 
 			report := authsvc.DoctorWithMigrationResolver(
-				authsvc.DoctorOptions{Fix: *fix && *confirm},
+				authsvc.DoctorOptions{
+					Fix:        *fix && *confirm,
+					Profile:    shared.ResolveProfileName(),
+					StrictAuth: shared.StrictAuthEnabled(),
+				},
 				doctorMigrationSuggestionResolver(),
 			)
 			if normalizedOutput == "json" {
@@ -344,23 +355,23 @@ func validateStoredCredential(ctx context.Context, cred authsvc.Credential) erro
 	if pemValue := strings.TrimSpace(cred.PrivateKeyPEM); pemValue != "" {
 		privateKey, err = authsvc.LoadPrivateKeyFromPEM([]byte(pemValue))
 		if err != nil {
-			return fmt.Errorf("invalid private key: %w", err)
+			return withPrivateKeyDiagnostic(fmt.Errorf("invalid private key: %w", err), err)
 		}
 		client, err = asc.NewClientFromPEM(cred.KeyID, signingIssuerID, pemValue)
 		if err != nil {
-			return err
+			return withPrivateKeyDiagnostic(err, err)
 		}
 	} else {
 		if err := authsvc.ValidateKeyFile(cred.PrivateKeyPath); err != nil {
-			return fmt.Errorf("invalid private key: %w", err)
+			return withPrivateKeyDiagnostic(fmt.Errorf("invalid private key: %w", err), err)
 		}
 		privateKey, err = authsvc.LoadPrivateKey(cred.PrivateKeyPath)
 		if err != nil {
-			return fmt.Errorf("failed to load private key: %w", err)
+			return withPrivateKeyDiagnostic(fmt.Errorf("failed to load private key: %w", err), err)
 		}
 		client, err = asc.NewClient(cred.KeyID, signingIssuerID, cred.PrivateKeyPath)
 		if err != nil {
-			return err
+			return withPrivateKeyDiagnostic(err, err)
 		}
 	}
 	if _, err := asc.GenerateJWT(cred.KeyID, signingIssuerID, privateKey); err != nil {
@@ -370,7 +381,7 @@ func validateStoredCredential(ctx context.Context, cred authsvc.Credential) erro
 		if errors.Is(err, asc.ErrForbidden) {
 			return &permissionWarning{err: err}
 		}
-		return err
+		return withNetworkDiagnostic(err, err)
 	}
 	return nil
 }
@@ -385,17 +396,49 @@ func credentialSigningIssuerID(cred authsvc.Credential) string {
 func validateLoginCredentials(ctx context.Context, keyID, issuerID, keyPath string, network bool) error {
 	privateKey, err := authsvc.LoadPrivateKey(keyPath)
 	if err != nil {
-		return fmt.Errorf("failed to load private key: %w", err)
+		return withPrivateKeyDiagnostic(fmt.Errorf("failed to load private key: %w", err), err)
 	}
 	if _, err := loginJWTGenerator(keyID, issuerID, privateKey); err != nil {
-		return fmt.Errorf("failed to generate JWT: %w", err)
+		return shared.WithDiagnostic(fmt.Errorf("failed to generate JWT: %w", err), shared.DiagnosticInternalError, "--private-key")
 	}
 	if network {
 		if err := loginNetworkValidate(ctx, keyID, issuerID, keyPath); err != nil {
-			return fmt.Errorf("network validation failed: %w", err)
+			return withNetworkDiagnostic(fmt.Errorf("network validation failed: %w", err), err)
 		}
 	}
 	return nil
+}
+
+func withNetworkDiagnostic(rendered, cause error) error {
+	code := shared.DiagnosticRequestFailed
+	if errors.Is(cause, asc.ErrUnauthorized) {
+		code = shared.DiagnosticAuthenticationRejected
+	}
+	return shared.WithDiagnostic(rendered, code, "")
+}
+
+func withPrivateKeyDiagnostic(rendered, cause error) error {
+	kind, ok := authsvc.PrivateKeyErrorKindOf(cause)
+	if !ok {
+		return rendered
+	}
+
+	code := shared.DiagnosticRequestFailed
+	switch kind {
+	case authsvc.PrivateKeyNotFound:
+		code = shared.DiagnosticFileNotFound
+	case authsvc.PrivateKeyPermissionDenied:
+		code = shared.DiagnosticFilePermissionDenied
+	case authsvc.PrivateKeyPermissionsInsecure:
+		code = shared.DiagnosticFilePermissionsInsecure
+	case authsvc.PrivateKeyInvalidFormat:
+		code = shared.DiagnosticFileInvalidFormat
+	case authsvc.PrivateKeyUnsupportedAlgorithm:
+		code = shared.DiagnosticKeyAlgorithmUnsupported
+	case authsvc.PrivateKeyAccessFailed:
+		code = shared.DiagnosticRequestFailed
+	}
+	return shared.WithDiagnostic(rendered, code, "--private-key")
 }
 
 func validateLoginNetwork(ctx context.Context, keyID, issuerID, keyPath string) error {
@@ -437,6 +480,35 @@ func loginStorageMessage(bypassKeychain, local bool) (string, error) {
 	return fmt.Sprintf("System keychain unavailable; storing credentials in config file at %s", path), nil
 }
 
+// reportLoginCredentialShapes fails only when the key ID is an issuer UUID and
+// the issuer ID is not, which can only mean the two values were swapped.
+// Everything less certain is written to stderr as a warning so valid but
+// unusual credentials never block a login.
+func reportLoginCredentialShapes(keyID, issuerID string, individualKey bool) error {
+	if individualKey {
+		return nil
+	}
+	findings := authsvc.InspectCredentialShapes(
+		authsvc.CredentialShapeLabels{KeyID: "--key-id", IssuerID: "--issuer-id"},
+		keyID,
+		issuerID,
+	)
+	for _, finding := range findings {
+		if !finding.DefiniteSwap {
+			continue
+		}
+		return shared.WithDiagnostic(
+			shared.UsageErrorf("auth login: %s. %s", finding.Message, finding.Recommendation),
+			shared.DiagnosticInvalidInput,
+			finding.Field,
+		)
+	}
+	for _, finding := range findings {
+		fmt.Fprintf(os.Stderr, "Warning: %s. %s\n", finding.Message, finding.Recommendation)
+	}
+	return nil
+}
+
 // AuthLogin command factory
 func AuthLoginCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("auth login", flag.ExitOnError)
@@ -476,37 +548,44 @@ so commands continue to work even if the original .p8 file is removed.`,
 		Exec: func(ctx context.Context, args []string) error {
 			bypassKeychainEnabled := *bypassKeychain || authsvc.ShouldBypassKeychain()
 			if *local && !bypassKeychainEnabled {
-				return shared.UsageError("--local requires --bypass-keychain or ASC_BYPASS_KEYCHAIN set to 1/true/yes/on")
+				return shared.WithDiagnostic(shared.UsageError("--local requires --bypass-keychain or ASC_BYPASS_KEYCHAIN set to 1/true/yes/on"), shared.DiagnosticInvalidInput, "--local")
 			}
-			if *name == "" {
+			if strings.TrimSpace(*name) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
-			if *keyID == "" {
+			trimmedKeyID := strings.TrimSpace(*keyID)
+			if trimmedKeyID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --key-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--key-id")
 			}
+			*keyID = trimmedKeyID
 			normalizedKeyType := config.NormalizeCredentialKeyType(*keyType)
 			if !config.IsValidCredentialKeyType(normalizedKeyType) {
-				return shared.UsageError("--key-type must be one of: team, individual")
+				return shared.WithDiagnostic(shared.UsageError("--key-type must be one of: team, individual"), shared.DiagnosticInvalidInput, "--key-type")
 			}
-			if normalizedKeyType == config.CredentialKeyTypeTeam && *issuerID == "" {
+			trimmedIssuerID := strings.TrimSpace(*issuerID)
+			if normalizedKeyType == config.CredentialKeyTypeTeam && trimmedIssuerID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --issuer-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--issuer-id")
 			}
-			if normalizedKeyType == config.CredentialKeyTypeIndividual && strings.TrimSpace(*issuerID) != "" {
-				return shared.UsageError("--issuer-id must be omitted when --key-type individual")
+			if normalizedKeyType == config.CredentialKeyTypeIndividual && trimmedIssuerID != "" {
+				return shared.WithDiagnostic(shared.UsageError("--issuer-id must be omitted when --key-type individual"), shared.DiagnosticConflictingInput, "--issuer-id")
 			}
-			if *keyPath == "" {
+			*issuerID = trimmedIssuerID
+			if strings.TrimSpace(*keyPath) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --private-key is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--private-key")
 			}
 			if *skipValidation && *network {
-				return shared.UsageError("--skip-validation and --network are mutually exclusive")
+				return shared.WithDiagnostic(shared.UsageError("--skip-validation and --network are mutually exclusive"), shared.DiagnosticConflictingInput, "--skip-validation")
+			}
+			if err := reportLoginCredentialShapes(*keyID, *issuerID, normalizedKeyType == config.CredentialKeyTypeIndividual); err != nil {
+				return err
 			}
 
 			if err := authsvc.ValidateKeyFile(*keyPath); err != nil {
-				return shared.UsageErrorf("auth login: invalid private key: %v", err)
+				return withPrivateKeyDiagnostic(shared.UsageErrorf("auth login: invalid private key: %v", err), err)
 			}
 
 			if !*skipValidation {
@@ -542,7 +621,7 @@ so commands continue to work even if the original .p8 file is removed.`,
 				}
 			}
 
-			fmt.Printf("Successfully registered API key '%s'\n", *name)
+			fmt.Printf("Successfully registered API key '%s'\n", strings.TrimSpace(*name))
 			return nil
 		},
 	}
@@ -593,17 +672,11 @@ Examples:
 			if !*confirm {
 				return shared.UsageError("--confirm is required")
 			}
-			if strings.TrimSpace(*privateKeyDir) == "" && *privateKeyDir != "" {
-				return shared.UsageError("--private-key-dir cannot be blank")
-			}
-			if strings.TrimSpace(*configPath) == "" && *configPath != "" {
-				return shared.UsageError("--config cannot be blank")
-			}
-			if *local && strings.TrimSpace(*configPath) != "" {
+			if *local && *configPath != "" {
 				return shared.UsageError("--local and --config are mutually exclusive")
 			}
 
-			targetConfigPath := strings.TrimSpace(*configPath)
+			targetConfigPath := *configPath
 			if targetConfigPath == "" {
 				if *local {
 					targetConfigPath, err = config.LocalPath()
@@ -622,7 +695,7 @@ Examples:
 
 			result, err := migrateKeychainToConfig(authsvc.MigrateKeychainToConfigOptions{
 				ConfigPath:     targetConfigPath,
-				PrivateKeyDir:  strings.TrimSpace(*privateKeyDir),
+				PrivateKeyDir:  *privateKeyDir,
 				RemoveKeychain: *removeKeychain,
 			})
 			if err != nil {
@@ -640,7 +713,7 @@ Examples:
 
 func printMigrateToConfigResult(result authsvc.MigrateKeychainToConfigResult) {
 	fmt.Printf("Migrated %d credential(s) to %s\n", len(result.Migrated), result.ConfigPath)
-	if strings.TrimSpace(result.PrivateKeyDir) != "" {
+	if result.PrivateKeyDir != "" {
 		fmt.Printf("Private key directory: %s\n", result.PrivateKeyDir)
 	}
 	if len(result.Migrated) > 0 {
@@ -702,7 +775,7 @@ Examples:
 			trimmedName := strings.TrimSpace(*name)
 			if trimmedName == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			credentials, err := listCredentialSummaries()
@@ -738,25 +811,42 @@ Examples:
 	}
 }
 
+const authLogoutConfirmDeprecationWarning = "Warning: auth logout without --confirm is deprecated and will be rejected in 5.0.0; pass --confirm to acknowledge credential removal."
+
 // AuthLogout command factory
 func AuthLogoutCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("auth logout", flag.ExitOnError)
-	all := fs.Bool("all", false, "Remove all stored credentials (default)")
+	all := fs.Bool("all", false, "Remove all stored credentials")
 	name := fs.String("name", "", "Remove a named credential")
+	confirm := fs.Bool("confirm", false, "Confirm credential removal (required in 5.0.0)")
 
 	return &ffcli.Command{
 		Name:       "logout",
-		ShortUsage: "asc auth logout [flags]",
+		ShortUsage: "asc auth logout [--name NAME | --all] [--confirm]",
 		ShortHelp:  "Remove stored API credentials.",
 		LongHelp: `Remove stored API credentials.
 
+Omitting --name continues to remove all credentials during the compatibility
+window. Pass --confirm now; it will be required in 5.0.0.
+
 Examples:
-  asc auth logout
-  asc auth logout --all
-  asc auth logout --name "MyKey"`,
+  asc auth logout --all --confirm
+  asc auth logout --name "MyKey" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := shared.RejectPositionalArgs(args); err != nil {
+				return err
+			}
+			confirmProvided := false
+			fs.Visit(func(f *flag.Flag) {
+				if f.Name == "confirm" {
+					confirmProvided = true
+				}
+			})
+			if confirmProvided && !*confirm {
+				return shared.UsageError("--confirm must be true when specified")
+			}
 			trimmedName := strings.TrimSpace(*name)
 			if trimmedName == "" && *name != "" {
 				return shared.UsageError("--name cannot be blank")
@@ -764,16 +854,19 @@ Examples:
 			if trimmedName != "" && *all {
 				return shared.UsageError("--all and --name are mutually exclusive")
 			}
+			if !*confirm {
+				fmt.Fprintln(os.Stderr, authLogoutConfirmDeprecationWarning)
+			}
 
 			if trimmedName != "" {
-				if err := authsvc.RemoveCredentials(trimmedName); err != nil {
+				if err := removeStoredCredential(trimmedName); err != nil {
 					return fmt.Errorf("auth logout: failed to remove credentials: %w", err)
 				}
 				fmt.Printf("Successfully removed stored credential '%s'\n", trimmedName)
 				return nil
 			}
 
-			if err := authsvc.RemoveAllCredentials(); err != nil {
+			if err := removeStoredCredentials(); err != nil {
 				return fmt.Errorf("auth logout: failed to remove credentials: %w", err)
 			}
 
@@ -827,7 +920,7 @@ Examples:
 			}
 
 			bypassKeychain := authsvc.ShouldBypassKeychain()
-			keychainAvailable, keychainErr := authsvc.KeychainAvailable()
+			isKeychainAvailable, keychainErr := keychainAvailable()
 			configPath, configErr := config.Path()
 			storageBackend := "System Keychain"
 			storageLocation := "system keychain"
@@ -843,7 +936,7 @@ Examples:
 					storageLocation = configPath
 				}
 				warnings = append(warnings, "Keychain bypassed via ASC_BYPASS_KEYCHAIN (truthy values: 1/true/yes/on).")
-			} else if !keychainAvailable {
+			} else if !isKeychainAvailable {
 				storageBackend = "Config File"
 				storageLocation = "unknown"
 				if configErr == nil {
@@ -863,7 +956,7 @@ Examples:
 					break
 				}
 			}
-			if hasConfigCreds && keychainAvailable && !bypassKeychain {
+			if hasConfigCreds && isKeychainAvailable && !bypassKeychain {
 				warnings = append(warnings, "Some credentials are stored in config file (less secure).")
 			}
 
@@ -874,7 +967,7 @@ Examples:
 					fmt.Printf("Warning: %s\n", warning)
 				}
 				if *verbose {
-					fmt.Printf("Keychain available: %t\n", keychainAvailable)
+					fmt.Printf("Keychain available: %t\n", isKeychainAvailable)
 					if keychainErr != nil {
 						fmt.Printf("Keychain error: %v\n", keychainErr)
 					}
@@ -885,11 +978,36 @@ Examples:
 				fmt.Println()
 			}
 
+			profile := shared.ResolveProfileName()
+			envKeyID := strings.TrimSpace(os.Getenv("ASC_KEY_ID"))
+			envIssuerID := strings.TrimSpace(os.Getenv("ASC_ISSUER_ID"))
+			envKeyTypeRaw := strings.TrimSpace(os.Getenv("ASC_KEY_TYPE"))
+			envKeyType := config.NormalizeCredentialKeyType(envKeyTypeRaw)
+			envKeyTypeValid := envKeyTypeRaw == "" || config.IsValidCredentialKeyType(envKeyType)
+			hasKeyEnv := strings.TrimSpace(os.Getenv("ASC_PRIVATE_KEY_PATH")) != "" ||
+				strings.TrimSpace(os.Getenv(shared.PrivateKeyEnvVar)) != "" ||
+				strings.TrimSpace(os.Getenv(shared.PrivateKeyBase64EnvVar)) != ""
+			envProvided := envKeyID != "" || envIssuerID != "" || hasKeyEnv || envKeyTypeRaw != ""
+			envComplete := shared.HasCompleteEnvironmentCredentials()
+			envUsable := envComplete
+			if profile == "" && !bypassKeychain && envComplete {
+				envUsable = shared.CanResolveCompleteEnvironmentCredentials()
+			}
+			environmentNote := authStatusEnvironmentNote(profile, bypassKeychain, envProvided, envUsable, envKeyTypeValid)
+			activeEnvironmentSource := profile == "" && !bypassKeychain && envUsable && envKeyTypeValid
+
 			validationFailures := 0
+			var validationDiagnostic shared.Diagnostic
+			hasValidationDiagnostic := false
+			validationDiagnosticConsistent := true
 			credentialOutput := make([]authStatusCredentialOutput, 0, len(credentials))
 			if len(credentials) == 0 {
 				if normalizedOutput == "table" {
-					fmt.Println("No credentials stored. Run 'asc auth login' to get started.")
+					if activeEnvironmentSource {
+						fmt.Println("No stored credentials found.")
+					} else {
+						fmt.Println("No credentials stored. Run 'asc auth login' to get started.")
+					}
 				}
 			} else {
 				if normalizedOutput == "table" {
@@ -918,6 +1036,16 @@ Examples:
 								validationFailures++
 								credentialEntry.Validation = "failed"
 								credentialEntry.ValidationError = err.Error()
+								if diagnostic, ok := shared.DiagnosticFromError(err); ok {
+									if !hasValidationDiagnostic {
+										validationDiagnostic = diagnostic
+										hasValidationDiagnostic = true
+									} else if diagnostic != validationDiagnostic {
+										validationDiagnosticConsistent = false
+									}
+								} else {
+									validationDiagnosticConsistent = false
+								}
 								if normalizedOutput == "table" {
 									fmt.Printf("    %s (Key ID: %s): failed (%v)\n", cred.Name, cred.KeyID, err)
 								}
@@ -933,21 +1061,6 @@ Examples:
 				}
 			}
 
-			profile := shared.ResolveProfileName()
-			envKeyID := strings.TrimSpace(os.Getenv("ASC_KEY_ID"))
-			envIssuerID := strings.TrimSpace(os.Getenv("ASC_ISSUER_ID"))
-			envKeyTypeRaw := strings.TrimSpace(os.Getenv("ASC_KEY_TYPE"))
-			envKeyType := config.NormalizeCredentialKeyType(envKeyTypeRaw)
-			envKeyTypeValid := envKeyTypeRaw == "" || config.IsValidCredentialKeyType(envKeyType)
-			hasKeyEnv := strings.TrimSpace(os.Getenv("ASC_PRIVATE_KEY_PATH")) != "" ||
-				strings.TrimSpace(os.Getenv(shared.PrivateKeyEnvVar)) != "" ||
-				strings.TrimSpace(os.Getenv(shared.PrivateKeyBase64EnvVar)) != ""
-			envProvided := envKeyID != "" || envIssuerID != "" || hasKeyEnv || envKeyTypeRaw != ""
-			envComplete := envKeyID != "" && hasKeyEnv &&
-				envKeyTypeValid &&
-				(envIssuerID != "" || config.IsIndividualCredentialKeyType(envKeyType))
-
-			environmentNote := authStatusEnvironmentNote(profile, bypassKeychain, envProvided, envComplete, envKeyTypeValid)
 			if normalizedOutput == "table" && environmentNote != "" {
 				fmt.Println(environmentNote)
 			}
@@ -965,7 +1078,7 @@ Examples:
 					ValidationFailures:             validationFailures,
 				}
 				if *verbose {
-					payload.KeychainAvailable = boolPointer(keychainAvailable)
+					payload.KeychainAvailable = boolPointer(isKeychainAvailable)
 					if keychainErr != nil {
 						payload.KeychainError = keychainErr.Error()
 					}
@@ -979,7 +1092,11 @@ Examples:
 			}
 
 			if *validate && validationFailures > 0 {
-				return shared.NewValidationReportedError(fmt.Errorf("auth status: validation failed for %d credential(s)", validationFailures))
+				validationError := error(fmt.Errorf("auth status: validation failed for %d credential(s)", validationFailures))
+				if hasValidationDiagnostic && validationDiagnosticConsistent {
+					validationError = shared.WithDiagnostic(validationError, validationDiagnostic.Code, validationDiagnostic.Parameter)
+				}
+				return shared.NewValidationReportedError(validationError)
 			}
 			return nil
 		},
@@ -1049,7 +1166,13 @@ func authStatusEnvironmentNote(profile string, bypassKeychain, envProvided, envC
 	if profile != "" && envProvided {
 		return fmt.Sprintf("Profile %q selected; environment credentials will be ignored.", profile)
 	}
-	if !bypassKeychain || !envProvided {
+	if !envProvided {
+		return ""
+	}
+	if !bypassKeychain {
+		if envComplete && envKeyTypeValid {
+			return "Complete environment credential fields take precedence when no profile is selected; stored credential lookup is skipped."
+		}
 		return ""
 	}
 	if !envKeyTypeValid {
@@ -1199,10 +1322,18 @@ Examples:
 
 func loadCredentialKey(cred shared.ResolvedAuthCredentials) (*ecdsa.PrivateKey, error) {
 	if pemValue := strings.TrimSpace(cred.KeyPEM); pemValue != "" {
-		return authsvc.LoadPrivateKeyFromPEM([]byte(pemValue))
+		privateKey, err := authsvc.LoadPrivateKeyFromPEM([]byte(pemValue))
+		if err != nil {
+			return nil, withPrivateKeyDiagnostic(err, err)
+		}
+		return privateKey, nil
 	}
 	if err := authsvc.ValidateKeyFile(cred.KeyPath); err != nil {
-		return nil, fmt.Errorf("invalid private key: %w", err)
+		return nil, withPrivateKeyDiagnostic(fmt.Errorf("invalid private key: %w", err), err)
 	}
-	return authsvc.LoadPrivateKey(cred.KeyPath)
+	privateKey, err := authsvc.LoadPrivateKey(cred.KeyPath)
+	if err != nil {
+		return nil, withPrivateKeyDiagnostic(err, err)
+	}
+	return privateKey, nil
 }

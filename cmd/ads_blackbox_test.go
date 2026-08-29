@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -8,6 +9,36 @@ import (
 	"strings"
 	"testing"
 )
+
+func TestOptimizeKeywordsDiscoverMissingAdsCredentialsWritesGuidanceToStderr(t *testing.T) {
+	binaryPath := buildASCBlackboxBinary(t)
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	command := exec.Command(
+		binaryPath,
+		"optimize", "keywords", "discover",
+		"--app", "1234567890",
+		"--country", "US",
+		"--output", "json",
+	)
+	command.Env = isolatedAdsBlackboxEnv(configPath)
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+
+	err := command.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("error = %v, want nonzero built-binary exit", err)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	for _, want := range []string{"optimize keywords discover", "--ad-account", "--ads-profile", "asc ads auth login"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want it to mention %q", stderr.String(), want)
+		}
+	}
+}
 
 func TestAdsUsageErrorsExitTwoWithBuiltBinary(t *testing.T) {
 	binaryPath := buildASCBlackboxBinary(t)
@@ -19,27 +50,27 @@ func TestAdsUsageErrorsExitTwoWithBuiltBinary(t *testing.T) {
 	}{
 		{
 			name:       "invalid endpoint output",
-			args:       []string{"ads", "campaigns", "--output", "xml"},
-			wantStderr: "unsupported format: xml",
+			args:       []string{"ads", "v5", "campaigns", "--output", "xml"},
+			wantStderr: `(got "xml")`,
 		},
 		{
 			name:       "unexpected endpoint arg",
-			args:       []string{"ads", "campaigns", "--output", "json", "unexpected"},
-			wantStderr: "unexpected argument(s): unexpected",
+			args:       []string{"ads", "v5", "campaigns", "--output", "json", "unexpected"},
+			wantStderr: "unknown command `asc ads v5 campaigns unexpected`",
 		},
 		{
 			name:       "missing destructive confirm",
-			args:       []string{"ads", "campaigns", "delete", "--campaign", "123"},
+			args:       []string{"ads", "v5", "campaigns", "delete", "--campaign", "123"},
 			wantStderr: "--confirm is required",
 		},
 		{
 			name:       "missing required query flag",
-			args:       []string{"ads", "apps", "search", "--org", "123456", "--output", "json"},
+			args:       []string{"ads", "v5", "apps", "search", "--org", "123456", "--output", "json"},
 			wantStderr: "--query is required",
 		},
 		{
 			name:       "invalid raw api method",
-			args:       []string{"ads", "api", "request", "--method", "PATCH", "--path", "v5/campaigns"},
+			args:       []string{"ads", "v5", "api", "request", "--method", "PATCH", "--path", "v5/campaigns"},
 			wantStderr: "--method must be one of: GET, POST, PUT, DELETE",
 		},
 	}
@@ -88,6 +119,7 @@ func isolatedAdsBlackboxEnv(configPath string) []string {
 		"ASC_ADS_PRIVATE_KEY",
 		"ASC_ADS_PRIVATE_KEY_B64",
 		"ASC_ADS_ORG_ID",
+		"ASC_ADS_AD_ACCOUNT_ID",
 		"ASC_ADS_PROFILE",
 		"ASC_ADS_BYPASS_KEYCHAIN",
 		"ASC_ADS_STRICT_AUTH",

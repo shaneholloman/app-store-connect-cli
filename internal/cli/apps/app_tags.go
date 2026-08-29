@@ -90,51 +90,57 @@ Examples:
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("app-tags list: --limit must be between 1 and 200")
+				return shared.UsageErrorf("app-tags list: --limit must be between 1 and 200")
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
-				return fmt.Errorf("app-tags list: %w", err)
+				return shared.UsageErrorf("app-tags list: %v", err)
 			}
 			if err := shared.ValidateSort(*sort, "name", "-name"); err != nil {
-				return fmt.Errorf("app-tags list: %w", err)
+				return shared.UsageErrorf("app-tags list: %v", err)
 			}
 			if *territoryLimit != 0 && (*territoryLimit < 1 || *territoryLimit > 50) {
-				return fmt.Errorf("app-tags list: --territory-limit must be between 1 and 50")
+				return shared.UsageErrorf("app-tags list: --territory-limit must be between 1 and 50")
 			}
 
 			visibleValues, err := normalizeAppTagVisibilityFilter(*visible)
 			if err != nil {
-				return fmt.Errorf("app-tags list: %w", err)
+				return shared.UsageErrorf("app-tags list: %v", err)
 			}
 
 			fieldsValue, err := normalizeAppTagFields(*fields)
 			if err != nil {
-				return fmt.Errorf("app-tags list: %w", err)
+				return shared.UsageErrorf("app-tags list: %v", err)
 			}
 
 			includeValues, err := normalizeAppTagInclude(*include)
 			if err != nil {
-				return fmt.Errorf("app-tags list: %w", err)
+				return shared.UsageErrorf("app-tags list: %v", err)
 			}
 
 			territoryFieldsValue, err := normalizeTerritoryFields(*territoryFields)
 			if err != nil {
-				return fmt.Errorf("app-tags list: %w", err)
+				return shared.UsageErrorf("app-tags list: %v", err)
 			}
 
 			if len(territoryFieldsValue) > 0 && !shared.HasInclude(includeValues, "territories") {
-				fmt.Fprintf(os.Stderr, "Error: --territory-fields requires --include territories\n\n")
-				return flag.ErrHelp
+				return shared.WithDiagnostic(
+					shared.UsageErrorf("--territory-fields requires --include territories"),
+					shared.DiagnosticConflictingInput,
+					"--territory-fields",
+				)
 			}
 			if *territoryLimit != 0 && !shared.HasInclude(includeValues, "territories") {
-				fmt.Fprintf(os.Stderr, "Error: --territory-limit requires --include territories\n\n")
-				return flag.ErrHelp
+				return shared.WithDiagnostic(
+					shared.UsageErrorf("--territory-limit requires --include territories"),
+					shared.DiagnosticConflictingInput,
+					"--territory-limit",
+				)
 			}
 
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := shared.GetASCClient()
@@ -221,13 +227,13 @@ Examples:
 			trimmedID := strings.TrimSpace(*tagID)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			if *territoryLimit != 0 && (*territoryLimit < 1 || *territoryLimit > 50) {
@@ -339,7 +345,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*tagID)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			visited := map[string]bool{}
@@ -348,11 +354,11 @@ Examples:
 			})
 			if !visited["visible-in-app-store"] {
 				fmt.Fprintln(os.Stderr, "Error: --visible-in-app-store is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--visible-in-app-store")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -405,7 +411,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*tagID)
 			if trimmedID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("app-tags territories: --limit must be between 1 and 200")
@@ -487,7 +493,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*tagID)
 			if trimmedID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("app-tags territories-links: --limit must be between 1 and 200")
@@ -571,7 +577,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := shared.GetASCClient()

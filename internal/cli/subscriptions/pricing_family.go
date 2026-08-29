@@ -26,7 +26,8 @@ Examples:
   asc subscriptions pricing price-points list --subscription-id "SUB_ID" --territory "United States"
   asc subscriptions pricing availability view --subscription-id "SUB_ID"
   asc subscriptions pricing monthly-commitment list --subscription-id "SUB_ID"
-  asc subscriptions pricing equalize --subscription-id "SUB_ID" --base-price "3.49"`,
+  asc subscriptions pricing equalize --subscription-id "SUB_ID" --base-price "3.49"
+  asc subscriptions pricing derive --source-subscription-id "MONTHLY_ID" --target-subscription-id "YEARLY_ID" --multiplier "10" --dry-run`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -36,6 +37,7 @@ Examples:
 			SubscriptionsPricingAvailabilityCommand(),
 			SubscriptionsPricingMonthlyCommitmentCommand(),
 			SubscriptionsPricingEqualizeCommand(),
+			SubscriptionsPricingDeriveCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -56,7 +58,7 @@ func SubscriptionsPricingPricesCommand() *ffcli.Command {
 Examples:
   asc subscriptions pricing prices list --subscription-id "SUB_ID"
   asc subscriptions pricing prices set --subscription-id "SUB_ID" --price-point "PRICE_POINT_ID"
-  asc subscriptions pricing prices import --subscription-id "SUB_ID" --input "./prices.csv"
+  asc subscriptions pricing prices import --subscription-id "SUB_ID" --input "./prices.csv" --confirm
   asc subscriptions pricing prices delete --price-id "PRICE_ID" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -109,12 +111,7 @@ func SubscriptionsPricingPricePointsCommand() *ffcli.Command {
 
 // SubscriptionsPricingAvailabilityCommand returns the canonical availability subgroup.
 func SubscriptionsPricingAvailabilityCommand() *ffcli.Command {
-	cmd := wrapSubscriptionsCommand(
-		SubscriptionsAvailabilityCommand(),
-		"asc subscriptions availability",
-		"asc subscriptions pricing availability",
-		"availability",
-		"Manage subscription availability.",
-	)
+	cmd := SubscriptionsAvailabilityCommand()
+	cmd.ShortHelp = "Manage subscription availability."
 	return cmd
 }

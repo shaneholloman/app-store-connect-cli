@@ -39,6 +39,7 @@ Do not memorize flags. Always use `--help` for the current interface.
 |------|---------|
 | Check auth status | `asc auth status` |
 | Run auth doctor | `asc doctor --output json` |
+| Check Apple service health | `asc system-status --service "App Store Connect"` |
 | Check account health | `asc account status` |
 | Generate ASC.md | `asc init` |
 | Create an app (web flow) | `asc web apps create --name "My App" --bundle-id "com.example.app" --sku "SKU123"` |
@@ -46,7 +47,7 @@ Do not memorize flags. Always use `--help` for the current interface.
 | List builds | `asc builds list --app "APP_ID"` |
 | List TestFlight groups | `asc testflight groups list --app "APP_ID"` |
 | List internal TestFlight groups | `asc testflight groups list --app "APP_ID" --internal` |
-| Stage a release (pre-submit) | `asc release stage --app "APP_ID" --version "VERSION" --build "BUILD_ID" --copy-metadata-from "PREVIOUS_VERSION" --dry-run` |
+| Stage a release (pre-submit) | `asc release stage --app "APP_ID" --version "VERSION" --build-id "BUILD_ID" --copy-metadata-from "PREVIOUS_VERSION" --dry-run` |
 | Publish to App Store (canonical) | `asc publish appstore --app "APP_ID" --ipa "./App.ipa" --version "VERSION" --submit --confirm` |
 | Review status | `asc review status --app "APP_ID"` |
 | Review blockers | `asc review doctor --app "APP_ID"` |
@@ -68,17 +69,17 @@ asc builds list --app "APP_ID" --sort -uploadedDate --limit 5
 
 ```bash
 # Dry-run the staging plan using metadata carry-forward
-asc release stage --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --copy-metadata-from "0.9.0" --dry-run
+asc release stage --app "APP_ID" --version "1.0.0" --build-id "BUILD_ID" --copy-metadata-from "0.9.0" --dry-run
 
 # Stage the version without submitting it for review yet
-asc release stage --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --copy-metadata-from "0.9.0" --confirm
+asc release stage --app "APP_ID" --version "1.0.0" --build-id "BUILD_ID" --copy-metadata-from "0.9.0" --confirm
 ```
 
 ### Publish to the App Store (canonical upload + submit flow)
 
 ```bash
 # Optionally stage metadata/build prep without submitting yet
-asc release stage --app "APP_ID" --version "1.0.0" --build "BUILD_ID" --copy-metadata-from "0.9.0" --dry-run
+asc release stage --app "APP_ID" --version "1.0.0" --build-id "BUILD_ID" --copy-metadata-from "0.9.0" --dry-run
 
 # Upload, attach, and submit from an IPA
 asc publish appstore --app "APP_ID" --ipa "./App.ipa" --version "1.0.0" --submit --confirm
@@ -114,8 +115,8 @@ asc builds add-groups --build-id "BUILD_ID" --group "GROUP_ID" --submit --confir
 
 ```bash
 asc migrate validate --fastlane-dir ./metadata
-asc migrate import --app "APP_ID" --fastlane-dir ./metadata
-asc migrate export --app "APP_ID" --output ./exported-metadata
+asc migrate import --app "APP_ID" --version-id "VERSION_ID" --fastlane-dir ./metadata --confirm
+asc migrate export --app "APP_ID" --version-id "VERSION_ID" --output-dir ./exported-metadata
 ```
 
 ## Command Groups
@@ -130,6 +131,7 @@ Use `asc <command> --help` for subcommands and flags.
 - `init` - Initialize asc helper docs in the current repo.
 - `docs` - Generate asc cli reference docs for a repo.
 - `diff` - Generate deterministic non-mutating diff plans.
+- `system-status` - [experimental] Check Apple Developer service health without authentication.
 - `capabilities` - Show CLI, API, web-only, and public-API-limited capability coverage.
 - `search` - Search asc commands and examples for agent-oriented command discovery.
 - `status` - Show a release pipeline dashboard for an app.
@@ -138,7 +140,8 @@ Use `asc <command> --help` for subcommands and flags.
 - `reviews` - List and manage App Store customer reviews.
 - `review` - Manage App Store review details, attachments, and submissions.
 - `analytics` - Request and download analytics and sales reports.
-- `ads` - Manage Apple Ads Campaign Management API resources.
+- `ads` - Manage Apple Ads API resources.
+- `optimize` - Build cross-API optimization plans. [experimental]
 - `performance` - Access performance metrics and diagnostic logs.
 - `finance` - Download payments and financial reports.
 - `apps` - List and manage apps in App Store Connect. App creation moved out of `asc apps`; use `asc web apps create` for the web-session path.
@@ -165,6 +168,7 @@ Use `asc <command> --help` for subcommands and flags.
 - `release` - Run high-level App Store release workflows.
 - `workflow` - Run multi-step automation workflows.
 - `xcode` - Produce deterministic `.xcarchive` and `.ipa` artifacts with local Xcode build/export helpers (macOS only).
+- `distribute` - Plan, execute, inspect, and publish provider-neutral iOS release-testing bundles (experimental).
 - `versions` - Manage App Store versions.
 - `product-pages` - Manage custom product pages and product page experiments.
 - `routing-coverage` - Manage routing app coverage files.

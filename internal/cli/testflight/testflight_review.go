@@ -51,6 +51,7 @@ func TestFlightReviewGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("view", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
+	includeSensitive := shared.BindIncludeSensitiveFlag(fs)
 	output := shared.BindOutputFlags(fs)
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
@@ -67,7 +68,11 @@ Examples:
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("testflight review view: --limit must be between 1 and 200")
+				return shared.WithDiagnostic(
+					shared.NewValidationError(fmt.Errorf("testflight review view: --limit must be between 1 and 200")),
+					shared.DiagnosticInvalidInput,
+					"--limit",
+				)
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("testflight review view: %w", err)
@@ -76,7 +81,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := shared.GetASCClient()
@@ -97,6 +102,10 @@ Examples:
 				return fmt.Errorf("testflight review view: failed to fetch: %w", err)
 			}
 
+			shared.WarnIncludeSensitive(os.Stderr, *includeSensitive)
+			if !*includeSensitive {
+				details = asc.RedactBetaAppReviewDetailsResponse(details)
+			}
 			return shared.PrintOutput(details, *output.Output, *output.Pretty)
 		},
 	}
@@ -115,6 +124,7 @@ func TestFlightReviewUpdateCommand() *ffcli.Command {
 	demoAccountPassword := fs.String("demo-account-password", "", "Demo account password")
 	demoAccountRequired := fs.Bool("demo-account-required", false, "Demo account required")
 	notes := fs.String("notes", "", "Review notes")
+	includeSensitive := shared.BindIncludeSensitiveFlag(fs)
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -132,7 +142,7 @@ Examples:
 			detailID := strings.TrimSpace(*id)
 			if detailID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			visited := map[string]bool{}
@@ -150,7 +160,7 @@ Examples:
 				visited["notes"]
 			if !hasUpdates {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			attrs := asc.BetaAppReviewDetailUpdateAttributes{}
@@ -200,6 +210,10 @@ Examples:
 				return fmt.Errorf("testflight review update: failed to update: %w", err)
 			}
 
+			shared.WarnIncludeSensitive(os.Stderr, *includeSensitive)
+			if !*includeSensitive {
+				detail = asc.RedactBetaAppReviewDetailResponse(detail)
+			}
 			return shared.PrintOutput(detail, *output.Output, *output.Pretty)
 		},
 	}
@@ -229,11 +243,11 @@ Examples:
 			}
 			if strings.TrimSpace(*buildID) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --build-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--build-id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -298,7 +312,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -374,10 +388,14 @@ Examples:
 			buildValue := strings.TrimSpace(*buildID)
 			if buildValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --build-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--build-id")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("testflight review submissions list: --limit must be between 1 and 200")
+				return shared.WithDiagnostic(
+					shared.NewValidationError(fmt.Errorf("testflight review submissions list: --limit must be between 1 and 200")),
+					shared.DiagnosticInvalidInput,
+					"--limit",
+				)
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("testflight review submissions list: %w", err)
@@ -447,7 +465,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -489,7 +507,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -551,6 +569,9 @@ func TestFlightBetaDetailsGetCommand() *ffcli.Command {
 		ShortHelp:  "View build beta details for a build.",
 		LongHelp: `View build beta details for a build.
 
+To find the build ID, list the app's builds and use the returned id field:
+  asc builds list --app "APP_ID" --paginate --output json
+
 Examples:
   asc testflight beta-details view --build-id "BUILD_ID"`,
 		FlagSet:   fs,
@@ -560,7 +581,11 @@ Examples:
 				return err
 			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("testflight beta-details view: --limit must be between 1 and 200")
+				return shared.WithDiagnostic(
+					shared.NewValidationError(fmt.Errorf("testflight beta-details view: --limit must be between 1 and 200")),
+					shared.DiagnosticInvalidInput,
+					"--limit",
+				)
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("testflight beta-details view: %w", err)
@@ -569,7 +594,7 @@ Examples:
 			trimmedBuildID := strings.TrimSpace(*buildID)
 			if trimmedBuildID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --build-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--build-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -640,7 +665,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -665,14 +690,9 @@ Examples:
 func TestFlightBetaDetailsUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 
-	const (
-		externalStateEnabled  = "READY_FOR_TESTING"
-		externalStateDisabled = "NOT_READY_FOR_TESTING"
-	)
-
 	id := fs.String("id", "", "Build beta detail ID")
 	autoNotify := fs.Bool("auto-notify", false, "Enable auto-notify for external testers")
-	externalTesting := fs.Bool("external-testing", false, "Enable external testing (maps to externalBuildState)")
+	externalTesting := fs.Bool("external-testing", false, "DEPRECATED: unsupported; use builds add-groups or builds remove-groups")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -683,25 +703,44 @@ func TestFlightBetaDetailsUpdateCommand() *ffcli.Command {
 
 Examples:
   asc testflight beta-details update --id "DETAIL_ID" --auto-notify
-  asc testflight beta-details update --id "DETAIL_ID" --external-testing true`,
+
+Deprecated:
+  --external-testing is retained only for migration and always exits before HTTP.
+  Use asc builds add-groups --build-id "BUILD_ID" --group "GROUP_ID" --submit --confirm to enable external distribution.
+  Use asc builds remove-groups --build-id "BUILD_ID" --group "GROUP_ID" --confirm to remove group assignments.`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
-			detailID := strings.TrimSpace(*id)
-			if detailID == "" {
-				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
-			}
-
 			visited := map[string]bool{}
 			fs.Visit(func(f *flag.Flag) {
 				visited[f.Name] = true
 			})
+			if visited["external-testing"] {
+				fmt.Fprintln(os.Stderr, "Warning: `--external-testing` is deprecated and cannot be applied safely; App Store Connect does not support editing `externalBuildState`.")
+				if *externalTesting {
+					return shared.WithDiagnostic(
+						shared.UsageError(`--external-testing=true cannot select a beta group or safely infer review submission. Use asc builds add-groups --build-id "BUILD_ID" --group "GROUP_ID" --submit --confirm.`),
+						shared.DiagnosticInvalidInput,
+						"--external-testing",
+					)
+				}
+				return shared.WithDiagnostic(
+					shared.UsageError(`--external-testing=false cannot identify which beta groups to remove. Use asc builds remove-groups --build-id "BUILD_ID" --group "GROUP_ID" --confirm.`),
+					shared.DiagnosticInvalidInput,
+					"--external-testing",
+				)
+			}
 
-			hasUpdates := visited["auto-notify"] || visited["external-testing"]
+			detailID := strings.TrimSpace(*id)
+			if detailID == "" {
+				fmt.Fprintln(os.Stderr, "Error: --id is required")
+				return shared.MissingRequiredUsageError("--id")
+			}
+
+			hasUpdates := visited["auto-notify"]
 			if !hasUpdates {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			attrs := asc.BuildBetaDetailUpdateAttributes{}
@@ -709,14 +748,6 @@ Examples:
 				value := *autoNotify
 				attrs.AutoNotifyEnabled = &value
 			}
-			if visited["external-testing"] {
-				state := externalStateDisabled
-				if *externalTesting {
-					state = externalStateEnabled
-				}
-				attrs.ExternalBuildState = &state
-			}
-
 			client, err := shared.GetASCClient()
 			if err != nil {
 				return fmt.Errorf("testflight beta-details update: %w", err)
@@ -783,11 +814,11 @@ Examples:
 			criteriaID := strings.TrimSpace(*id)
 			if criteriaID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -833,7 +864,11 @@ Examples:
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("testflight recruitment options: --limit must be between 1 and 200")
+				return shared.WithDiagnostic(
+					shared.NewValidationError(fmt.Errorf("testflight recruitment options: --limit must be between 1 and 200")),
+					shared.DiagnosticInvalidInput,
+					"--limit",
+				)
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("testflight recruitment options: %w", err)
@@ -890,7 +925,7 @@ Examples:
 			trimmedGroupID := strings.TrimSpace(*groupID)
 			if trimmedGroupID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --group is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--group")
 			}
 
 			filterValues, err := parseDeviceFamilyOsVersionFilters(*filters)
@@ -899,7 +934,7 @@ Examples:
 			}
 			if len(filterValues) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --os-version-filter is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--os-version-filter")
 			}
 
 			client, err := shared.GetASCClient()
@@ -913,8 +948,8 @@ Examples:
 			existing, err := client.GetBetaGroupBetaRecruitmentCriteria(requestCtx, trimmedGroupID)
 			if err == nil {
 				criteriaID := strings.TrimSpace(existing.Data.ID)
-				if criteriaID == "" {
-					return fmt.Errorf("testflight recruitment set: criteria id is empty")
+				if validationErr := validateBetaRecruitmentCriteriaID(criteriaID); validationErr != nil {
+					return validationErr
 				}
 				criteria, err := client.UpdateBetaRecruitmentCriteria(requestCtx, criteriaID, filterValues)
 				if err != nil {
@@ -946,10 +981,25 @@ func normalizeBetaRecruitmentCriterionOptionsFields(value string) ([]string, err
 	}
 	for _, field := range fields {
 		if _, ok := allowed[field]; !ok {
-			return nil, fmt.Errorf("--fields must be one of: deviceFamilyOsVersions")
+			return nil, shared.WithDiagnostic(
+				shared.NewValidationError(fmt.Errorf("--fields must be one of: deviceFamilyOsVersions")),
+				shared.DiagnosticInvalidInput,
+				"--fields",
+			)
 		}
 	}
 	return fields, nil
+}
+
+func validateBetaRecruitmentCriteriaID(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return shared.WithDiagnostic(
+			shared.NewValidationError(fmt.Errorf("testflight recruitment set: criteria id is empty")),
+			shared.DiagnosticStateNotReady,
+			"--group",
+		)
+	}
+	return nil
 }
 
 func parseDeviceFamilyOsVersionFilters(value string) ([]asc.DeviceFamilyOsVersionFilter, error) {
@@ -962,12 +1012,20 @@ func parseDeviceFamilyOsVersionFilters(value string) ([]asc.DeviceFamilyOsVersio
 	for _, entry := range entries {
 		parts := strings.SplitN(entry, "=", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("--os-version-filter must use DEVICE_FAMILY=MIN_OS (e.g., IPHONE=26)")
+			return nil, shared.WithDiagnostic(
+				shared.NewValidationError(fmt.Errorf("--os-version-filter must use DEVICE_FAMILY=MIN_OS (e.g., IPHONE=26)")),
+				shared.DiagnosticInvalidInput,
+				"--os-version-filter",
+			)
 		}
 		familyValue := strings.TrimSpace(parts[0])
 		versionValue := strings.TrimSpace(parts[1])
 		if familyValue == "" || versionValue == "" {
-			return nil, fmt.Errorf("--os-version-filter must use DEVICE_FAMILY=MIN_OS (e.g., IPHONE=26)")
+			return nil, shared.WithDiagnostic(
+				shared.NewValidationError(fmt.Errorf("--os-version-filter must use DEVICE_FAMILY=MIN_OS (e.g., IPHONE=26)")),
+				shared.DiagnosticInvalidInput,
+				"--os-version-filter",
+			)
 		}
 
 		family, err := normalizeBetaRecruitmentDeviceFamily(familyValue)
@@ -982,7 +1040,11 @@ func parseDeviceFamilyOsVersionFilters(value string) ([]asc.DeviceFamilyOsVersio
 			minVersion = strings.TrimSpace(rangeParts[0])
 			maxVersion = strings.TrimSpace(rangeParts[1])
 			if minVersion == "" || maxVersion == "" {
-				return nil, fmt.Errorf("--os-version-filter must use DEVICE_FAMILY=MIN_OS[..MAX_OS]")
+				return nil, shared.WithDiagnostic(
+					shared.NewValidationError(fmt.Errorf("--os-version-filter must use DEVICE_FAMILY=MIN_OS[..MAX_OS]")),
+					shared.DiagnosticInvalidInput,
+					"--os-version-filter",
+				)
 			}
 		}
 
@@ -1001,7 +1063,11 @@ func normalizeBetaRecruitmentDeviceFamily(value string) (asc.DeviceFamily, error
 	if slices.Contains(betaRecruitmentDeviceFamilyList(), normalized) {
 		return asc.DeviceFamily(normalized), nil
 	}
-	return "", fmt.Errorf("--os-version-filter device family must be one of: %s", strings.Join(betaRecruitmentDeviceFamilyList(), ", "))
+	return "", shared.WithDiagnostic(
+		shared.NewValidationError(fmt.Errorf("--os-version-filter device family must be one of: %s", strings.Join(betaRecruitmentDeviceFamilyList(), ", "))),
+		shared.DiagnosticInvalidInput,
+		"--os-version-filter",
+	)
 }
 
 func betaRecruitmentDeviceFamilyList() []string {
@@ -1063,7 +1129,7 @@ Examples:
 			trimmedGroupID := strings.TrimSpace(*groupID)
 			if trimmedGroupID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --group is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--group")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1105,7 +1171,7 @@ Examples:
 			trimmedGroupID := strings.TrimSpace(*groupID)
 			if trimmedGroupID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --group is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--group")
 			}
 
 			client, err := shared.GetASCClient()

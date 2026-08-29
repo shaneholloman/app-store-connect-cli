@@ -61,7 +61,7 @@ Examples:
 			detailValue := strings.TrimSpace(*detailID)
 			if detailValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -87,7 +87,7 @@ func AppClipReviewDetailsCreateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 
 	experienceID := fs.String("experience-id", "", "Default experience ID")
-	urls := fs.String("url", "", "Invocation URL(s), comma-separated")
+	urls := shared.BindOnceCSVFlag(fs, "url", "Invocation URL(s), comma-separated")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -104,13 +104,13 @@ Examples:
 			experienceValue := strings.TrimSpace(*experienceID)
 			if experienceValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --experience-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--experience-id")
 			}
 
-			urlValues := shared.SplitCSV(*urls)
+			urlValues := shared.SplitCSV(urls.String())
 			if len(urlValues) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --url is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--url")
 			}
 
 			client, err := shared.GetASCClient()
@@ -137,7 +137,7 @@ func AppClipReviewDetailsUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 
 	detailID := fs.String("id", "", "Review detail ID")
-	urls := fs.String("url", "", "Invocation URL(s), comma-separated")
+	urls := shared.BindOnceCSVFlag(fs, "url", "Invocation URL(s), comma-separated")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -154,7 +154,7 @@ Examples:
 			detailValue := strings.TrimSpace(*detailID)
 			if detailValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			visited := map[string]bool{}
@@ -163,10 +163,10 @@ Examples:
 			})
 			if !visited["url"] {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
-			urlValues := shared.SplitCSV(*urls)
+			urlValues := shared.SplitCSV(urls.String())
 			attrs := &asc.AppClipAppStoreReviewDetailUpdateAttributes{InvocationURLs: urlValues}
 
 			client, err := shared.GetASCClient()

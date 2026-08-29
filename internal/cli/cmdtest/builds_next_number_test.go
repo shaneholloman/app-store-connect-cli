@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
 func TestBuildsNextBuildNumberUsesUploadsAndBuilds(t *testing.T) {
@@ -142,6 +145,104 @@ func TestBuildsNextBuildNumberRejectsInvalidInitialBuildNumber(t *testing.T) {
 	}
 }
 
+func TestBuildsNextBuildNumberExplainsUnavailableUploadHistory(t *testing.T) {
+	tests := []struct {
+		name         string
+		status       int
+		responseBody string
+		paginate     bool
+		wantCause    error
+		wantExitCode int
+	}{
+		{
+			name:         "initial request forbidden",
+			status:       http.StatusForbidden,
+			responseBody: `{"errors":[{"status":"403","code":"FORBIDDEN","title":"Forbidden"}]}`,
+			wantCause:    asc.ErrForbidden,
+			wantExitCode: cmd.ExitAuth,
+		},
+		{
+			name:         "initial request not found",
+			status:       http.StatusNotFound,
+			responseBody: `{"errors":[{"status":"404","code":"NOT_FOUND","title":"Not Found"}]}`,
+			wantCause:    asc.ErrNotFound,
+			wantExitCode: cmd.ExitNotFound,
+		},
+		{
+			name:         "next page forbidden",
+			status:       http.StatusForbidden,
+			responseBody: `{"errors":[{"status":"403","code":"FORBIDDEN","title":"Forbidden"}]}`,
+			paginate:     true,
+			wantCause:    asc.ErrForbidden,
+			wantExitCode: cmd.ExitAuth,
+		},
+		{
+			name:         "next page not found",
+			status:       http.StatusNotFound,
+			responseBody: `{"errors":[{"status":"404","code":"NOT_FOUND","title":"Not Found"}]}`,
+			paginate:     true,
+			wantCause:    asc.ErrNotFound,
+			wantExitCode: cmd.ExitNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setupAuth(t)
+			t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+			originalTransport := http.DefaultTransport
+			t.Cleanup(func() { http.DefaultTransport = originalTransport })
+			http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				switch {
+				case req.Method == http.MethodGet && req.URL.Path == "/v1/builds":
+					return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"builds","id":"build-1","attributes":{"version":"100","uploadedDate":"2026-02-01T00:00:00Z"}}]}`), nil
+				case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/100000001/buildUploads" && tt.paginate && req.URL.Query().Get("cursor") == "":
+					return jsonHTTPResponse(http.StatusOK, `{"data":[],"links":{"next":"https://api.appstoreconnect.apple.com/v1/apps/100000001/buildUploads?cursor=next-page"}}`), nil
+				case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/100000001/buildUploads":
+					return jsonHTTPResponse(tt.status, tt.responseBody), nil
+				default:
+					t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+					return nil, nil
+				}
+			})
+
+			root := RootCommand("1.2.3")
+			root.FlagSet.SetOutput(io.Discard)
+
+			var runErr error
+			stdout, stderr := captureOutput(t, func() {
+				if err := root.Parse([]string{"builds", "next-build-number", "--app", "100000001"}); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				runErr = root.Run(context.Background())
+			})
+
+			if runErr == nil {
+				t.Fatal("expected unavailable upload history to fail")
+			}
+			if !errors.Is(runErr, tt.wantCause) {
+				t.Fatalf("expected %v in error chain, got %v", tt.wantCause, runErr)
+			}
+			if got := cmd.ExitCodeFromError(runErr); got != tt.wantExitCode {
+				t.Fatalf("exit code = %d, want %d", got, tt.wantExitCode)
+			}
+			for _, want := range []string{
+				`build upload history is unavailable for app "100000001"`,
+				"refusing to guess because an in-flight upload may already use the next number",
+				`asc builds uploads list --app "100000001" --paginate`,
+			} {
+				if !strings.Contains(runErr.Error(), want) {
+					t.Fatalf("expected error to contain %q, got %v", want, runErr)
+				}
+			}
+			if stdout != "" || stderr != "" {
+				t.Fatalf("expected no partial output, got stdout=%q stderr=%q", stdout, stderr)
+			}
+		})
+	}
+}
+
 func TestBuildsNextBuildNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
@@ -151,6 +252,8 @@ func TestBuildsNextBuildNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 		http.DefaultTransport = originalTransport
 	})
 
+	chronologicalBuildRequests := 0
+	maximumBuildRequests := 0
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/preReleaseVersions":
@@ -186,10 +289,20 @@ func TestBuildsNextBuildNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 			if query.Get("sort") != "-uploadedDate" {
 				t.Fatalf("expected sort=-uploadedDate, got %q", query.Get("sort"))
 			}
-			if query.Get("limit") != "1" {
-				t.Fatalf("expected limit=1, got %q", query.Get("limit"))
+			switch query.Get("limit") {
+			case "1":
+				chronologicalBuildRequests++
+				return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"builds","id":"build-new-50","attributes":{"version":"50","uploadedDate":"2026-02-02T00:00:00Z"}}]}`), nil
+			case "200":
+				maximumBuildRequests++
+				return jsonHTTPResponse(http.StatusOK, `{"data":[
+					{"type":"builds","id":"build-new-50","attributes":{"version":"50","uploadedDate":"2026-02-02T00:00:00Z"}},
+					{"type":"builds","id":"build-old-100","attributes":{"version":"100","uploadedDate":"2026-02-01T00:00:00Z"}}
+				]}`), nil
+			default:
+				t.Fatalf("expected limit=1 or limit=200, got %q", query.Get("limit"))
+				return nil, nil
 			}
-			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"builds","id":"build-1","attributes":{"version":"100","uploadedDate":"2026-02-01T00:00:00Z"}}]}`), nil
 
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/100000001/buildUploads":
 			query := req.URL.Query()
@@ -202,7 +315,7 @@ func TestBuildsNextBuildNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 			if query.Get("filter[platform]") != "IOS" {
 				t.Fatalf("expected filter[platform]=IOS, got %q", query.Get("filter[platform]"))
 			}
-			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"buildUploads","id":"upload-1","attributes":{"cfBundleVersion":"101"}}],"links":{"next":""}}`), nil
+			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"buildUploads","id":"upload-1","attributes":{"cfBundleVersion":"90"}}],"links":{"next":""}}`), nil
 
 		default:
 			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
@@ -236,19 +349,107 @@ func TestBuildsNextBuildNumberWithFiltersUsesCanonicalQueryShape(t *testing.T) {
 	var out struct {
 		LatestProcessedBuildNumber *string `json:"latestProcessedBuildNumber"`
 		LatestUploadBuildNumber    *string `json:"latestUploadBuildNumber"`
+		LatestObservedBuildNumber  *string `json:"latestObservedBuildNumber"`
 		NextBuildNumber            string  `json:"nextBuildNumber"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("unmarshal output: %v\nstdout: %s", err, stdout)
 	}
-	if out.LatestProcessedBuildNumber == nil || *out.LatestProcessedBuildNumber != "100" {
-		t.Fatalf("expected latestProcessedBuildNumber=100, got %v", out.LatestProcessedBuildNumber)
+	if out.LatestProcessedBuildNumber == nil || *out.LatestProcessedBuildNumber != "50" {
+		t.Fatalf("expected latestProcessedBuildNumber=50, got %v", out.LatestProcessedBuildNumber)
 	}
-	if out.LatestUploadBuildNumber == nil || *out.LatestUploadBuildNumber != "101" {
-		t.Fatalf("expected latestUploadBuildNumber=101, got %v", out.LatestUploadBuildNumber)
+	if out.LatestUploadBuildNumber == nil || *out.LatestUploadBuildNumber != "90" {
+		t.Fatalf("expected latestUploadBuildNumber=90, got %v", out.LatestUploadBuildNumber)
 	}
-	if out.NextBuildNumber != "102" {
-		t.Fatalf("expected nextBuildNumber=102, got %q", out.NextBuildNumber)
+	if out.LatestObservedBuildNumber == nil || *out.LatestObservedBuildNumber != "100" {
+		t.Fatalf("expected latestObservedBuildNumber=100, got %v", out.LatestObservedBuildNumber)
+	}
+	if out.NextBuildNumber != "101" {
+		t.Fatalf("expected nextBuildNumber=101, got %q", out.NextBuildNumber)
+	}
+	if chronologicalBuildRequests != 1 || maximumBuildRequests != 1 {
+		t.Fatalf("build requests = chronological:%d maximum:%d, want 1 each", chronologicalBuildRequests, maximumBuildRequests)
+	}
+}
+
+func TestBuildsNextBuildNumberScansEveryEquivalentVersionUpload(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	preReleaseRequests := 0
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/preReleaseVersions":
+			preReleaseRequests++
+			wantVersion := "76.54.0"
+			body := `{"data":[],"links":{"next":""}}`
+			if preReleaseRequests == 2 {
+				wantVersion = "76.54"
+				body = `{"data":[{"type":"preReleaseVersions","id":"prv-equivalent","attributes":{"version":"76.54","platform":"IOS"}}],"links":{"next":""}}`
+			}
+			if got := req.URL.Query().Get("filter[version]"); got != wantVersion {
+				t.Fatalf("filter[version] = %q, want %q", got, wantVersion)
+			}
+			return jsonHTTPResponse(http.StatusOK, body), nil
+
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/builds":
+			if got := req.URL.Query().Get("filter[preReleaseVersion]"); got != "prv-equivalent" {
+				t.Fatalf("filter[preReleaseVersion] = %q, want prv-equivalent", got)
+			}
+			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"builds","id":"build-10","attributes":{"version":"10","uploadedDate":"2026-02-01T00:00:00Z"}}]}`), nil
+
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/100000001/buildUploads":
+			if got := req.URL.Query().Get("filter[cfBundleShortVersionString]"); got != "76.54.0,76.54" {
+				t.Fatalf("filter[cfBundleShortVersionString] = %q, want %q", got, "76.54.0,76.54")
+			}
+			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"buildUploads","id":"upload-20","attributes":{"cfBundleShortVersionString":"76.54","cfBundleVersion":"20"}},{"type":"buildUploads","id":"upload-30","attributes":{"cfBundleShortVersionString":"76.54.0","cfBundleVersion":"30"}}],"links":{"next":""}}`), nil
+
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"builds", "next-build-number",
+			"--app", "100000001",
+			"--version", "76.54.0",
+			"--platform", "ios",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		if err := root.Run(context.Background()); err != nil {
+			t.Fatalf("run error: %v", err)
+		}
+	})
+
+	if preReleaseRequests != 2 {
+		t.Fatalf("pre-release requests = %d, want 2", preReleaseRequests)
+	}
+	var out struct {
+		LatestUploadBuildNumber *string `json:"latestUploadBuildNumber"`
+		NextBuildNumber         string  `json:"nextBuildNumber"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout: %s", err, stdout)
+	}
+	if out.LatestUploadBuildNumber == nil || *out.LatestUploadBuildNumber != "30" {
+		t.Fatalf("latestUploadBuildNumber = %v, want 30", out.LatestUploadBuildNumber)
+	}
+	if out.NextBuildNumber != "31" {
+		t.Fatalf("nextBuildNumber = %q, want 31", out.NextBuildNumber)
+	}
+	if !strings.Contains(stderr, `matched version "76.54" for requested "76.54.0"`) {
+		t.Fatalf("expected equivalent-version note, got %q", stderr)
 	}
 }
 
@@ -339,7 +540,7 @@ func TestBuildsNextBuildNumberSkipsNonPositiveBuildUploadNumber(t *testing.T) {
 	}
 }
 
-func TestBuildsNextBuildNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t *testing.T) {
+func TestBuildsNextBuildNumberVersionFilterCollectsEquivalentPlatforms(t *testing.T) {
 	setupAuth(t)
 	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
 
@@ -348,6 +549,7 @@ func TestBuildsNextBuildNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t 
 		http.DefaultTransport = originalTransport
 	})
 
+	var buildFilters []string
 	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/preReleaseVersions":
@@ -355,8 +557,8 @@ func TestBuildsNextBuildNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t 
 			if query.Get("filter[app]") != "100000001" {
 				t.Fatalf("expected filter[app]=100000001, got %q", query.Get("filter[app]"))
 			}
-			if query.Get("filter[version]") != "1.1" {
-				t.Fatalf("expected filter[version]=1.1, got %q", query.Get("filter[version]"))
+			if query.Get("filter[version]") != "1.1,1.1.0" {
+				t.Fatalf("expected filter[version]=1.1,1.1.0, got %q", query.Get("filter[version]"))
 			}
 			if query.Get("limit") != "200" {
 				t.Fatalf("expected limit=200 for version-only next-build-number lookup, got %q", query.Get("limit"))
@@ -365,15 +567,20 @@ func TestBuildsNextBuildNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t 
 
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/builds":
 			query := req.URL.Query()
-			if query.Get("filter[preReleaseVersion]") != "prv-exact" {
-				t.Fatalf("expected exact pre-release version match only, got %q", query.Get("filter[preReleaseVersion]"))
+			filter := query.Get("filter[preReleaseVersion]")
+			buildFilters = append(buildFilters, filter)
+			if filter == "prv-near" {
+				return jsonHTTPResponse(http.StatusOK, `{"data":[]}`), nil
+			}
+			if filter != "prv-exact" && filter != "prv-exact,prv-near" {
+				t.Fatalf("unexpected pre-release version filter %q", filter)
 			}
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"type":"builds","id":"build-exact","attributes":{"version":"100","uploadedDate":"2026-02-01T00:00:00Z"}}]}`), nil
 
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/100000001/buildUploads":
 			query := req.URL.Query()
-			if query.Get("filter[cfBundleShortVersionString]") != "1.1" {
-				t.Fatalf("expected filter[cfBundleShortVersionString]=1.1, got %q", query.Get("filter[cfBundleShortVersionString]"))
+			if query.Get("filter[cfBundleShortVersionString]") != "1.1,1.1.0" {
+				t.Fatalf("expected filter[cfBundleShortVersionString]=1.1,1.1.0, got %q", query.Get("filter[cfBundleShortVersionString]"))
 			}
 			if query.Get("filter[platform]") != "" {
 				t.Fatalf("did not expect platform filter for version-only next-build-number lookup, got %q", query.Get("filter[platform]"))
@@ -419,6 +626,9 @@ func TestBuildsNextBuildNumberVersionFilterIgnoresNearMatchPreReleaseVersions(t 
 	if out.NextBuildNumber != "102" {
 		t.Fatalf("expected nextBuildNumber=102, got %q", out.NextBuildNumber)
 	}
+	if len(buildFilters) != 3 || buildFilters[0] != "prv-exact" || buildFilters[1] != "prv-near" || buildFilters[2] != "prv-exact,prv-near" {
+		t.Fatalf("expected both equivalent platform trains in latest and history lookups, got %v", buildFilters)
+	}
 }
 
 func TestBuildsNextBuildNumberVersionFilterKeepsServerMatchedPreReleaseVersionsWithoutAttributes(t *testing.T) {
@@ -437,8 +647,8 @@ func TestBuildsNextBuildNumberVersionFilterKeepsServerMatchedPreReleaseVersionsW
 			if query.Get("filter[app]") != "100000001" {
 				t.Fatalf("expected filter[app]=100000001, got %q", query.Get("filter[app]"))
 			}
-			if query.Get("filter[version]") != "1.1" {
-				t.Fatalf("expected filter[version]=1.1, got %q", query.Get("filter[version]"))
+			if query.Get("filter[version]") != "1.1,1.1.0" {
+				t.Fatalf("expected filter[version]=1.1,1.1.0, got %q", query.Get("filter[version]"))
 			}
 			if query.Get("limit") != "200" {
 				t.Fatalf("expected limit=200 for version-only next-build-number lookup, got %q", query.Get("limit"))
@@ -454,8 +664,8 @@ func TestBuildsNextBuildNumberVersionFilterKeepsServerMatchedPreReleaseVersionsW
 
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/100000001/buildUploads":
 			query := req.URL.Query()
-			if query.Get("filter[cfBundleShortVersionString]") != "1.1" {
-				t.Fatalf("expected filter[cfBundleShortVersionString]=1.1, got %q", query.Get("filter[cfBundleShortVersionString]"))
+			if query.Get("filter[cfBundleShortVersionString]") != "1.1,1.1.0" {
+				t.Fatalf("expected filter[cfBundleShortVersionString]=1.1,1.1.0, got %q", query.Get("filter[cfBundleShortVersionString]"))
 			}
 			if query.Get("filter[platform]") != "" {
 				t.Fatalf("did not expect platform filter for version-only next-build-number lookup, got %q", query.Get("filter[platform]"))
@@ -544,8 +754,8 @@ func TestBuildsNextBuildNumberVersionAndPlatformPaginatesPastNearMatches(t *test
 
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/apps/100000001/buildUploads":
 			query := req.URL.Query()
-			if query.Get("filter[cfBundleShortVersionString]") != "1.1" {
-				t.Fatalf("expected filter[cfBundleShortVersionString]=1.1, got %q", query.Get("filter[cfBundleShortVersionString]"))
+			if query.Get("filter[cfBundleShortVersionString]") != "1.1,1.1.0" {
+				t.Fatalf("expected filter[cfBundleShortVersionString]=1.1,1.1.0, got %q", query.Get("filter[cfBundleShortVersionString]"))
 			}
 			if query.Get("filter[platform]") != "IOS" {
 				t.Fatalf("expected filter[platform]=IOS, got %q", query.Get("filter[platform]"))
@@ -600,5 +810,20 @@ func TestBuildsHelpShowsNextBuildNumberAndHidesLatestAlias(t *testing.T) {
 	}
 	if strings.Contains(usage, "\n  latest\t") || strings.Contains(usage, "\n  latest ") {
 		t.Fatalf("expected deprecated latest alias to stay hidden from builds help, got %q", usage)
+	}
+}
+
+func TestBuildsNextBuildNumberHelpExplainsChronologicalAndNumericValues(t *testing.T) {
+	usage := usageForCommand(t, "builds", "next-build-number")
+	for _, want := range []string{
+		"latestProcessedBuildNumber reports the most recently uploaded matching build",
+		"zero-style placeholders are reported as null",
+		"latestObservedBuildNumber and nextBuildNumber use the highest positive numeric",
+		"sourcesConsidered is empty",
+		"nextBuildNumber uses --initial-build-number",
+	} {
+		if !strings.Contains(usage, want) {
+			t.Fatalf("expected next-build-number help to contain %q, got %q", want, usage)
+		}
 	}
 }

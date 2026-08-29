@@ -35,7 +35,9 @@ def run_help_text() -> str:
         capture_output=True,
         text=True,
     )
-    return proc.stderr or proc.stdout
+    # ffcli writes successful help output to stdout. A cold Go module cache can
+    # add download diagnostics to stderr, which must not replace that output.
+    return proc.stdout or proc.stderr
 
 
 def parse_help(help_text: str) -> tuple[str, list[tuple[str, str]], list[tuple[str, list[tuple[str, str]]]]]:
@@ -44,20 +46,36 @@ def parse_help(help_text: str) -> tuple[str, list[tuple[str, str]], list[tuple[s
     groups: list[tuple[str, list[tuple[str, str]]]] = []
 
     in_flags = False
+    in_usage = False
     current_group_index: int | None = None
 
     for line in help_text.splitlines():
-        if line.startswith("  asc "):
-            usage = line.strip()
-
         stripped = line.strip()
+
+        # Only the USAGE section defines the usage pattern; sample invocations
+        # elsewhere in the help text must not overwrite it. Any unindented
+        # heading ends the section, even one this parser does not model.
+        if in_usage:
+            if line.startswith("  asc "):
+                usage = stripped
+                in_usage = False
+            elif stripped and not line.startswith(" "):
+                in_usage = False
+
+        if stripped == "USAGE":
+            in_usage = True
+            in_flags = False
+            current_group_index = None
+            continue
         if stripped == "FLAGS":
+            in_usage = False
             in_flags = True
             current_group_index = None
             continue
 
         group_match = re.match(r"^([A-Z0-9 &/-]+) COMMANDS$", stripped)
         if group_match:
+            in_usage = False
             in_flags = False
             groups.append((group_match.group(0), []))
             current_group_index = len(groups) - 1
@@ -141,8 +159,8 @@ def render(usage: str, flags: list[tuple[str, str]], groups: list[tuple[str, lis
             "asc apps list --output table",
             "",
             "# Pause and resume Apple Ads campaigns",
-            "asc ads campaigns pause --campaign CAMPAIGN_ID --org ORG_ID --confirm",
-            "asc ads campaigns resume --campaign CAMPAIGN_ID --org ORG_ID --confirm",
+            "asc ads campaigns pause --campaign CAMPAIGN_ID --ad-account AD_ACCOUNT_ID",
+            "asc ads campaigns resume --campaign CAMPAIGN_ID --ad-account AD_ACCOUNT_ID --confirm",
             "",
             "# Manage App Store compatibility opt-ins through a web session",
             "asc web apps compatibility view --app \"123456789\"",
@@ -154,8 +172,15 @@ def render(usage: str, flags: list[tuple[str, str]], groups: list[tuple[str, lis
             "# Generate local Xcode metadata before archiving",
             "asc xcode inject --manifest .asc/deployment.json --set version=1.2.3 --set build_number=42 --dry-run --output json",
             "",
+            "# Plan, confirm, resume, check status, and live-verify a private ad hoc distribution run",
+            "asc distribute plan --archive-path ./App.xcarchive --config .asc/distribution.json --plan .asc/distribution/plan.json --state-dir .asc/distribution/runs --output json",
+            "asc distribute apply --plan .asc/distribution/plan.json --confirm PLAN_HASH --output json",
+            "asc distribute resume --run RUN_ID --state-dir .asc/distribution/runs --output json",
+            "asc distribute status --run RUN_ID --state-dir .asc/distribution/runs --output json",
+            "asc distribute verify --run RUN_ID --state-dir .asc/distribution/runs --timeout 30s --output json",
+            "",
             "# Stage an App Store version before submission",
-            "asc release stage --app \"123456789\" --version \"1.2.3\" --build \"BUILD_ID\" --copy-metadata-from \"1.2.2\" --dry-run",
+            "asc release stage --app \"123456789\" --version \"1.2.3\" --build-id \"BUILD_ID\" --copy-metadata-from \"1.2.2\" --dry-run",
             "",
             "# Publish an App Store version (high-level)",
             "asc publish appstore --app \"123456789\" --ipa \"/path/to/MyApp.ipa\" --version \"1.2.3\"",

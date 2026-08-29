@@ -8,7 +8,7 @@ The App Store Connect CLI (`asc`) is distributed as a single binary with no runt
 
 * **Operating System**: macOS or Linux
 * **Architecture**: x86\_64 (amd64) or ARM64 (arm64/aarch64)
-* **Go**: 1.26+ (only required for source builds)
+* **Go**: Not required for released binaries. Source builds use the version declared by `go.mod`.
 
 ## Homebrew (recommended)
 
@@ -188,11 +188,25 @@ ASC_BYPASS_KEYCHAIN=1 make test
 asc install-skills
 ```
 
-Direct install:
+`asc install-skills` checks out reviewed commit
+`e30039abddbe388179324d0f9cdccb66c3843115` and copies its 23 skills directly
+into the standard global agent-skills directory. It verifies the complete pack
+and every installed file before succeeding, preserves unrelated skills and
+unrelated lock entries, and pins the 23 ASC lock entries to the same reviewed
+commit so external checks cannot update them from a mutable branch. It rolls
+back the pack if any replacement fails. Only
+`git` is required; the command does not execute Node.js, `npx`, npm packages,
+or repository scripts.
 
 ```bash  theme={null}
-npx skills add rorkai/app-store-connect-cli-skills --global --agent codex
+git --version
+asc install-skills
 ```
+
+<Note>
+  Upgrading the skill pack is an explicit change to the pinned commit and the
+  reviewed 23-skill manifest in `internal/cli/install/install.go`.
+</Note>
 
 ## Shell completion
 
@@ -264,7 +278,7 @@ Reload your shell to activate completions.
     Optionally remove keychain entries:
 
     ```bash  theme={null}
-    asc auth logout --all        # before removing binary
+    asc auth logout --all --confirm  # before removing binary
     ```
   </Tab>
 </Tabs>

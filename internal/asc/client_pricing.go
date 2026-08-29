@@ -89,8 +89,9 @@ func (c *Client) GetAppPricePoint(ctx context.Context, pricePointID string) (*Ap
 	}
 
 	response := AppPricePointsV3Response{
-		Data:  []Resource[AppPricePointV3Attributes]{single.Data},
-		Links: single.Links,
+		Data:     []Resource[AppPricePointV3Attributes]{single.Data},
+		Links:    single.Links,
+		Included: single.Included,
 	}
 
 	return &response, nil
@@ -740,7 +741,9 @@ func (c *Client) UpdateTerritoryAvailability(ctx context.Context, territoryAvail
 	}
 
 	path := fmt.Sprintf("/v1/territoryAvailabilities/%s", territoryAvailabilityID)
-	data, err := c.do(ctx, "PATCH", path, body)
+	// This PATCH sets exact values rather than applying a transition, so replaying
+	// the same payload after a transient failure is safe.
+	data, err := c.doIdempotentMutation(ctx, "PATCH", path, body)
 	if err != nil {
 		return nil, err
 	}

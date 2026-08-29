@@ -126,6 +126,7 @@ func TestRun_IntroductoryOffersImportPartialFailureReturnsExitError(t *testing.T
 			"--offer-duration", "ONE_WEEK",
 			"--offer-mode", "FREE_TRIAL",
 			"--number-of-periods", "1",
+			"--confirm",
 		}, "1.0.0")
 		if code != cmd.ExitError {
 			t.Fatalf("expected exit code %d, got %d", cmd.ExitError, code)
@@ -419,6 +420,11 @@ func TestRun_UsageValidationErrorsReturnExitUsage(t *testing.T) {
 			name:    "apps public search invalid limit",
 			args:    []string{"apps", "public", "search", "--term", "focus", "--limit", "0"},
 			wantErr: "--limit must be between 1 and 200",
+		},
+		{
+			name:    "apps public rank invalid platform",
+			args:    []string{"apps", "public", "rank", "--app", "123", "--term", "focus", "--platform", "MAC_OS"},
+			wantErr: "--platform must be one of: IOS, TV_OS",
 		},
 		{
 			name:    "reviews ratings rejects positional args",

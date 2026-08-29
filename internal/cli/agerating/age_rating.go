@@ -77,6 +77,7 @@ Examples:
 		Subcommands: []*ffcli.Command{
 			AgeRatingViewCommand(),
 			AgeRatingEditCommand(),
+			AgeRatingAuditCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -117,7 +118,7 @@ Examples:
 			}
 			if appInfoValue == "" && versionValue == "" && appValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 			fieldValues, err := shared.NormalizeSelection(*fields, ageRatingSparseFields441, "--fields")
 			if err != nil {
@@ -232,7 +233,7 @@ Examples:
 				}
 				if appInfoValue == "" && versionValue == "" && appValue == "" {
 					fmt.Fprintln(os.Stderr, "Error: --id or --app is required (or set ASC_APP_ID)")
-					return shared.MissingRequiredUsageError()
+					return shared.MissingRequiredUsageError("")
 				}
 			}
 
@@ -296,7 +297,7 @@ Examples:
 			}
 
 			if !hasAgeRatingUpdates(attributes) {
-				return fmt.Errorf("age-rating edit: at least one update flag is required")
+				return shared.UsageError("age-rating edit: at least one update flag is required")
 			}
 
 			client, err := shared.GetASCClient()
@@ -363,16 +364,9 @@ func fetchAgeRatingDeclaration(ctx context.Context, client *asc.Client, appID, a
 	case versionID != "":
 		return client.GetAgeRatingDeclarationForAppStoreVersion(ctx, versionID, opts...)
 	default:
-		appInfos, err := client.GetAppInfos(ctx, appID)
+		appInfoID, err := client.ResolveCurrentAppInfoIDForApp(ctx, appID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get app info: %w", err)
-		}
-		if len(appInfos.Data) == 0 {
-			return nil, fmt.Errorf("no app info found for app %s", appID)
-		}
-		appInfoID := appInfos.Data[0].ID
-		if strings.TrimSpace(appInfoID) == "" {
-			return nil, fmt.Errorf("app info id is empty for app %s", appID)
+			return nil, fmt.Errorf("failed to resolve current app info: %w", err)
 		}
 		return client.GetAgeRatingDeclarationForAppInfo(ctx, appInfoID, opts...)
 	}

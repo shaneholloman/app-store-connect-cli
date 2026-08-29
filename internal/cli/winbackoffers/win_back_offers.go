@@ -171,7 +171,7 @@ Examples:
 			id := strings.TrimSpace(*subscriptionID)
 			if id == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --subscription-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--subscription-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -275,7 +275,8 @@ func WinBackOffersCreateCommand() *ffcli.Command {
 	endDate := fs.String("end-date", "", "End date (YYYY-MM-DD)")
 	priority := fs.String("priority", "", "Offer priority: "+strings.Join(winBackOfferPriorityValues, ", "))
 	promotionIntent := fs.String("promotion-intent", "", "Promotion intent: "+strings.Join(winBackOfferPromotionIntentValues, ", "))
-	priceIDs := fs.String("price", "", "Subscription price point ID(s), comma-separated")
+	priceIDs := shared.BindOnceCSVFlag(fs, "price", "Subscription price point ID(s), comma-separated (required for paid offer modes)")
+	territories := shared.BindOnceCSVFlag(fs, "territory", "Territories for FREE_TRIAL offers, comma-separated (accepts alpha-2, alpha-3, or exact English country names)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -284,32 +285,37 @@ func WinBackOffersCreateCommand() *ffcli.Command {
 		ShortHelp:  "Create a win-back offer.",
 		LongHelp: `Create a win-back offer.
 
+Paid offer modes (PAY_AS_YOU_GO, PAY_UP_FRONT) require --price with
+subscription price point IDs. FREE_TRIAL offers carry no price point, so
+they require --territory instead.
+
 Examples:
-  asc win-back-offers create --subscription-id "SUB_ID" --reference-name "spring-2026" --offer-id "OFFER-1" --duration ONE_MONTH --offer-mode PAY_AS_YOU_GO --period-count 1 --eligibility-paid-months 6 --eligibility-last-subscribed-min 3 --eligibility-last-subscribed-max 12 --start-date "2026-02-01" --priority HIGH --price "SUBSCRIPTION_PRICE_POINT_ID"`,
+  asc win-back-offers create --subscription-id "SUB_ID" --reference-name "spring-2026" --offer-id "OFFER-1" --duration ONE_MONTH --offer-mode PAY_AS_YOU_GO --period-count 1 --eligibility-paid-months 6 --eligibility-last-subscribed-min 3 --eligibility-last-subscribed-max 12 --start-date "2026-02-01" --priority HIGH --price "SUBSCRIPTION_PRICE_POINT_ID"
+  asc win-back-offers create --subscription-id "SUB_ID" --reference-name "spring-2026" --offer-id "OFFER-2" --duration ONE_MONTH --offer-mode FREE_TRIAL --period-count 1 --eligibility-paid-months 6 --eligibility-last-subscribed-min 3 --eligibility-last-subscribed-max 12 --start-date "2026-02-01" --priority HIGH --territory "USA,FRA"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			subscription := strings.TrimSpace(*subscriptionID)
 			if subscription == "" {
 				fmt.Fprintln(os.Stderr, "Error: --subscription-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--subscription-id")
 			}
 
 			name := strings.TrimSpace(*referenceName)
 			if name == "" {
 				fmt.Fprintln(os.Stderr, "Error: --reference-name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--reference-name")
 			}
 
 			offer := strings.TrimSpace(*offerID)
 			if offer == "" {
 				fmt.Fprintln(os.Stderr, "Error: --offer-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--offer-id")
 			}
 
 			if strings.TrimSpace(*duration) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --duration is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--duration")
 			}
 			durationValue, err := normalizeWinBackOfferDuration(*duration)
 			if err != nil {
@@ -318,7 +324,7 @@ Examples:
 
 			if strings.TrimSpace(*offerMode) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --offer-mode is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--offer-mode")
 			}
 			offerModeValue, err := normalizeWinBackOfferMode(*offerMode)
 			if err != nil {
@@ -327,7 +333,7 @@ Examples:
 
 			if !periodCount.set {
 				fmt.Fprintln(os.Stderr, "Error: --period-count is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--period-count")
 			}
 			if periodCount.value <= 0 {
 				return fmt.Errorf("win-back-offers create: --period-count must be greater than 0")
@@ -335,7 +341,7 @@ Examples:
 
 			if !eligibilityPaidMonths.set {
 				fmt.Fprintln(os.Stderr, "Error: --eligibility-paid-months is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--eligibility-paid-months")
 			}
 			if eligibilityPaidMonths.value < 0 {
 				return fmt.Errorf("win-back-offers create: --eligibility-paid-months must be 0 or greater")
@@ -343,7 +349,7 @@ Examples:
 
 			if !eligibilityLastSubscribedMin.set && !eligibilityLastSubscribedMax.set {
 				fmt.Fprintln(os.Stderr, "Error: --eligibility-last-subscribed-min or --eligibility-last-subscribed-max is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 			if eligibilityLastSubscribedMin.set && eligibilityLastSubscribedMin.value < 0 {
 				return fmt.Errorf("win-back-offers create: eligibility last subscribed min must be 0 or greater")
@@ -365,7 +371,7 @@ Examples:
 
 			if strings.TrimSpace(*startDate) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --start-date is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--start-date")
 			}
 			normalizedStartDate, err := shared.NormalizeDate(*startDate, "--start-date")
 			if err != nil {
@@ -374,17 +380,40 @@ Examples:
 
 			if strings.TrimSpace(*priority) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --priority is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--priority")
 			}
 			priorityValue, err := normalizeWinBackOfferPriority(*priority)
 			if err != nil {
 				return fmt.Errorf("win-back-offers create: %w", err)
 			}
 
-			prices := shared.SplitCSV(*priceIDs)
-			if len(prices) == 0 {
-				fmt.Fprintln(os.Stderr, "Error: --price is required")
-				return shared.MissingRequiredUsageError()
+			isFreeTrial := offerModeValue == asc.SubscriptionOfferModeFreeTrial
+			priceProvided := false
+			fs.Visit(func(f *flag.Flag) { priceProvided = priceProvided || f.Name == "price" })
+			prices := shared.SplitCSV(priceIDs.String())
+			var freeTrialTerritories []string
+			if isFreeTrial {
+				if priceProvided {
+					fmt.Fprintln(os.Stderr, "Error: --price is not supported when --offer-mode is FREE_TRIAL; use --territory to choose territories")
+					return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticConflictingInput, "--price")
+				}
+				freeTrialTerritories, err = shared.NormalizeASCTerritoryCSV(territories.String())
+				if err != nil {
+					return shared.UsageError(fmt.Sprintf("win-back-offers create: %v", err))
+				}
+				if len(freeTrialTerritories) == 0 {
+					fmt.Fprintln(os.Stderr, "Error: --territory is required when --offer-mode is FREE_TRIAL")
+					return shared.MissingRequiredUsageError("--territory")
+				}
+			} else {
+				if strings.TrimSpace(territories.String()) != "" {
+					fmt.Fprintln(os.Stderr, "Error: --territory is only supported when --offer-mode is FREE_TRIAL")
+					return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticConflictingInput, "--territory")
+				}
+				if len(prices) == 0 {
+					fmt.Fprintln(os.Stderr, "Error: --price is required")
+					return shared.MissingRequiredUsageError("--price")
+				}
 			}
 
 			if eligibilityWaitMonths.set && eligibilityWaitMonths.value < 0 {
@@ -408,41 +437,58 @@ Examples:
 				promotionIntentValue = &intent
 			}
 
-			// Each --price value is a subscriptionPricePoint ID. Win-back
-			// offer prices don't exist before the offer does, so inline-create
-			// them in `included` with temp `${price-N}` IDs and territory +
-			// subscriptionPricePoint relationships (the territory is encoded
-			// inside the price point ID itself).
-			priceData := make([]asc.ResourceData, 0, len(prices))
-			includedPrices := make([]asc.WinBackOfferPriceInlineCreate, 0, len(prices))
-			for i, priceID := range prices {
-				territory, err := territoryFromPricePointID(priceID)
-				if err != nil {
-					return shared.UsageError(fmt.Sprintf("win-back-offers create: %v", err))
-				}
-				tempID := fmt.Sprintf("${price-%d}", i+1)
+			// Win-back offer prices don't exist before the offer does, so
+			// inline-create them in `included` with temp `${price-N}` IDs.
+			// Paid modes pair each entry with territory (decoded from the
+			// price point ID itself) + subscriptionPricePoint relationships;
+			// FREE_TRIAL entries carry only the territory because the API
+			// rejects price points on free offers.
+			var priceData []asc.ResourceData
+			var includedPrices []asc.WinBackOfferPriceInlineCreate
+			appendInlinePrice := func(relationships *asc.WinBackOfferPriceRelationships) {
+				tempID := fmt.Sprintf("${price-%d}", len(priceData)+1)
 				priceData = append(priceData, asc.ResourceData{
 					Type: asc.ResourceTypeWinBackOfferPrices,
 					ID:   tempID,
 				})
 				includedPrices = append(includedPrices, asc.WinBackOfferPriceInlineCreate{
-					Type: asc.ResourceTypeWinBackOfferPrices,
-					ID:   tempID,
-					Relationships: &asc.WinBackOfferPriceRelationships{
+					Type:          asc.ResourceTypeWinBackOfferPrices,
+					ID:            tempID,
+					Relationships: relationships,
+				})
+			}
+			if isFreeTrial {
+				for _, territory := range freeTrialTerritories {
+					appendInlinePrice(&asc.WinBackOfferPriceRelationships{
 						Territory: asc.Relationship{
 							Data: asc.ResourceData{
 								Type: asc.ResourceTypeTerritories,
 								ID:   territory,
 							},
 						},
-						SubscriptionPricePoint: asc.Relationship{
+					})
+				}
+			} else {
+				for _, priceID := range prices {
+					territory, err := territoryFromPricePointID(priceID)
+					if err != nil {
+						return shared.UsageError(fmt.Sprintf("win-back-offers create: %v", err))
+					}
+					appendInlinePrice(&asc.WinBackOfferPriceRelationships{
+						Territory: asc.Relationship{
+							Data: asc.ResourceData{
+								Type: asc.ResourceTypeTerritories,
+								ID:   territory,
+							},
+						},
+						SubscriptionPricePoint: &asc.Relationship{
 							Data: asc.ResourceData{
 								Type: asc.ResourceTypeSubscriptionPricePoints,
 								ID:   priceID,
 							},
 						},
-					},
-				})
+					})
+				}
 			}
 
 			var waitBetween *int
@@ -548,7 +594,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*id)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			hasUpdates := false
@@ -629,7 +675,7 @@ Examples:
 
 			if !hasUpdates {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -672,11 +718,11 @@ Examples:
 			trimmedID := strings.TrimSpace(*id)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -738,7 +784,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*id)
 			if trimmedID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			fieldsValue, err := normalizeWinBackOfferPriceFields(*fields, "--fields")

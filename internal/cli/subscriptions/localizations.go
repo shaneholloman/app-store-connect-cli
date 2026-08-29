@@ -89,7 +89,7 @@ Examples:
 			id := strings.TrimSpace(*subscriptionID)
 			if id == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --subscription-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--subscription-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -170,7 +170,7 @@ Examples:
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -200,6 +200,12 @@ func SubscriptionsLocalizationsCreateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("localizations create", flag.ExitOnError)
 
 	subscriptionID := fs.String("subscription-id", "", "Subscription ID, product ID, or exact current name")
+	legacyProductID := shared.BindDeprecatedStringFlagAlias(fs, "product-id", "subscription-id")
+	rejectedVersionID := bindSubscriptionLocalizationRejectedSelector(
+		fs,
+		"version-id",
+		"REJECTED: use --subscription-id, or `asc subscriptions versions localizations create`",
+	)
 	appID := addSubscriptionLookupAppFlag(fs)
 	locale := fs.String("locale", "", "Locale (e.g., en-US)")
 	name := fs.String("name", "", "Localized name")
@@ -217,22 +223,33 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := rejectSubscriptionLocalizationSelector(
+				rejectedVersionID,
+				subscriptionLocalizationCreateVersionSelectorGuidance,
+				"--version-id",
+			); err != nil {
+				return err
+			}
+			if err := legacyProductID.Apply(subscriptionID); err != nil {
+				return err
+			}
+
 			id := strings.TrimSpace(*subscriptionID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --subscription-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--subscription-id")
 			}
 
 			localeValue := strings.TrimSpace(*locale)
 			if localeValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --locale is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--locale")
 			}
 
 			nameValue := strings.TrimSpace(*name)
 			if nameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			client, err := shared.GetASCClient()
@@ -341,6 +358,11 @@ func SubscriptionsLocalizationsUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("localizations update", flag.ExitOnError)
 
 	localizationID := fs.String("id", "", "Subscription localization ID")
+	rejectedSubscriptionID := bindSubscriptionLocalizationRejectedSelector(
+		fs,
+		"subscription-id",
+		"REJECTED: --id is the localization ID; find it with `asc subscriptions localizations list --subscription-id`",
+	)
 	name := fs.String("name", "", "Localized name")
 	description := fs.String("description", "", "Localized description")
 	output := shared.BindOutputFlags(fs)
@@ -356,17 +378,25 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := rejectSubscriptionLocalizationSelector(
+				rejectedSubscriptionID,
+				subscriptionLocalizationUpdateSubscriptionSelectorGuidance,
+				"--subscription-id",
+			); err != nil {
+				return err
+			}
+
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			nameValue := strings.TrimSpace(*name)
 			descriptionValue := strings.TrimSpace(*description)
 			if nameValue == "" && descriptionValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -417,11 +447,11 @@ Examples:
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()

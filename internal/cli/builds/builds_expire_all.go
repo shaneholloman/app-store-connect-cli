@@ -54,20 +54,20 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			olderThanValue := strings.TrimSpace(*olderThan)
 			if olderThanValue == "" && *keepLatest == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --older-than or --keep-latest is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 			if *keepLatest < 0 {
 				return fmt.Errorf("builds expire-all: --keep-latest must be greater than or equal to 0")
 			}
 			if !*dryRun && !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required to expire builds")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			now := time.Now().UTC()
@@ -85,16 +85,17 @@ Examples:
 				return fmt.Errorf("builds expire-all: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
-			defer cancel()
-
-			firstPage, err := client.GetBuilds(requestCtx, resolvedAppID, asc.WithBuildsLimit(200), asc.WithBuildsSort("-uploadedDate"))
+			firstPageCtx, firstPageCancel := shared.ContextWithTimeout(ctx)
+			firstPage, err := client.GetBuilds(firstPageCtx, resolvedAppID, asc.WithBuildsLimit(200), asc.WithBuildsSort("-uploadedDate"))
+			firstPageCancel()
 			if err != nil {
 				return fmt.Errorf("builds expire-all: failed to fetch: %w", err)
 			}
 
-			allPages, err := asc.PaginateAll(requestCtx, firstPage, func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
-				return client.GetBuilds(ctx, resolvedAppID, asc.WithBuildsNextURL(nextURL))
+			allPages, err := asc.PaginateAll(ctx, firstPage, func(ctx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+				requestCtx, cancel := shared.ContextWithTimeout(ctx)
+				defer cancel()
+				return client.GetBuilds(requestCtx, resolvedAppID, asc.WithBuildsNextURL(nextURL))
 			})
 			if err != nil {
 				return fmt.Errorf("builds expire-all: %w", err)
@@ -160,10 +161,13 @@ Examples:
 					continue
 				}
 
-				if _, err := client.ExpireBuild(requestCtx, candidate.resource.ID); err != nil {
+				requestCtx, cancel := shared.ContextWithTimeout(ctx)
+				_, expireErr := client.ExpireBuild(requestCtx, candidate.resource.ID)
+				cancel()
+				if expireErr != nil {
 					failures = append(failures, asc.BuildExpireAllFailure{
 						ID:    candidate.resource.ID,
-						Error: err.Error(),
+						Error: expireErr.Error(),
 					})
 					continue
 				}

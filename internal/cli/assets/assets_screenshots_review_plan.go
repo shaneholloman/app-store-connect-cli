@@ -13,6 +13,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/screenshotcatalog"
 	reviewshots "github.com/rudrankriyam/App-Store-Connect-CLI/internal/screenshots"
 )
 
@@ -123,16 +124,10 @@ Examples:
 				Replace:         *replace,
 				Apply:           false,
 			})
-			if err != nil {
-				return err
+			if printErr := printScreenshotReviewPlanResult(result, output); printErr != nil {
+				return printErr
 			}
-			if err := shared.PrintOutputWithRenderers(
-				result,
-				*output.Output,
-				*output.Pretty,
-				func() error { return renderScreenshotReviewPlanResult(result, false) },
-				func() error { return renderScreenshotReviewPlanResult(result, true) },
-			); err != nil {
+			if err != nil {
 				return err
 			}
 			if result.ErrorCount > 0 {
@@ -177,7 +172,7 @@ Examples:
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required to apply screenshot uploads")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			result, err := executeScreenshotReviewPlan(ctx, screenshotReviewPlanOptions{
@@ -192,16 +187,10 @@ Examples:
 				Replace:         *replace,
 				Apply:           true,
 			})
-			if err != nil {
-				return err
+			if printErr := printScreenshotReviewPlanResult(result, output); printErr != nil {
+				return printErr
 			}
-			if err := shared.PrintOutputWithRenderers(
-				result,
-				*output.Output,
-				*output.Pretty,
-				func() error { return renderScreenshotReviewPlanResult(result, false) },
-				func() error { return renderScreenshotReviewPlanResult(result, true) },
-			); err != nil {
+			if err != nil {
 				return err
 			}
 			if result.ErrorCount > 0 {
@@ -326,16 +315,57 @@ func executeScreenshotReviewPlan(ctx context.Context, opts screenshotReviewPlanO
 			continue
 		}
 
+		canonicalDisplayTypes := make([]string, 0, len(entry.DisplayTypes))
+		seenDisplayTypes := make(map[string]struct{}, len(entry.DisplayTypes))
+		displayTypesValid := true
+		for _, displayType := range entry.DisplayTypes {
+			rawDisplayType := strings.TrimSpace(displayType)
+			if rawDisplayType == "" {
+				appendScreenshotReviewIssue(
+					result,
+					"error",
+					entry.Key,
+					locale,
+					displayType,
+					"approved review entry contains an empty screenshot display type",
+					"Regenerate the review manifest with a supported App Store screenshot size.",
+				)
+				displayTypesValid = false
+				continue
+			}
+			displayValue := asc.CanonicalScreenshotDisplayTypeForAPI(rawDisplayType)
+			if !asc.IsValidScreenshotDisplayType(displayValue) {
+				appendScreenshotReviewIssue(
+					result,
+					"error",
+					entry.Key,
+					locale,
+					rawDisplayType,
+					fmt.Sprintf("approved review entry contains unsupported screenshot display type %q", rawDisplayType),
+					"Regenerate the review manifest with a supported App Store screenshot size.",
+				)
+				displayTypesValid = false
+				continue
+			}
+			if _, exists := seenDisplayTypes[displayValue]; exists {
+				continue
+			}
+			seenDisplayTypes[displayValue] = struct{}{}
+			canonicalDisplayTypes = append(canonicalDisplayTypes, displayValue)
+		}
+		if !displayTypesValid || len(canonicalDisplayTypes) == 0 {
+			continue
+		}
+		// Manifests written before the iPad slot correction list both the
+		// retired 12.9" slot and its successor for the same size; upload to the
+		// current slot only.
+		canonicalDisplayTypes = screenshotcatalog.PreferCurrentDisplayTypes(canonicalDisplayTypes)
+
 		result.ApprovedReadyEntries++
 		if coverageByLocale[locale] == nil {
 			coverageByLocale[locale] = make(map[string]bool)
 		}
-
-		for _, displayType := range entry.DisplayTypes {
-			displayValue := strings.TrimSpace(displayType)
-			if displayValue == "" {
-				continue
-			}
+		for _, displayValue := range canonicalDisplayTypes {
 			groupKey := screenshotGroupKey{
 				locale:         locale,
 				localizationID: localizationID,
@@ -405,11 +435,16 @@ func executeScreenshotReviewPlan(ctx context.Context, opts screenshotReviewPlanO
 		return result, nil
 	}
 
+	// Screenshot uploads must not inherit the short per-request deadline used
+	// for the lookups above: each group reserves, uploads, commits and then
+	// polls asset delivery. Derive the upload budget from the un-deadlined
+	// parent so uploadScreenshots can apply the upload timeout per group.
+	uploadParentCtx := shared.ContextWithoutTimeout(ctx)
 	for _, key := range groupKeys {
 		files := cloneSortedFiles(groupedFiles[key])
-		uploadResult, err := uploadScreenshots(requestCtx, client, key.localizationID, key.displayType, files, opts.SkipExisting, opts.Replace, !opts.Apply)
+		uploadResult, err := uploadScreenshots(uploadParentCtx, client, key.localizationID, key.displayType, files, opts.SkipExisting, opts.Replace, !opts.Apply)
 		if err != nil {
-			return nil, fmt.Errorf("screenshots %s: %w", reviewPlanVerb(opts.Apply), err)
+			return result, fmt.Errorf("screenshots %s: %w", reviewPlanVerb(opts.Apply), err)
 		}
 		result.Groups = append(result.Groups, screenshotReviewPlanGroup{
 			Locale:                key.locale,
@@ -421,6 +456,21 @@ func executeScreenshotReviewPlan(ctx context.Context, opts screenshotReviewPlanO
 	}
 
 	return result, nil
+}
+
+// printScreenshotReviewPlanResult renders whatever the run produced, including
+// the groups that completed before a failing group aborted the run.
+func printScreenshotReviewPlanResult(result *screenshotReviewPlanResult, output shared.OutputFlags) error {
+	if result == nil {
+		return nil
+	}
+	return shared.PrintOutputWithRenderers(
+		result,
+		*output.Output,
+		*output.Pretty,
+		func() error { return renderScreenshotReviewPlanResult(result, false) },
+		func() error { return renderScreenshotReviewPlanResult(result, true) },
+	)
 }
 
 func resolveScreenshotPlanVersion(ctx context.Context, client *asc.Client, appID, version, versionID, platform string) (string, string, string, error) {

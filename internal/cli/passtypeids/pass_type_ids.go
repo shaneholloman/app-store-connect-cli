@@ -78,14 +78,22 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := shared.ValidateNextURL(*next); err != nil {
+				return fmt.Errorf("pass-type-ids list: %w", err)
+			}
+			if err := shared.RejectNextFlagConflicts(
+				fs,
+				*next,
+				"pass-type-ids list",
+				"id", "identifier", "name", "sort", "fields", "certificate-fields", "include", "limit-certificates", "limit",
+			); err != nil {
+				return err
+			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("pass-type-ids list: --limit must be between 1 and 200")
 			}
 			if *certificatesLimit != 0 && (*certificatesLimit < 1 || *certificatesLimit > 50) {
 				return fmt.Errorf("pass-type-ids list: --limit-certificates must be between 1 and 50")
-			}
-			if err := shared.ValidateNextURL(*next); err != nil {
-				return fmt.Errorf("pass-type-ids list: %w", err)
 			}
 			if err := shared.ValidateSort(*sort, passTypeIDSortList()...); err != nil {
 				return fmt.Errorf("pass-type-ids list: %w", err)
@@ -102,6 +110,14 @@ Examples:
 			includeValue, err := normalizePassTypeIDInclude(*include)
 			if err != nil {
 				return fmt.Errorf("pass-type-ids list: %w", err)
+			}
+			if len(certificateFieldsValue) > 0 && !shared.HasInclude(includeValue, "certificates") {
+				fmt.Fprintln(os.Stderr, "Error: --certificate-fields requires --include certificates")
+				return flag.ErrHelp
+			}
+			if *certificatesLimit != 0 && !shared.HasInclude(includeValue, "certificates") {
+				fmt.Fprintln(os.Stderr, "Error: --limit-certificates requires --include certificates")
+				return flag.ErrHelp
 			}
 
 			client, err := shared.GetASCClient()
@@ -194,7 +210,7 @@ Examples:
 			passTypeIDValue := strings.TrimSpace(*passTypeID)
 			if passTypeIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --pass-type-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--pass-type-id")
 			}
 			if *certificatesLimit != 0 && (*certificatesLimit < 1 || *certificatesLimit > 50) {
 				return fmt.Errorf("pass-type-ids view: --limit-certificates must be between 1 and 50")
@@ -211,6 +227,14 @@ Examples:
 			includeValue, err := normalizePassTypeIDInclude(*include)
 			if err != nil {
 				return fmt.Errorf("pass-type-ids view: %w", err)
+			}
+			if len(certificateFieldsValue) > 0 && !shared.HasInclude(includeValue, "certificates") {
+				fmt.Fprintln(os.Stderr, "Error: --certificate-fields requires --include certificates")
+				return flag.ErrHelp
+			}
+			if *certificatesLimit != 0 && !shared.HasInclude(includeValue, "certificates") {
+				fmt.Fprintln(os.Stderr, "Error: --limit-certificates requires --include certificates")
+				return flag.ErrHelp
 			}
 
 			client, err := shared.GetASCClient()
@@ -267,12 +291,12 @@ Examples:
 			identifierValue := strings.TrimSpace(*identifier)
 			if identifierValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --identifier is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--identifier")
 			}
 			nameValue := strings.TrimSpace(*name)
 			if nameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			client, err := shared.GetASCClient()
@@ -319,12 +343,12 @@ Examples:
 			passTypeIDValue := strings.TrimSpace(*passTypeID)
 			if passTypeIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --pass-type-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--pass-type-id")
 			}
 			nameValue := strings.TrimSpace(*name)
 			if nameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			client, err := shared.GetASCClient()
@@ -370,11 +394,11 @@ Examples:
 			passTypeIDValue := strings.TrimSpace(*passTypeID)
 			if passTypeIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --pass-type-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--pass-type-id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()

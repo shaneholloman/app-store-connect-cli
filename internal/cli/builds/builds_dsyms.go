@@ -13,6 +13,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/urlsanitize"
 )
 
 // dsymHTTPClient is the HTTP client used for dSYM downloads.
@@ -20,23 +21,6 @@ import (
 // ASC_TIMEOUT) controls cancellation so the CLI timeout contract is honored.
 // Tests can replace this via SetDSYMHTTPClient.
 var dsymHTTPClient = &http.Client{}
-
-// DSYMDownloadResult is the structured output for dSYM downloads.
-type DSYMDownloadResult struct {
-	BuildID     string             `json:"buildId"`
-	Version     string             `json:"version,omitempty"`
-	BuildNumber string             `json:"buildNumber,omitempty"`
-	Dir         string             `json:"dir"`
-	Files       []DSYMDownloadFile `json:"files"`
-}
-
-// DSYMDownloadFile describes one downloaded dSYM file.
-type DSYMDownloadFile struct {
-	BundleID string `json:"bundleId,omitempty"`
-	FileName string `json:"fileName"`
-	FilePath string `json:"filePath"`
-	FileSize int64  `json:"fileSize"`
-}
 
 type dsymBundleInfo struct {
 	BundleID string
@@ -153,12 +137,12 @@ Examples:
 			downloadable := filterBundlesWithDSYM(bundles)
 			if len(downloadable) == 0 {
 				fmt.Fprintln(os.Stderr, "No dSYM files available for this build")
-				result := DSYMDownloadResult{
+				result := asc.DSYMDownloadResult{
 					BuildID:     resolvedBuildID,
 					Version:     appVersion,
 					BuildNumber: buildVersion,
 					Dir:         dirValue,
-					Files:       []DSYMDownloadFile{},
+					Files:       []asc.DSYMDownloadFile{},
 				}
 				return shared.PrintOutputWithRenderers(
 					result,
@@ -173,7 +157,7 @@ Examples:
 				return fmt.Errorf("builds dsyms: failed to create output directory: %w", err)
 			}
 
-			files := make([]DSYMDownloadFile, 0, len(downloadable))
+			files := make([]asc.DSYMDownloadFile, 0, len(downloadable))
 			for i, bundle := range downloadable {
 				fileName := dsymFileName(bundle.BundleID, appVersion, buildVersion, resolvedBuildID, i)
 				filePath := filepath.Join(dirValue, fileName)
@@ -187,7 +171,7 @@ Examples:
 
 				fmt.Fprintf(os.Stderr, "  Saved %s (%d bytes)\n", filePath, size)
 
-				files = append(files, DSYMDownloadFile{
+				files = append(files, asc.DSYMDownloadFile{
 					BundleID: bundle.BundleID,
 					FileName: fileName,
 					FilePath: filePath,
@@ -195,7 +179,7 @@ Examples:
 				})
 			}
 
-			result := DSYMDownloadResult{
+			result := asc.DSYMDownloadResult{
 				BuildID:     resolvedBuildID,
 				Version:     appVersion,
 				BuildNumber: buildVersion,
@@ -249,12 +233,28 @@ func displayBundleID(bundleID string, index int) string {
 func downloadDSYM(ctx context.Context, rawURL, destPath string) (int64, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return 0, fmt.Errorf("download failed: %w", err)
+		return 0, urlsanitize.NewTransportError(
+			"create dSYM download request",
+			urlsanitize.RedactURLHostForError(rawURL),
+			err,
+		)
 	}
 
-	resp, err := dsymHTTPClient.Do(req)
+	client := dsymHTTPClient
+	if client == nil {
+		client = &http.Client{}
+	}
+	safeClient := *client
+	safeClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := safeClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("download failed: %w", err)
+		return 0, urlsanitize.NewTransportError(
+			"dSYM download request",
+			urlsanitize.RedactURLHostForError(rawURL),
+			err,
+		)
 	}
 	defer resp.Body.Close()
 
@@ -272,7 +272,7 @@ func SetDSYMHTTPClient(c *http.Client) func() {
 	return func() { dsymHTTPClient = prev }
 }
 
-func printDSYMResultTable(result DSYMDownloadResult) error {
+func printDSYMResultTable(result asc.DSYMDownloadResult) error {
 	fmt.Printf("Build ID: %s\n", result.BuildID)
 	if result.Version != "" {
 		fmt.Printf("Version: %s (%s)\n", result.Version, result.BuildNumber)
@@ -293,7 +293,7 @@ func printDSYMResultTable(result DSYMDownloadResult) error {
 	return nil
 }
 
-func printDSYMResultMarkdown(result DSYMDownloadResult) error {
+func printDSYMResultMarkdown(result asc.DSYMDownloadResult) error {
 	fmt.Printf("**Build ID:** %s\n\n", result.BuildID)
 	if result.Version != "" {
 		fmt.Printf("**Version:** %s (%s)\n\n", result.Version, result.BuildNumber)

@@ -88,6 +88,35 @@ type BuildExpireAllResult struct {
 	Failures            []BuildExpireAllFailure `json:"failures,omitempty"`
 }
 
+// DSYMDownloadResult is the structured output for dSYM downloads.
+type DSYMDownloadResult struct {
+	BuildID     string             `json:"buildId"`
+	Version     string             `json:"version,omitempty"`
+	BuildNumber string             `json:"buildNumber,omitempty"`
+	Dir         string             `json:"dir"`
+	Files       []DSYMDownloadFile `json:"files"`
+}
+
+// DSYMDownloadFile describes one downloaded dSYM file.
+type DSYMDownloadFile struct {
+	BundleID string `json:"bundleId,omitempty"`
+	FileName string `json:"fileName"`
+	FilePath string `json:"filePath"`
+	FileSize int64  `json:"fileSize"`
+}
+
+// BuildWaitResult represents CLI output for builds wait: the resolved build
+// resource plus computed wait metadata.
+type BuildWaitResult struct {
+	Data            Resource[BuildAttributes] `json:"data"`
+	Links           Links                     `json:"links,omitempty"`
+	BuildID         string                    `json:"buildId"`
+	Version         string                    `json:"version,omitempty"`
+	BuildNumber     string                    `json:"buildNumber,omitempty"`
+	ProcessingState string                    `json:"processingState"`
+	Elapsed         string                    `json:"elapsed"`
+}
+
 // formatEncryptionStatus formats the UsesNonExemptEncryption field for display.
 // Returns "required" if true (needs encryption declaration), "exempt" if false,
 // or "n/a" if null (no information available).
@@ -201,11 +230,11 @@ func buildIconsRows(resp *BuildIconsResponse) ([]string, [][]string) {
 	rows := make([][]string, 0, len(resp.Data))
 	for _, item := range resp.Data {
 		rows = append(rows, []string{
-			item.ID,
+			SanitizeTerminalText(item.ID),
 			compactWhitespace(item.Attributes.Name),
-			string(item.Attributes.IconType),
+			SanitizeTerminalText(string(item.Attributes.IconType)),
 			fmt.Sprintf("%t", item.Attributes.Masked),
-			sanitizeTerminal(buildIconAssetURL(item.Attributes)),
+			SanitizeTerminalText(buildIconAssetURL(item.Attributes)),
 		})
 	}
 	return headers, rows
@@ -363,6 +392,33 @@ func buildsNextBuildNumberRows(result *BuildsNextBuildNumberResult) ([]string, [
 		buildsLatestNextValue(result.LatestObservedBuildNumber),
 		result.NextBuildNumber,
 		buildsLatestNextSources(result.SourcesConsidered),
+	}}
+	return headers, rows
+}
+
+func dsymDownloadResultRows(result *DSYMDownloadResult) ([]string, [][]string) {
+	headers := []string{"Build ID", "Bundle ID", "File Name", "File Size", "Dir"}
+	rows := make([][]string, 0, len(result.Files))
+	for _, file := range result.Files {
+		rows = append(rows, []string{
+			result.BuildID,
+			file.BundleID,
+			file.FileName,
+			fmt.Sprintf("%d", file.FileSize),
+			result.Dir,
+		})
+	}
+	return headers, rows
+}
+
+func buildWaitResultRows(result *BuildWaitResult) ([]string, [][]string) {
+	headers := []string{"Build ID", "Version", "Build Number", "Processing State", "Elapsed"}
+	rows := [][]string{{
+		result.BuildID,
+		result.Version,
+		result.BuildNumber,
+		result.ProcessingState,
+		result.Elapsed,
 	}}
 	return headers, rows
 }

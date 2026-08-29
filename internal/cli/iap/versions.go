@@ -120,7 +120,7 @@ func IAPVersionsCreateCommand() *ffcli.Command {
 			id := strings.TrimSpace(*iapID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --iap-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--iap-id")
 			}
 			client, err := iapVersionClientFactory()
 			if err != nil {
@@ -230,7 +230,15 @@ func IAPVersionsListCommand() *ffcli.Command {
 	output := shared.BindOutputFlags(fs)
 	return &ffcli.Command{
 		Name: "list", ShortUsage: `asc iap versions list --iap-id "IAP_ID" [flags]`, ShortHelp: "List versions for an in-app purchase.",
-		LongHelp: "List versions for an in-app purchase.\n\nExamples:\n  asc iap versions list --iap-id \"IAP_ID\"\n  asc iap versions list --iap-id \"IAP_ID\" --state PREPARE_FOR_SUBMISSION --paginate", FlagSet: fs, UsageFunc: shared.DefaultUsageFunc,
+		LongHelp: `List versions for an in-app purchase.
+
+To find the in-app purchase ID, list the app's in-app purchases and use the
+returned id field:
+  asc iap list --app "APP_ID" --paginate --output json
+
+Examples:
+  asc iap versions list --iap-id "IAP_ID"
+  asc iap versions list --iap-id "IAP_ID" --state PREPARE_FOR_SUBMISSION --paginate`, FlagSet: fs, UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if err := rejectIAPVersionArgs(args); err != nil {
 				return err
@@ -238,7 +246,7 @@ func IAPVersionsListCommand() *ffcli.Command {
 			id := strings.TrimSpace(*iapID)
 			if id == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --iap-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--iap-id")
 			}
 			if err := rejectIAPVersionNextFlagConflicts(
 				fs, *next, "iap versions list",
@@ -293,7 +301,7 @@ func IAPVersionsViewCommand() *ffcli.Command {
 			id := strings.TrimSpace(*versionID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 			if *imagesLimit != 0 && (*imagesLimit < 1 || *imagesLimit > 50) {
 				return shared.UsageError("iap versions view: --images-limit must be between 1 and 50")
@@ -347,7 +355,7 @@ func IAPVersionImageCommand() *ffcli.Command {
 			id := strings.TrimSpace(*versionID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 			fields, err := shared.NormalizeSelection(*imageFields, iapVersionImageFields, "--image-fields")
 			if err != nil {
@@ -384,16 +392,16 @@ func IAPVersionSubmitCommand() *ffcli.Command {
 			vid := strings.TrimSpace(*versionID)
 			if vid == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 			sid := strings.TrimSpace(*submissionID)
 			if sid == "" {
 				fmt.Fprintln(os.Stderr, "Error: --submission is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--submission")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 			client, err := iapVersionClientFactory()
 			if err != nil {
@@ -431,7 +439,7 @@ func iapVersionImageLinkageCommand() *ffcli.Command {
 			id := strings.TrimSpace(*versionID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 			client, err := iapVersionClientFactory()
 			if err != nil {
@@ -470,7 +478,7 @@ func iapVersionLinkagesCommand(name string, parentIAP bool) *ffcli.Command {
 			value := strings.TrimSpace(*id)
 			if value == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintf(os.Stderr, "Error: --%s is required\n", idFlag)
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--" + idFlag)
 			}
 			if flagSet(fs, idFlag) && strings.TrimSpace(*next) != "" {
 				return shared.UsageError(fmt.Sprintf("iap versions links %s: --next cannot be combined with --%s", name, idFlag))

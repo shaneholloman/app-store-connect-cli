@@ -15,7 +15,7 @@ jobs:
       website_affected: ${{ steps.scope.outputs.website_affected }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -60,12 +60,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version-file: go.mod
           cache: true
 
       - name: Check Wall of Apps source
@@ -82,17 +82,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version-file: go.mod
           cache: true
 
       - name: Cache Go tools
         id: go-tools-cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/go/bin
           key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile') }}
@@ -132,6 +132,15 @@ jobs:
             run: |
               export PATH="$(go env GOPATH)/bin:$PATH"
               make lint
+
+          # Every test job runs on ubuntu, so darwin- and windows-gated sources and
+          # tests are otherwise never type-checked. golangci-lint already vets
+          # GOOS=linux with tests enabled.
+          - name: Vet platform-gated code
+            if: contains(fromJSON('["telemetry", "full"]'), needs.changes.outputs.scope)
+            run: |
+              GOOS=darwin go vet ./...
+              GOOS=windows go vet ./...
 
   format-and-lint:
     needs: [changes, wall-only-check, quality-checks, website-checks]
@@ -182,12 +191,12 @@ jobs:
             command: python3 scripts/go_test_shard.py tests --package ./internal/cli/cmdtest --shard-index 1 --shard-total 2 -- -v
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version-file: go.mod
           cache: true
 
       - name: Run Go test shard
@@ -199,12 +208,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version-file: go.mod
           cache: true
 
       - name: Run telemetry tests
@@ -216,12 +225,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version-file: go.mod
           cache: true
 
       - name: Run telemetry tests
@@ -270,24 +279,27 @@ jobs:
             runner: macos-latest
             command: |
               ASC_BYPASS_KEYCHAIN=1 go test -short ./internal/screenshots
-              GOOS=darwin GOARCH=amd64 go build -o build/asc_dev_macos_amd64 .
-              GOOS=darwin GOARCH=arm64 go build -o build/asc_dev_macos_arm64 .
+              CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o build/asc_dev_macos_amd64 .
+              CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o build/asc_dev_macos_arm64 .
           - name: Linux
             runner: ubuntu-latest
             command: |
-              GOOS=linux GOARCH=amd64 go build -o build/asc_dev_linux_amd64 .
-              GOOS=linux GOARCH=arm64 go build -o build/asc_dev_linux_arm64 .
+              CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o build/asc_dev_linux_amd64 .
+              CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o build/asc_dev_linux_arm64 .
           - name: Windows
             runner: windows-latest
-            command: GOOS=windows GOARCH=amd64 go build -o build/asc_dev_windows_amd64.exe .
+            command: |
+              ASC_BYPASS_KEYCHAIN=1 go test -short -count=1 ./internal/secureopen
+              ASC_BYPASS_KEYCHAIN=1 go test -short -count=1 ./internal/cli/shared -run '^(TestSafeWriteFileNoSymlink|TestPublishStagedFileNoReplace|TestWriteNewFileNoSymlink|TestCleanupIncompleteFile)'
+              CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o build/asc_dev_windows_amd64.exe .
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version-file: go.mod
           cache: true
 
       - name: Create build directory
@@ -313,12 +325,12 @@ jobs:
             runner: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
-          go-version: '1.26.5'
+          go-version-file: go.mod
           cache: true
 
       - name: Compile CLI

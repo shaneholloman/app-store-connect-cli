@@ -11,6 +11,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/validation"
 )
 
 // AppSetupCommand returns the app-setup command group.
@@ -26,8 +27,8 @@ func AppSetupCommand() *ffcli.Command {
 Examples:
   asc app-setup info set --app "APP_ID" --primary-locale "en-US" --bundle-id "com.example.app"
   asc app-setup categories set --app "APP_ID" --primary GAMES
-  asc app-setup availability edit --app "APP_ID" --territory "USA,GBR" --available true --available-in-new-territories true
-  asc app-setup availability edit --app "APP_ID" --all-territories --available true --available-in-new-territories true
+  asc app-setup availability edit --app "APP_ID" --territory "USA,GBR" --available true
+  asc app-setup availability edit --app "APP_ID" --all-territories --available true
   asc app-setup pricing set --app "APP_ID" --price-point "PRICE_POINT_ID" --base-territory "USA"
   asc app-setup pricing set --app "APP_ID" --free --start-date "2024-03-01"
   asc app-setup localizations upload --version "VERSION_ID" --path "./localizations"`,
@@ -103,7 +104,7 @@ Examples:
 			appIDValue := strings.TrimSpace(*appID)
 			if appIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			bundleIDValue := strings.TrimSpace(*bundleID)
@@ -139,7 +140,7 @@ Examples:
 			}
 			if hasLocalization && localeValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --locale is required for app info localization updates")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--locale")
 			}
 			if localeValue != "" {
 				if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
@@ -160,6 +161,13 @@ Examples:
 				}
 			}
 
+			for _, issue := range validation.AppInfoLocalizationLengthIssues(validation.AppInfoLocalization{
+				Name:     nameValue,
+				Subtitle: subtitleValue,
+			}) {
+				return shared.UsageErrorf("--%s exceeds %d %s", issue.Field, issue.Limit, issue.Unit)
+			}
+
 			client, err := shared.GetASCClient()
 			if err != nil {
 				return fmt.Errorf("app-setup info set: %w", err)
@@ -167,6 +175,37 @@ Examples:
 
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
+
+			var localizationPlan *shared.AppInfoLocalizationUpsertPlan
+			if hasLocalization {
+				localizationValues := make(map[string]string, 5)
+				if nameValue != "" {
+					localizationValues["name"] = nameValue
+				}
+				if subtitleValue != "" {
+					localizationValues["subtitle"] = subtitleValue
+				}
+				if privacyPolicyURLValue != "" {
+					localizationValues["privacyPolicyUrl"] = privacyPolicyURLValue
+				}
+				if privacyChoicesURLValue != "" {
+					localizationValues["privacyChoicesUrl"] = privacyChoicesURLValue
+				}
+				if privacyPolicyTextValue != "" {
+					localizationValues["privacyPolicyText"] = privacyPolicyTextValue
+				}
+				localizationPlan, err = shared.PlanAppInfoLocalizationUpsert(
+					requestCtx,
+					client,
+					appIDValue,
+					strings.TrimSpace(*appInfoID),
+					localeValue,
+					localizationValues,
+				)
+				if err != nil {
+					return fmt.Errorf("app-setup info set: %w", err)
+				}
+			}
 
 			var appResp *asc.AppResponse
 			if hasAppUpdate {
@@ -188,53 +227,9 @@ Examples:
 
 			var appInfoResp *asc.AppInfoLocalizationResponse
 			if hasLocalization {
-				resolvedAppInfoID, err := shared.ResolveAppInfoID(requestCtx, client, appIDValue, strings.TrimSpace(*appInfoID))
+				appInfoResp, _, err = shared.ApplyAppInfoLocalizationUpsert(requestCtx, client, localizationPlan)
 				if err != nil {
 					return fmt.Errorf("app-setup info set: %w", err)
-				}
-
-				localizations, err := client.GetAppInfoLocalizations(
-					requestCtx,
-					resolvedAppInfoID,
-					asc.WithAppInfoLocalizationsLimit(200),
-					asc.WithAppInfoLocalizationLocales([]string{localeValue}),
-				)
-				if err != nil {
-					return fmt.Errorf("app-setup info set: failed to fetch app info localizations: %w", err)
-				}
-
-				attrs := asc.AppInfoLocalizationAttributes{}
-				if nameValue != "" {
-					attrs.Name = nameValue
-				}
-				if subtitleValue != "" {
-					attrs.Subtitle = subtitleValue
-				}
-				if privacyPolicyURLValue != "" {
-					attrs.PrivacyPolicyURL = privacyPolicyURLValue
-				}
-				if privacyChoicesURLValue != "" {
-					attrs.PrivacyChoicesURL = privacyChoicesURLValue
-				}
-				if privacyPolicyTextValue != "" {
-					attrs.PrivacyPolicyText = privacyPolicyTextValue
-				}
-
-				if len(localizations.Data) == 0 {
-					attrs.Locale = localeValue
-					appInfoResp, err = client.CreateAppInfoLocalization(requestCtx, resolvedAppInfoID, attrs)
-					if err != nil {
-						return fmt.Errorf("app-setup info set: %w", err)
-					}
-				} else {
-					localizationID := strings.TrimSpace(localizations.Data[0].ID)
-					if localizationID == "" {
-						return fmt.Errorf("app-setup info set: localization id is empty")
-					}
-					appInfoResp, err = client.UpdateAppInfoLocalization(requestCtx, localizationID, attrs)
-					if err != nil {
-						return fmt.Errorf("app-setup info set: %w", err)
-					}
 				}
 			}
 
@@ -298,8 +293,8 @@ func AppSetupAvailabilityCommand() *ffcli.Command {
 		LongHelp: `Edit app availability for territories.
 
 Examples:
-  asc app-setup availability edit --app "APP_ID" --territory "USA,GBR" --available true --available-in-new-territories true
-  asc app-setup availability edit --app "APP_ID" --all-territories --available true --available-in-new-territories true`,
+  asc app-setup availability edit --app "APP_ID" --territory "USA,GBR" --available true
+  asc app-setup availability edit --app "APP_ID" --all-territories --available true`,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			AppSetupAvailabilitySetCommand(),
@@ -320,11 +315,12 @@ func AppSetupAvailabilitySetCommand() *ffcli.Command {
 		LongHelp: `Edit app availability for territories.
 
 Examples:
-  asc app-setup availability edit --app "123456789" --territory "USA,GBR" --available true --available-in-new-territories true
-  asc app-setup availability edit --app "123456789" --all-territories --available true --available-in-new-territories true
+  asc app-setup availability edit --app "123456789" --territory "USA,GBR" --available true
+  asc app-setup availability edit --app "123456789" --all-territories --available true
 
 Note:
-  This command only updates an existing app availability. If the app has no availability record yet, initialize availability in App Store Connect first.`,
+  This command only updates an existing app availability. If the app has no availability record yet, initialize availability in App Store Connect first.
+  If --available-in-new-territories is supplied, it verifies the existing policy; Apple does not expose an update operation for that setting.`,
 		ErrorPrefix:                      "app-setup availability edit",
 		IncludeAvailableInNewTerritories: true,
 	})
@@ -421,7 +417,7 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if strings.TrimSpace(*path) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --path is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--path")
 			}
 
 			normalizedType, err := shared.NormalizeLocalizationType(*locType)
@@ -435,7 +431,7 @@ Examples:
 			case shared.LocalizationTypeVersion:
 				if strings.TrimSpace(*versionID) == "" {
 					fmt.Fprintln(os.Stderr, "Error: --version is required for version localizations")
-					return shared.MissingRequiredUsageError()
+					return shared.MissingRequiredUsageError("--version")
 				}
 
 				valuesByLocale, err := shared.ReadLocalizationStrings(*path, locales)
@@ -487,7 +483,7 @@ Examples:
 				resolvedAppID := shared.ResolveAppID(*appID)
 				if resolvedAppID == "" {
 					fmt.Fprintln(os.Stderr, "Error: --app is required for app-info localizations")
-					return shared.MissingRequiredUsageError()
+					return shared.MissingRequiredUsageError("--app")
 				}
 				valuesByLocale, err := shared.ReadLocalizationStrings(*path, locales)
 				if err != nil {

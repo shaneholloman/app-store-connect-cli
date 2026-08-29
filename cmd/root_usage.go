@@ -27,7 +27,7 @@ var rootUsageGroups = []rootCommandGroup{
 	},
 	{
 		title:    "ANALYTICS & FINANCE COMMANDS",
-		commands: []string{"analytics", "ads", "insights", "finance", "performance"},
+		commands: []string{"analytics", "ads", "optimize", "insights", "finance", "performance"},
 	},
 	{
 		title: "APP MANAGEMENT COMMANDS",
@@ -44,7 +44,7 @@ var rootUsageGroups = []rootCommandGroup{
 		title: "TESTFLIGHT & BUILD COMMANDS",
 		commands: []string{
 			"testflight", "feedback", "crashes", "builds", "build-bundles",
-			"build-localizations", "xcode",
+			"build-localizations", "xcode", "distribute",
 			"sandbox",
 		},
 	},
@@ -70,7 +70,7 @@ var rootUsageGroups = []rootCommandGroup{
 	},
 	{
 		title:    "UTILITY COMMANDS",
-		commands: []string{"diff", "capabilities", "search", "snitch", "version", "completion", "schema", "telemetry"},
+		commands: []string{"system-status", "diff", "capabilities", "search", "snitch", "version", "completion", "schema", "telemetry"},
 	},
 }
 

@@ -72,11 +72,14 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
-			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("accessibility list: --limit must be between 1 and 200")
-			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("accessibility list: %w", err)
+			}
+			if err := rejectAccessibilityNextFlagConflicts(fs, *next, "app", "device-family", "state", "fields", "limit"); err != nil {
+				return err
+			}
+			if *limit != 0 && (*limit < 1 || *limit > 200) {
+				return fmt.Errorf("accessibility list: --limit must be between 1 and 200")
 			}
 
 			deviceFamilies, err := normalizeAccessibilityDeviceFamilies(shared.SplitCSVUpper(*deviceFamily))
@@ -97,7 +100,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := shared.GetASCClient()
@@ -143,6 +146,22 @@ Examples:
 	}
 }
 
+func rejectAccessibilityNextFlagConflicts(fs *flag.FlagSet, next string, names ...string) error {
+	if strings.TrimSpace(next) == "" {
+		return nil
+	}
+	provided := make(map[string]struct{}, len(names))
+	fs.Visit(func(f *flag.Flag) {
+		provided[f.Name] = struct{}{}
+	})
+	for _, name := range names {
+		if _, ok := provided[name]; ok {
+			return shared.UsageErrorf("accessibility list: --next cannot be combined with --%s", name)
+		}
+	}
+	return nil
+}
+
 // AccessibilityGetCommand returns the accessibility view subcommand.
 func AccessibilityGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("view", flag.ExitOnError)
@@ -166,7 +185,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			fieldsValue, err := normalizeAccessibilityDeclarationFields(*fields)
@@ -224,13 +243,13 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			deviceFamilyValue := strings.TrimSpace(*deviceFamily)
 			if deviceFamilyValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --device-family is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--device-family")
 			}
 
 			normalizedDeviceFamily, err := normalizeAccessibilityDeviceFamily(deviceFamilyValue)
@@ -303,7 +322,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			attrs, err := buildAccessibilityDeclarationUpdateAttributes(map[string]string{
@@ -366,11 +385,11 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()

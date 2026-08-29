@@ -157,7 +157,7 @@ Examples:
 
 				buildResp, err = waitForBuildDiscovery(requestCtx, client, selector, *pollInterval)
 				if err != nil {
-					if errors.Is(err, context.DeadlineExceeded) {
+					if requestCtx.Err() != nil && errors.Is(err, context.DeadlineExceeded) {
 						return fmt.Errorf("builds wait: timed out resolving build selector after %s", (*timeout).Round(time.Second))
 					}
 					return fmt.Errorf("builds wait: %w", err)
@@ -167,7 +167,7 @@ Examples:
 			waitBuildID := buildResp.Data.ID
 			buildResp, err = waitForBuildProcessingState(requestCtx, client, buildResp.Data.ID, *pollInterval, *failOnInvalid)
 			if err != nil {
-				if errors.Is(err, context.DeadlineExceeded) {
+				if requestCtx.Err() != nil && errors.Is(err, context.DeadlineExceeded) {
 					return fmt.Errorf("builds wait: timed out waiting for build %s after %s", waitBuildID, (*timeout).Round(time.Second))
 				}
 				return fmt.Errorf("builds wait: %w", err)
@@ -182,7 +182,7 @@ Examples:
 			if processingState == "" {
 				processingState = "UNKNOWN"
 			}
-			result := &buildWaitResult{
+			result := &asc.BuildWaitResult{
 				Data:            buildResp.Data,
 				Links:           buildResp.Links,
 				BuildID:         strings.TrimSpace(buildResp.Data.ID),
@@ -194,10 +194,7 @@ Examples:
 				result.Version = versionValue
 			}
 
-			if format == "json" {
-				return shared.PrintOutput(result, format, *output.Pretty)
-			}
-			return shared.PrintOutput(buildResp, format, *output.Pretty)
+			return shared.PrintOutput(result, format, *output.Pretty)
 		},
 	}
 }
@@ -211,16 +208,6 @@ type appBuildWaitSelector struct {
 	Since       *time.Time
 }
 
-type buildWaitResult struct {
-	Data            asc.Resource[asc.BuildAttributes] `json:"data"`
-	Links           asc.Links                         `json:"links,omitempty"`
-	BuildID         string                            `json:"buildId"`
-	Version         string                            `json:"version,omitempty"`
-	BuildNumber     string                            `json:"buildNumber,omitempty"`
-	ProcessingState string                            `json:"processingState"`
-	Elapsed         string                            `json:"elapsed"`
-}
-
 func waitForBuildDiscovery(
 	ctx context.Context,
 	client *asc.Client,
@@ -228,7 +215,7 @@ func waitForBuildDiscovery(
 	pollInterval time.Duration,
 ) (*asc.BuildResponse, error) {
 	started := time.Now()
-	return asc.PollUntil(ctx, pollInterval, func(ctx context.Context) (*asc.BuildResponse, bool, error) {
+	return asc.PollUntilTolerant(ctx, pollInterval, func(ctx context.Context) (*asc.BuildResponse, bool, error) {
 		buildResp, err := resolveBuildForAppWait(ctx, client, selector)
 		if err != nil {
 			return nil, false, err
@@ -243,7 +230,7 @@ func waitForBuildDiscovery(
 			time.Since(started).Round(time.Second),
 		)
 		return nil, false, nil
-	})
+	}, asc.PollOptions{Tolerate: asc.IsTransientWaitError})
 }
 
 func resolveBuildForAppWait(
@@ -325,10 +312,10 @@ func waitForBuildProcessingState(
 ) (*asc.BuildResponse, error) {
 	started := time.Now()
 
-	for {
+	return asc.PollUntilTolerant(ctx, pollInterval, func(ctx context.Context) (*asc.BuildResponse, bool, error) {
 		buildResp, err := client.GetBuild(ctx, buildID)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		state := strings.ToUpper(strings.TrimSpace(buildResp.Data.Attributes.ProcessingState))
@@ -345,20 +332,15 @@ func waitForBuildProcessingState(
 
 		switch state {
 		case asc.BuildProcessingStateValid:
-			return buildResp, nil
+			return buildResp, true, nil
 		case asc.BuildProcessingStateFailed:
-			return nil, fmt.Errorf("build processing failed with state %s", state)
+			return nil, false, fmt.Errorf("build processing failed with state %s", state)
 		case asc.BuildProcessingStateInvalid:
 			if failOnInvalid {
-				return nil, fmt.Errorf("build processing failed with state %s", state)
+				return nil, false, fmt.Errorf("build processing failed with state %s", state)
 			}
-			return buildResp, nil
+			return buildResp, true, nil
 		}
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(pollInterval):
-		}
-	}
+		return nil, false, nil
+	}, asc.PollOptions{Tolerate: asc.IsTransientWaitError})
 }

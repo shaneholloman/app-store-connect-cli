@@ -49,7 +49,8 @@ asc <subcommand> [flags]
 ### Analytics and Finance
 
 - `analytics` - Request and download analytics and sales reports.
-- `ads` - Manage Apple Ads Campaign Management API resources.
+- `ads` - Manage Apple Ads API resources.
+- `optimize` - Build cross-API optimization plans. [experimental]
 - `insights` - Generate weekly and daily insights from App Store data sources.
 - `finance` - Download payments and financial reports.
 - `performance` - Access performance metrics and diagnostic logs.
@@ -88,7 +89,8 @@ asc <subcommand> [flags]
 - `builds` - Manage builds in App Store Connect.
 - `build-bundles` - Manage build bundles and App Clip data.
 - `build-localizations` - Manage build release notes localizations.
-- `xcode` - Local Xcode archive/export helpers (macOS only).
+- `xcode` - Local Xcode build/archive/export helpers (macOS only).
+- `distribute` - Plan, execute, inspect, and publish iOS distribution artifacts. [experimental]
 - `sandbox` - Manage sandbox testers in App Store Connect.
 
 ### Review and Release
@@ -136,6 +138,7 @@ asc <subcommand> [flags]
 
 ### Utility
 
+- `system-status` - [experimental] Check Apple Developer service health.
 - `diff` - Generate deterministic non-mutating diff plans.
 - `capabilities` - Show CLI, API, web-only, and public-API-limited capability coverage.
 - `search` - Search asc commands and examples for agent-oriented command discovery.
@@ -161,8 +164,8 @@ asc <subcommand> [flags]
 asc apps list --output table
 
 # Pause and resume Apple Ads campaigns
-asc ads campaigns pause --campaign CAMPAIGN_ID --org ORG_ID --confirm
-asc ads campaigns resume --campaign CAMPAIGN_ID --org ORG_ID --confirm
+asc ads campaigns pause --campaign CAMPAIGN_ID --ad-account AD_ACCOUNT_ID
+asc ads campaigns resume --campaign CAMPAIGN_ID --ad-account AD_ACCOUNT_ID --confirm
 
 # Manage App Store compatibility opt-ins through a web session
 asc web apps compatibility view --app "123456789"
@@ -174,8 +177,15 @@ asc builds upload --app "123456789" --ipa "/path/to/MyApp.ipa"
 # Generate local Xcode metadata before archiving
 asc xcode inject --manifest .asc/deployment.json --set version=1.2.3 --set build_number=42 --dry-run --output json
 
+# Plan, confirm, resume, check status, and live-verify a private ad hoc distribution run
+asc distribute plan --archive-path ./App.xcarchive --config .asc/distribution.json --plan .asc/distribution/plan.json --state-dir .asc/distribution/runs --output json
+asc distribute apply --plan .asc/distribution/plan.json --confirm PLAN_HASH --output json
+asc distribute resume --run RUN_ID --state-dir .asc/distribution/runs --output json
+asc distribute status --run RUN_ID --state-dir .asc/distribution/runs --output json
+asc distribute verify --run RUN_ID --state-dir .asc/distribution/runs --timeout 30s --output json
+
 # Stage an App Store version before submission
-asc release stage --app "123456789" --version "1.2.3" --build "BUILD_ID" --copy-metadata-from "1.2.2" --dry-run
+asc release stage --app "123456789" --version "1.2.3" --build-id "BUILD_ID" --copy-metadata-from "1.2.2" --dry-run
 
 # Publish an App Store version (high-level)
 asc publish appstore --app "123456789" --ipa "/path/to/MyApp.ipa" --version "1.2.3"

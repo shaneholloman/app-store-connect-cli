@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -257,7 +258,9 @@ func resolveTiersWithFetcher(
 	}
 
 	if len(tiers) > 0 {
-		_ = saveCache(tiers)
+		if err := saveCache(tiers); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to cache price tiers: %v\n", err)
+		}
 	}
 
 	return tiers, nil
@@ -355,10 +358,12 @@ func ResolvePricePointByPrice(tiers []TierEntry, price string) (string, error) {
 }
 
 // ValidatePriceSelectionFlags checks that --price-point, --tier, --price, and --free are mutually exclusive.
-// Returns a usage-style error if more than one is set.
+// Returns a usage-style error if more than one is set. Each failure carries a
+// structured diagnostic so callers can classify it without re-deriving which
+// rule was violated; the rendered messages are unchanged.
 func ValidatePriceSelectionFlags(pricePoint string, tier int, price string, free ...bool) error {
 	if tier < 0 {
-		return fmt.Errorf("--tier must be a positive integer")
+		return WithDiagnostic(fmt.Errorf("--tier must be a positive integer"), DiagnosticInvalidInput, "--tier")
 	}
 
 	supportsFree := len(free) > 0
@@ -379,10 +384,10 @@ func ValidatePriceSelectionFlags(pricePoint string, tier int, price string, free
 		count++
 	}
 	if count == 0 {
-		return fmt.Errorf("%s", requiredMessage)
+		return WithDiagnostic(fmt.Errorf("%s", requiredMessage), DiagnosticRequiredInputMissing, "")
 	}
 	if count > 1 {
-		return fmt.Errorf("%s", mutuallyExclusiveMessage)
+		return WithDiagnostic(fmt.Errorf("%s", mutuallyExclusiveMessage), DiagnosticConflictingInput, "")
 	}
 	return nil
 }

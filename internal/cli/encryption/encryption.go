@@ -31,7 +31,7 @@ Examples:
   asc encryption declarations view --id "DECL_ID"
   asc encryption declarations create --app "APP_ID" --app-description "Uses TLS" --contains-proprietary-cryptography=false --contains-third-party-cryptography=true --available-on-french-store=true
   asc encryption declarations exempt-declare --plist ./Info.plist
-  asc encryption declarations assign-builds --id "DECL_ID" --build "BUILD_ID"
+  asc encryption declarations assign-builds --id "DECL_ID" --build-id "BUILD_ID"
   asc encryption documents view --id "DOC_ID"
   asc encryption documents upload --declaration "DECL_ID" --file ./export.pdf`,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -58,7 +58,7 @@ Examples:
   asc encryption declarations view --id "DECL_ID"
   asc encryption declarations create --app "APP_ID" --app-description "Uses TLS" --contains-proprietary-cryptography=false --contains-third-party-cryptography=true --available-on-french-store=true
   asc encryption declarations exempt-declare --plist ./Info.plist
-  asc encryption declarations assign-builds --id "DECL_ID" --build "BUILD_ID"`,
+  asc encryption declarations assign-builds --id "DECL_ID" --build-id "BUILD_ID"`,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			EncryptionDeclarationsListCommand(),
@@ -80,7 +80,8 @@ func EncryptionDeclarationsListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("encryption declarations list", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
-	builds := fs.String("build", "", "Filter by build IDs (comma-separated)")
+	builds := fs.String("build-id", "", "Filter by build IDs (comma-separated)")
+	legacyBuilds := shared.BindDeprecatedStringFlagAlias(fs, "build", "build-id")
 	fields := fs.String("fields", "", "Fields to include: "+strings.Join(encryptionDeclarationFieldList(), ", "))
 	documentFields := fs.String("document-fields", "", "Document fields to include: "+strings.Join(encryptionDocumentFieldList(), ", "))
 	include := fs.String("include", "", "Include relationships: "+strings.Join(encryptionDeclarationIncludeList(), ", "))
@@ -103,6 +104,9 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := legacyBuilds.Apply(builds); err != nil {
+				return err
+			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("encryption declarations list: --limit must be between 1 and 200")
 			}
@@ -129,7 +133,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			buildIDs := shared.SplitCSV(*builds)
@@ -205,7 +209,7 @@ Examples:
 			declarationValue := strings.TrimSpace(*declarationID)
 			if declarationValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if *buildLimit != 0 && (*buildLimit < 1 || *buildLimit > 50) {
 				return fmt.Errorf("encryption declarations view: --build-limit must be between 1 and 50")
@@ -273,7 +277,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			visited := map[string]bool{}
@@ -284,19 +288,19 @@ Examples:
 			descriptionValue := strings.TrimSpace(*appDescription)
 			if descriptionValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app-description is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app-description")
 			}
 			if !visited["contains-proprietary-cryptography"] {
 				fmt.Fprintln(os.Stderr, "Error: --contains-proprietary-cryptography is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--contains-proprietary-cryptography")
 			}
 			if !visited["contains-third-party-cryptography"] {
 				fmt.Fprintln(os.Stderr, "Error: --contains-third-party-cryptography is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--contains-third-party-cryptography")
 			}
 			if !visited["available-on-french-store"] {
 				fmt.Fprintln(os.Stderr, "Error: --available-on-french-store is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--available-on-french-store")
 			}
 
 			client, err := shared.GetASCClient()
@@ -541,31 +545,37 @@ func EncryptionDeclarationsAssignBuildsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("encryption declarations assign-builds", flag.ExitOnError)
 
 	declarationID := fs.String("id", "", "Encryption declaration ID (required)")
-	builds := fs.String("build", "", "Build IDs to assign (comma-separated)")
+	builds := shared.BindOnceCSVFlag(fs, "build-id", "Build IDs to assign (comma-separated)")
+	legacyBuilds := shared.BindDeprecatedStringFlagAlias(fs, "build", "build-id")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "assign-builds",
-		ShortUsage: "asc encryption declarations assign-builds --id \"DECL_ID\" --build \"BUILD_ID[,BUILD_ID...]\"",
+		ShortUsage: "asc encryption declarations assign-builds --id \"DECL_ID\" --build-id \"BUILD_ID[,BUILD_ID...]\"",
 		ShortHelp:  "Assign builds to an encryption declaration.",
 		LongHelp: `Assign builds to an encryption declaration.
 
 Examples:
-  asc encryption declarations assign-builds --id "DECL_ID" --build "BUILD_ID"
-  asc encryption declarations assign-builds --id "DECL_ID" --build "BUILD_ID1,BUILD_ID2"`,
+  asc encryption declarations assign-builds --id "DECL_ID" --build-id "BUILD_ID"
+  asc encryption declarations assign-builds --id "DECL_ID" --build-id "BUILD_ID1,BUILD_ID2"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			buildValue := builds.String()
+			if err := legacyBuilds.Apply(&buildValue); err != nil {
+				return err
+			}
+
 			declarationValue := strings.TrimSpace(*declarationID)
 			if declarationValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
-			buildIDs := shared.SplitCSV(*builds)
+			buildIDs := shared.SplitCSV(buildValue)
 			if len(buildIDs) == 0 {
-				fmt.Fprintln(os.Stderr, "Error: --build is required")
-				return shared.MissingRequiredUsageError()
+				fmt.Fprintln(os.Stderr, "Error: --build-id is required")
+				return shared.MissingRequiredUsageError("--build-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -636,7 +646,7 @@ Examples:
 			documentValue := strings.TrimSpace(*documentID)
 			if documentValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			fieldsValue, err := normalizeEncryptionDocumentFields(*fields, "--fields")
@@ -684,13 +694,13 @@ Examples:
 			declarationValue := strings.TrimSpace(*declarationID)
 			if declarationValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --declaration is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--declaration")
 			}
 
 			pathValue := strings.TrimSpace(*filePath)
 			if pathValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --file is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--file")
 			}
 
 			info, err := os.Lstat(pathValue)

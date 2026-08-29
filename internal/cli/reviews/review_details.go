@@ -29,6 +29,7 @@ func ReviewDetailsGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("details-get", flag.ExitOnError)
 
 	detailID := fs.String("id", "", "App Store review detail ID (required)")
+	includeSensitive := shared.BindIncludeSensitiveFlag(fs)
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -45,7 +46,7 @@ Examples:
 			detailValue := strings.TrimSpace(*detailID)
 			if detailValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -61,7 +62,8 @@ Examples:
 				return fmt.Errorf("review details-get: failed to fetch: %w", err)
 			}
 
-			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+			shared.WarnIncludeSensitive(os.Stderr, *includeSensitive)
+			return shared.PrintOutput(presentableReviewDetail(resp, *includeSensitive), *output.Output, *output.Pretty)
 		},
 	}
 }
@@ -71,6 +73,7 @@ func ReviewDetailsForVersionCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("details-for-version", flag.ExitOnError)
 
 	versionID := fs.String("version-id", "", "App Store version ID (required)")
+	includeSensitive := shared.BindIncludeSensitiveFlag(fs)
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -87,7 +90,7 @@ Examples:
 			versionValue := strings.TrimSpace(*versionID)
 			if versionValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -128,7 +131,8 @@ Examples:
 				return fmt.Errorf("review details-for-version: failed to fetch: %w", err)
 			}
 
-			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+			shared.WarnIncludeSensitive(os.Stderr, *includeSensitive)
+			return shared.PrintOutput(presentableReviewDetail(resp, *includeSensitive), *output.Output, *output.Pretty)
 		},
 	}
 }
@@ -146,6 +150,7 @@ func ReviewDetailsCreateCommand() *ffcli.Command {
 	demoAccountPassword := fs.String("demo-account-password", "", reviewDetailDemoAccountPasswordUsage)
 	demoAccountRequired := fs.Bool("demo-account-required", false, reviewDetailDemoAccountRequiredUsage)
 	notes := fs.String("notes", "", reviewDetailNotesUsage)
+	includeSensitive := shared.BindIncludeSensitiveFlag(fs)
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -167,7 +172,7 @@ Examples:
 			versionValue := strings.TrimSpace(*versionID)
 			if versionValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 
 			visited := map[string]bool{}
@@ -236,7 +241,8 @@ Examples:
 				return fmt.Errorf("review details-create: failed to create: %w", err)
 			}
 
-			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+			shared.WarnIncludeSensitive(os.Stderr, *includeSensitive)
+			return shared.PrintOutput(presentableReviewDetail(resp, *includeSensitive), *output.Output, *output.Pretty)
 		},
 	}
 }
@@ -254,6 +260,7 @@ func ReviewDetailsUpdateCommand() *ffcli.Command {
 	demoAccountPassword := fs.String("demo-account-password", "", reviewDetailDemoAccountPasswordUsage)
 	demoAccountRequired := fs.Bool("demo-account-required", false, reviewDetailDemoAccountRequiredUsage)
 	notes := fs.String("notes", "", reviewDetailNotesUsage)
+	includeSensitive := shared.BindIncludeSensitiveFlag(fs)
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -275,7 +282,7 @@ Examples:
 			detailValue := strings.TrimSpace(*detailID)
 			if detailValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			visited := map[string]bool{}
@@ -285,7 +292,7 @@ Examples:
 
 			if !hasReviewDetailUpdates(visited) {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 			if visited["demo-account-password"] {
 				if err := validateReviewDetailDemoPasswordLength(strings.TrimSpace(*demoAccountPassword)); err != nil {
@@ -352,9 +359,20 @@ Examples:
 				return fmt.Errorf("review details-update: failed to update: %w", err)
 			}
 
-			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
+			shared.WarnIncludeSensitive(os.Stderr, *includeSensitive)
+			return shared.PrintOutput(presentableReviewDetail(resp, *includeSensitive), *output.Output, *output.Pretty)
 		},
 	}
+}
+
+// presentableReviewDetail withholds the demo account password unless the caller
+// opted in for this invocation. The fetched response keeps its real value so
+// validation and request construction stay unaffected.
+func presentableReviewDetail(resp *asc.AppStoreReviewDetailResponse, includeSensitive bool) *asc.AppStoreReviewDetailResponse {
+	if includeSensitive {
+		return resp
+	}
+	return asc.RedactAppStoreReviewDetailResponse(resp)
 }
 
 func hasReviewDetailUpdates(visited map[string]bool) bool {
@@ -405,7 +423,7 @@ func validateReviewDetailUpdateDemoCredentials(
 func validateReviewDetailDemoCredentialValues(demoAccountName, demoAccountPassword string) error {
 	if strings.TrimSpace(demoAccountName) == "" || strings.TrimSpace(demoAccountPassword) == "" {
 		fmt.Fprintln(os.Stderr, reviewDetailDemoCredentialsError)
-		return flag.ErrHelp
+		return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticRequiredInputMissing, "")
 	}
 
 	return validateReviewDetailDemoPasswordLength(demoAccountPassword)
@@ -417,5 +435,5 @@ func validateReviewDetailDemoPasswordLength(demoAccountPassword string) error {
 	}
 
 	fmt.Fprintln(os.Stderr, reviewDetailDemoPasswordLengthError)
-	return flag.ErrHelp
+	return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "--demo-account-password")
 }

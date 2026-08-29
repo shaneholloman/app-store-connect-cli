@@ -19,10 +19,11 @@ GO := go
 GOMOD := go.mod
 GOBIN := $(shell $(GO) env GOPATH)/bin
 GO_TOOLCHAIN_VERSION := $(shell $(GO) env GOVERSION)
-GOLANGCI_LINT_TIMEOUT ?= 5m
+GOLANGCI_LINT_TIMEOUT ?= 10m
 INSTALL_PREFIX ?= /usr/local/bin
 GOFUMPT_VERSION ?= v0.10.0
 GOLANGCI_LINT_VERSION ?= v2.12.1
+GOVULNCHECK_VERSION ?= v1.6.0
 
 # Directories
 SRC_DIR := .
@@ -51,13 +52,14 @@ build:
 .PHONY: build-all
 build-all: clean
 	@echo "$(BLUE)Building for multiple platforms...$(NC)"
-	@mkdir -p $(RELEASE_DIR)
+	@mkdir -p "$(RELEASE_DIR)"
 	@for target in "darwin amd64 macOS" "darwin arm64 macOS" "linux amd64 linux" "linux arm64 linux" "windows amd64 windows"; do \
 		set -- $$target; \
 		os="$$1"; arch="$$2"; label="$$3"; suffix=""; \
 		if [ "$$os" = "windows" ]; then suffix=".exe"; fi; \
+		if [ "$$os" = "darwin" ]; then cgo="1"; else cgo="0"; fi; \
 		echo "Building $$label/$$arch..."; \
-		GOOS="$$os" GOARCH="$$arch" $(GO) build $(RELEASE_BUILD_FLAGS) -ldflags "$(RELEASE_LDFLAGS)" -o "$(RELEASE_DIR)/$(BINARY_NAME)_$(VERSION)_$${label}_$${arch}$${suffix}" .; \
+		CGO_ENABLED="$$cgo" GOOS="$$os" GOARCH="$$arch" $(GO) build $(RELEASE_BUILD_FLAGS) -ldflags "$(RELEASE_LDFLAGS)" -o "$(RELEASE_DIR)/$(BINARY_NAME)_$(VERSION)_$${label}_$${arch}$${suffix}" . || exit $$?; \
 	done
 	@echo "$(GREEN)✓ Release binaries written to $(RELEASE_DIR)/$(NC)"
 
@@ -98,7 +100,7 @@ test-integration:
 lint:
 	@echo "$(BLUE)Linting code...$(NC)"
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run --timeout=$(GOLANGCI_LINT_TIMEOUT) ./...; \
+		GOLANGCI_LINT_CACHE="$(CURDIR)/.golangci-cache" golangci-lint run --timeout=$(GOLANGCI_LINT_TIMEOUT) ./...; \
 	else \
 		echo "$(YELLOW)golangci-lint not found; falling back to 'go vet ./...'.$(NC)"; \
 		echo "$(YELLOW)Install with: make tools (or: GOTOOLCHAIN=$(GO_TOOLCHAIN_VERSION) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)$(NC)"; \
@@ -147,6 +149,10 @@ tools:
 	@echo "$(GREEN)✓ Tools installed$(NC)"
 	@echo "$(YELLOW)Make sure '$(GOBIN)' is on your PATH$(NC)"
 
+.PHONY: install-govulncheck
+install-govulncheck:
+	$(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+
 # Install local git hooks
 .PHONY: install-hooks
 install-hooks:
@@ -190,6 +196,7 @@ generate-command-docs:
 .PHONY: check-command-docs
 check-command-docs:
 	@echo "$(BLUE)Checking command docs sync...$(NC)"
+	python3 ./scripts/test_generate_command_docs.py
 	python3 ./scripts/generate-command-docs.py --check
 	python3 ./scripts/check-commands-docs.py
 
@@ -231,7 +238,7 @@ check-wall-of-apps:
 clean:
 	@echo "$(BLUE)Cleaning...$(NC)"
 	rm -f $(BINARY_NAME) $(BINARY_NAME)-debug
-	rm -rf $(BUILD_DIR) $(DIST_DIR) $(RELEASE_DIR)
+	rm -rf $(BUILD_DIR) $(DIST_DIR) "$(RELEASE_DIR)"
 	rm -f coverage.out coverage.html
 
 # Install the binary
@@ -259,6 +266,17 @@ release: clean
 	@echo "$(BLUE)Creating release...$(NC)"
 	@echo "$(YELLOW)Note: Use GitHub Actions for releases$(NC)"
 
+# Run the non-publishing checks used by the release rehearsal workflow
+.PHONY: release-guardrails
+release-guardrails:
+	python3 scripts/test_release_rehearsal.py
+	python3 scripts/test_check_docs.py
+	$(MAKE) format-check
+	$(MAKE) check-docs
+	$(MAKE) check-wall-of-apps
+	$(MAKE) lint
+	ASC_BYPASS_KEYCHAIN=1 $(MAKE) test
+
 # Show help
 .PHONY: help
 help:
@@ -277,6 +295,7 @@ help:
 	@echo "  format         Format code"
 	@echo "  format-check   Check formatting without writing files"
 	@echo "  tools          Install dev tools"
+	@echo "  install-govulncheck Install the pinned vulnerability scanner"
 	@echo "  install-hooks  Install local git hooks"
 	@echo "  deps           Install dependencies"
 	@echo "  update-deps    Update dependencies"
@@ -289,6 +308,7 @@ help:
 	@echo "  check-agent-skills Validate repository-scoped Codex skills"
 	@echo "  check-openapi  Validate generated OpenAPI indexes"
 	@echo "  check-docs     Run all documentation checks"
+	@echo "  release-guardrails Run non-publishing release checks"
 	@echo "  clean          Clean build artifacts"
 	@echo "  install        Install binary"
 	@echo "  uninstall      Uninstall binary"
@@ -305,6 +325,8 @@ dev: format lint test build
 .PHONY: security
 security:
 	@echo "$(BLUE)Checking for security vulnerabilities...$(NC)"
-	@which gosec > /dev/null 2>&1 && \
-		gosec ./... || \
-		echo "$(YELLOW)Install gosec for security checks$(NC)"
+	@if command -v gosec > /dev/null 2>&1; then \
+		gosec ./...; \
+	else \
+		echo "$(YELLOW)Install gosec for security checks$(NC)"; \
+	fi

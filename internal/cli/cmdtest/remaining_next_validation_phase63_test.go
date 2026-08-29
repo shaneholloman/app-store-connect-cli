@@ -185,6 +185,7 @@ func TestBuildsListRejectsInvalidNextURLPhase63(t *testing.T) {
 		t,
 		[]string{"builds", "list"},
 		"builds: --next",
+		true,
 	)
 }
 
@@ -448,7 +449,7 @@ func TestReviewAttachmentsListPaginateFromNextWithoutReviewDetailPhase63(t *test
 
 	runGameCenterAchievementsPaginateFromNext(
 		t,
-		[]string{"review", "attachments-list", "--review-detail", "review-detail-1"},
+		[]string{"review", "attachments-list"},
 		firstURL,
 		secondURL,
 		firstBody,

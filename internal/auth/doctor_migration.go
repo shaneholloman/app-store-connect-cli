@@ -574,7 +574,7 @@ func buildSuggestedCommands(signals migrationSignals, resolver MigrationSuggesti
 	if hasMetadataSignal {
 		fastlaneDir := formatFastlaneDir(signals.fastlaneDir)
 		add(fmt.Sprintf("asc migrate validate --fastlane-dir %s", fastlaneDir))
-		add(fmt.Sprintf(`asc migrate import --app %q --version-id %q --fastlane-dir %s`, values.appID, values.versionID, fastlaneDir))
+		add(fmt.Sprintf(`asc migrate import --app %q --version-id %q --fastlane-dir %s --confirm`, values.appID, values.versionID, fastlaneDir))
 	}
 	if hasBuildSignal {
 		add(fmt.Sprintf(`asc builds info --app %q --latest`, values.appID))
@@ -593,7 +593,7 @@ func buildSuggestedCommands(signals migrationSignals, resolver MigrationSuggesti
 			}
 			add(fmt.Sprintf(`asc versions attach-build --version-id %q --build-id %q`, values.versionID, uploadedBuildIDPlaceholder))
 			add(fmt.Sprintf(`asc validate --app %q --version-id %q`, values.appID, values.versionID))
-			add(fmt.Sprintf(`asc review submit --app %q --version-id %q --build %q --platform %q --confirm`, values.appID, values.versionID, uploadedBuildIDPlaceholder, reviewSubmissionPlatformPlaceholder))
+			add(fmt.Sprintf(`asc review submit --app %q --version-id %q --build-id %q --platform %q --confirm`, values.appID, values.versionID, uploadedBuildIDPlaceholder, reviewSubmissionPlatformPlaceholder))
 		}
 	}
 

@@ -114,7 +114,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if strings.TrimSpace(*versionID) == "" && resolvedAppID == "" && infoIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app or --info-id is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			includeValues, err := normalizeAppInfoInclude(*include)
@@ -151,7 +151,7 @@ Examples:
 			}
 			if strings.TrimSpace(*version) != "" && len(platforms) != 1 {
 				fmt.Fprintln(os.Stderr, "Error: --platform is required with --version")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--platform")
 			}
 
 			if appInfoMode {
@@ -294,7 +294,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if strings.TrimSpace(*versionID) == "" && resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			platforms, err := shared.NormalizeAppStoreVersionPlatforms(shared.SplitCSVUpper(*platform))
@@ -310,7 +310,7 @@ Examples:
 			}
 			if strings.TrimSpace(*version) != "" && len(platforms) != 1 {
 				fmt.Fprintln(os.Stderr, "Error: --platform is required with --version")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--platform")
 			}
 
 			localeValue := strings.TrimSpace(*locale)
@@ -326,7 +326,7 @@ Examples:
 			}
 			if fromDirValue == "" && localeValue == "" && len(localesValue) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --locale is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--locale")
 			}
 			if localeValue != "" {
 				if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
@@ -365,7 +365,7 @@ Examples:
 			}
 			if fromDirValue == "" && !hasInlineUpdates && copyFromLocaleValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 			if err := shared.ValidateVersionLocalizationAttributes(inlineAttrs); err != nil {
 				return shared.UsageError(err.Error())
@@ -1103,11 +1103,21 @@ func resolveAppStoreVersionForAppInfo(
 	if err != nil {
 		return asc.Resource[asc.AppStoreVersionAttributes]{}, err
 	}
-	if len(resp.Data) == 0 {
+	allPages, err := asc.PaginateAll(ctx, resp, func(pageCtx context.Context, nextURL string) (asc.PaginatedResponse, error) {
+		return client.GetAppStoreVersions(pageCtx, appID, asc.WithAppStoreVersionsNextURL(nextURL))
+	})
+	if err != nil {
+		return asc.Resource[asc.AppStoreVersionAttributes]{}, err
+	}
+	versions, ok := allPages.(*asc.AppStoreVersionsResponse)
+	if !ok {
+		return asc.Resource[asc.AppStoreVersionAttributes]{}, fmt.Errorf("unexpected app store versions response type %T", allPages)
+	}
+	if len(versions.Data) == 0 {
 		return asc.Resource[asc.AppStoreVersionAttributes]{}, fmt.Errorf("no app store versions found for app %q", appID)
 	}
 
-	return selectLatestAppStoreVersion(resp.Data), nil
+	return selectLatestAppStoreVersion(versions.Data), nil
 }
 
 func selectLatestAppStoreVersion(versions []asc.Resource[asc.AppStoreVersionAttributes]) asc.Resource[asc.AppStoreVersionAttributes] {

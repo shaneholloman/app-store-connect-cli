@@ -28,12 +28,12 @@ func WebhooksCommand() *ffcli.Command {
 Examples:
   asc webhooks list --app "APP_ID"
   asc webhooks view --webhook-id "WEBHOOK_ID"
-  asc webhooks create --app "APP_ID" --name "Build Updates" --url "https://example.com/webhook" --secret "secret123" --events "SUBSCRIPTION.CREATED,SUBSCRIPTION.UPDATED" --enabled true
+  asc webhooks create --app "APP_ID" --name "Build Updates" --url "https://example.com/webhook" --secret "secret123" --events "BUILD_UPLOAD_STATE_UPDATED" --enabled true
   asc webhooks update --webhook-id "WEBHOOK_ID" --url "https://new-url.com/webhook" --enabled false
   asc webhooks delete --webhook-id "WEBHOOK_ID" --confirm
   asc webhooks serve --port 8787 --dir ./webhook-events
   asc webhooks deliveries --webhook-id "WEBHOOK_ID"
-  asc webhooks deliveries relationships --webhook-id "WEBHOOK_ID"
+  asc webhooks deliveries links --webhook-id "WEBHOOK_ID"
   asc webhooks deliveries redeliver --delivery-id "DELIVERY_ID"
   asc webhooks ping --webhook-id "WEBHOOK_ID"`,
 		FlagSet:   fs,
@@ -77,16 +77,19 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := shared.ValidateNextURL(*next); err != nil {
+				return fmt.Errorf("webhooks list: %w", err)
+			}
+			if err := rejectWebhooksListNextFlagConflicts(fs, *next, "app", "limit"); err != nil {
+				return err
+			}
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > webhooksMaxLimit) {
 				return fmt.Errorf("webhooks list: --limit must be between 1 and %d", webhooksMaxLimit)
-			}
-			if err := shared.ValidateNextURL(*next); err != nil {
-				return fmt.Errorf("webhooks list: %w", err)
 			}
 
 			client, err := shared.GetASCClient()
@@ -103,10 +106,6 @@ Examples:
 			}
 
 			if *paginate {
-				if resolvedAppID == "" {
-					fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-					return shared.MissingRequiredUsageError()
-				}
 				paginateOpts := append(opts, asc.WithWebhooksLimit(webhooksMaxLimit))
 				firstPage, err := client.GetAppWebhooks(requestCtx, resolvedAppID, paginateOpts...)
 				if err != nil {
@@ -131,6 +130,25 @@ Examples:
 	}
 }
 
+// rejectWebhooksListNextFlagConflicts rejects query flags that a continuation
+// URL already encodes: `--next` replaces the whole request path, so an
+// explicitly provided app or page size would otherwise be dropped silently.
+func rejectWebhooksListNextFlagConflicts(fs *flag.FlagSet, next string, names ...string) error {
+	if strings.TrimSpace(next) == "" {
+		return nil
+	}
+	provided := make(map[string]struct{}, len(names))
+	fs.Visit(func(f *flag.Flag) {
+		provided[f.Name] = struct{}{}
+	})
+	for _, name := range names {
+		if _, ok := provided[name]; ok {
+			return shared.UsageErrorf("webhooks list: --next cannot be combined with --%s", name)
+		}
+	}
+	return nil
+}
+
 // WebhooksGetCommand returns the webhooks view subcommand.
 func WebhooksGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("view", flag.ExitOnError)
@@ -152,7 +170,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*webhookID)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--webhook-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -181,7 +199,7 @@ func WebhooksCreateCommand() *ffcli.Command {
 	name := fs.String("name", "", "Webhook name")
 	url := fs.String("url", "", "Webhook endpoint URL")
 	secret := fs.String("secret", "", "Webhook secret")
-	events := fs.String("events", "", "Webhook event types (comma-separated)")
+	events := shared.BindOnceCSVFlag(fs, "events", "Webhook event types (comma-separated)")
 	var enabled shared.OptionalBool
 	fs.Var(&enabled, "enabled", "Enable or disable the webhook: true or false")
 	output := shared.BindOutputFlags(fs)
@@ -193,39 +211,39 @@ func WebhooksCreateCommand() *ffcli.Command {
 		LongHelp: `Create a webhook.
 
 Examples:
-  asc webhooks create --app "APP_ID" --name "Build Updates" --url "https://example.com/webhook" --secret "secret123" --events "SUBSCRIPTION.CREATED,SUBSCRIPTION.UPDATED" --enabled true`,
+  asc webhooks create --app "APP_ID" --name "Build Updates" --url "https://example.com/webhook" --secret "secret123" --events "BUILD_UPLOAD_STATE_UPDATED" --enabled true`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 			if strings.TrimSpace(*name) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 			if strings.TrimSpace(*url) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --url is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--url")
 			}
 			if strings.TrimSpace(*secret) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --secret is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--secret")
 			}
-			if strings.TrimSpace(*events) == "" {
+			if strings.TrimSpace(events.String()) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --events is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--events")
 			}
 			if !enabled.IsSet() {
 				fmt.Fprintln(os.Stderr, "Error: --enabled is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--enabled")
 			}
 
-			eventTypes, err := normalizeWebhookEvents(*events)
+			eventTypes, err := normalizeWebhookEvents(events.String())
 			if err != nil {
-				return fmt.Errorf("webhooks create: %w", err)
+				return fmt.Errorf("webhooks create: %w", shared.UsageError(err.Error()))
 			}
 
 			client, err := shared.GetASCClient()
@@ -262,7 +280,7 @@ func WebhooksUpdateCommand() *ffcli.Command {
 	name := fs.String("name", "", "Webhook name")
 	url := fs.String("url", "", "Webhook endpoint URL")
 	secret := fs.String("secret", "", "Webhook secret")
-	events := fs.String("events", "", "Webhook event types (comma-separated)")
+	events := shared.BindOnceCSVFlag(fs, "events", "Webhook event types (comma-separated)")
 	var enabled shared.OptionalBool
 	fs.Var(&enabled, "enabled", "Enable or disable the webhook: true or false")
 	output := shared.BindOutputFlags(fs)
@@ -282,7 +300,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*webhookID)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--webhook-id")
 			}
 
 			attrs := asc.WebhookUpdateAttributes{}
@@ -303,10 +321,10 @@ Examples:
 				attrs.Secret = &value
 				hasUpdate = true
 			}
-			if strings.TrimSpace(*events) != "" {
-				eventTypes, err := normalizeWebhookEvents(*events)
+			if strings.TrimSpace(events.String()) != "" {
+				eventTypes, err := normalizeWebhookEvents(events.String())
 				if err != nil {
-					return fmt.Errorf("webhooks update: %w", err)
+					return fmt.Errorf("webhooks update: %w", shared.UsageError(err.Error()))
 				}
 				attrs.EventTypes = eventTypes
 				hasUpdate = true
@@ -319,7 +337,7 @@ Examples:
 
 			if !hasUpdate {
 				fmt.Fprintln(os.Stderr, "Error: --name, --url, --secret, --events, or --enabled is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -361,12 +379,12 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 			trimmedID := strings.TrimSpace(*webhookID)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--webhook-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -406,7 +424,9 @@ func WebhookDeliveriesCommand() *ffcli.Command {
 		LongHelp: `List webhook deliveries.
 
 Examples:
+  asc webhooks deliveries --webhook-id "WEBHOOK_ID"
   asc webhooks deliveries --webhook-id "WEBHOOK_ID" --created-after "2026-01-01T00:00:00Z"
+  asc webhooks deliveries --webhook-id "WEBHOOK_ID" --created-after "2026-01-01T00:00:00Z" --created-before "2026-01-02T00:00:00Z"
   asc webhooks deliveries --webhook-id "WEBHOOK_ID" --limit 10
   asc webhooks deliveries --webhook-id "WEBHOOK_ID" --paginate`,
 		FlagSet:   fs,
@@ -420,24 +440,7 @@ Examples:
 			trimmedNext := strings.TrimSpace(*next)
 			if trimmedID == "" && trimmedNext == "" {
 				fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-				return shared.MissingRequiredUsageError()
-			}
-			filterCount := 0
-			if strings.TrimSpace(*createdAfter) != "" {
-				filterCount++
-			}
-			if strings.TrimSpace(*createdBefore) != "" {
-				filterCount++
-			}
-			if trimmedNext == "" {
-				if filterCount == 0 {
-					fmt.Fprintln(os.Stderr, "Error: --created-after or --created-before is required")
-					return shared.MissingRequiredUsageError()
-				}
-				if filterCount > 1 {
-					fmt.Fprintln(os.Stderr, "Error: only one of --created-after or --created-before can be used")
-					return flag.ErrHelp
-				}
+				return shared.MissingRequiredUsageError("--webhook-id")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > webhooksMaxLimit) {
 				return fmt.Errorf("webhooks deliveries: --limit must be between 1 and %d", webhooksMaxLimit)
@@ -478,7 +481,7 @@ Examples:
 			if *paginate {
 				if trimmedID == "" {
 					fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-					return shared.MissingRequiredUsageError()
+					return shared.MissingRequiredUsageError("--webhook-id")
 				}
 				paginateOpts := append(opts, asc.WithWebhookDeliveriesLimit(webhooksMaxLimit))
 				firstPage, err := client.GetWebhookDeliveries(requestCtx, trimmedID, paginateOpts...)
@@ -530,7 +533,7 @@ Examples:
 			trimmedNext := strings.TrimSpace(*next)
 			if trimmedID == "" && trimmedNext == "" {
 				fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--webhook-id")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > webhooksMaxLimit) {
 				return fmt.Errorf("webhooks deliveries links: --limit must be between 1 and %d", webhooksMaxLimit)
@@ -562,7 +565,7 @@ Examples:
 			if *paginate {
 				if trimmedID == "" {
 					fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-					return shared.MissingRequiredUsageError()
+					return shared.MissingRequiredUsageError("--webhook-id")
 				}
 				paginateOpts := append(opts, asc.WithLinkagesLimit(webhooksMaxLimit))
 				firstPage, err := client.GetWebhookDeliveriesRelationships(requestCtx, trimmedID, paginateOpts...)
@@ -609,7 +612,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*deliveryID)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --delivery-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--delivery-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -651,7 +654,7 @@ Examples:
 			trimmedID := strings.TrimSpace(*webhookID)
 			if trimmedID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --webhook-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--webhook-id")
 			}
 
 			client, err := shared.GetASCClient()

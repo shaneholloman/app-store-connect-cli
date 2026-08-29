@@ -84,7 +84,7 @@ Examples:
 			iapValue := strings.TrimSpace(*iapID)
 			if iapValue == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --iap-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--iap-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -155,7 +155,7 @@ Examples:
 			offerCodeValue := strings.TrimSpace(*offerCodeID)
 			if offerCodeValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --offer-code-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--offer-code-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -184,7 +184,7 @@ func IAPOfferCodesCreateCommand() *ffcli.Command {
 	iapID := fs.String("iap-id", "", "In-app purchase ID, product ID, or exact current name")
 	name := fs.String("name", "", "Offer code name")
 	eligibilities := fs.String("eligibilities", "", "Customer eligibilities (comma-separated)")
-	prices := fs.String("prices", "", "Prices: TERRITORY:PRICE_POINT_ID entries (territory accepts alpha-2, alpha-3, or exact English country name)")
+	prices := fs.String("prices", "", "Prices: TERRITORY:PRICE_POINT_ID or TERRITORY:FREE entries (territory accepts alpha-2, alpha-3, or exact English country name)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -195,6 +195,7 @@ func IAPOfferCodesCreateCommand() *ffcli.Command {
 
 Examples:
   asc iap offer-codes create --iap-id "IAP_ID" --name "SPRING" --prices "US:PRICE_POINT_ID"
+  asc iap offer-codes create --iap-id "IAP_ID" --name "GIFT" --prices "US:FREE,CA:FREE"
   asc iap offer-codes create --iap-id "IAP_ID" --name "SPRING" --eligibilities "NON_SPENDER" --prices "France:PRICE_POINT_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -202,13 +203,13 @@ Examples:
 			iapValue := strings.TrimSpace(*iapID)
 			if iapValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --iap-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--iap-id")
 			}
 
 			nameValue := strings.TrimSpace(*name)
 			if nameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			parsedEligibilities, err := parseOfferCodeEligibilities(*eligibilities)
@@ -227,7 +228,7 @@ Examples:
 			}
 			if len(priceEntries) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --prices is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--prices")
 			}
 
 			client, err := shared.GetASCClient()
@@ -280,11 +281,11 @@ Examples:
 			offerCodeValue := strings.TrimSpace(*offerCodeID)
 			if offerCodeValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --offer-code-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--offer-code-id")
 			}
 			if !active.IsSet() {
 				fmt.Fprintln(os.Stderr, "Error: --active is required (true or false)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--active")
 			}
 
 			client, err := shared.GetASCClient()

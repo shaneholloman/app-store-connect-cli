@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
 func TestPricingPricePointsCommand_MissingApp(t *testing.T) {
@@ -264,7 +266,6 @@ func TestPricingAvailabilitySetCommand_MissingFlags(t *testing.T) {
 		{name: "missing territory", args: []string{"--app", "APP", "--available", "true", "--available-in-new-territories", "true"}},
 		{name: "invalid territory csv", args: []string{"--app", "APP", "--territory", ",,,", "--available", "true", "--available-in-new-territories", "true"}},
 		{name: "missing available", args: []string{"--app", "APP", "--territory", "USA", "--available-in-new-territories", "true"}},
-		{name: "missing available in new territories", args: []string{"--app", "APP", "--territory", "USA", "--available", "true"}},
 	}
 
 	for _, test := range tests {
@@ -365,6 +366,79 @@ func TestPricingAvailabilityCommand_RegistersCreate(t *testing.T) {
 	t.Fatal("expected pricing availability create to be registered")
 }
 
+func TestPricingAvailabilityCommand_RegistersRemoveFromSale(t *testing.T) {
+	cmd := PricingAvailabilityCommand()
+
+	for _, subcommand := range cmd.Subcommands {
+		if subcommand.Name == "remove-from-sale" {
+			if !strings.Contains(cmd.LongHelp, "pricing availability remove-from-sale") {
+				t.Fatalf("expected availability help to mention remove-from-sale, got %q", cmd.LongHelp)
+			}
+			return
+		}
+	}
+
+	t.Fatal("expected pricing availability remove-from-sale to be registered")
+}
+
+func TestPricingAvailabilityCommand_RegistersPlatforms(t *testing.T) {
+	cmd := PricingAvailabilityCommand()
+
+	for _, subcommand := range cmd.Subcommands {
+		if subcommand.Name == "platforms" {
+			if !strings.HasPrefix(subcommand.ShortHelp, "[experimental]") || !strings.HasPrefix(subcommand.LongHelp, "[experimental]") {
+				t.Fatalf("expected platforms command to enter through the experimental tier, got ShortHelp=%q LongHelp=%q", subcommand.ShortHelp, subcommand.LongHelp)
+			}
+			if !strings.Contains(cmd.LongHelp, `pricing availability platforms --app "123456789"`) {
+				t.Fatalf("expected availability help to mention platforms, got %q", cmd.LongHelp)
+			}
+			return
+		}
+	}
+
+	t.Fatal("expected pricing availability platforms to be registered")
+}
+
+func TestPricingAvailabilityRemoveFromSaleCommand_AllPlatformsIsExperimental(t *testing.T) {
+	command := PricingAvailabilityRemoveFromSaleCommand()
+	allPlatforms := command.FlagSet.Lookup("all-platforms")
+	if allPlatforms == nil {
+		t.Fatal("expected --all-platforms flag")
+	}
+	if !strings.HasPrefix(allPlatforms.Usage, "[experimental] ") {
+		t.Fatalf("--all-platforms usage = %q, want experimental lifecycle label", allPlatforms.Usage)
+	}
+}
+
+func TestPricingAvailabilityRemoveFromSaleCommand_MissingConfirmBeforeAuth(t *testing.T) {
+	t.Setenv("ASC_APP_ID", "")
+	called := false
+	originalFactory := pricingAvailabilityClientFactory
+	pricingAvailabilityClientFactory = func() (*asc.Client, error) {
+		called = true
+		return nil, errors.New("unexpected auth")
+	}
+	t.Cleanup(func() { pricingAvailabilityClientFactory = originalFactory })
+
+	cmd := PricingAvailabilityRemoveFromSaleCommand()
+	if err := cmd.FlagSet.Parse([]string{"--app", "APP"}); err != nil {
+		t.Fatalf("failed to parse flags: %v", err)
+	}
+
+	stderr := capturePricingStderr(t, func() {
+		err := cmd.Exec(context.Background(), nil)
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Fatalf("expected flag.ErrHelp, got %v", err)
+		}
+	})
+	if called {
+		t.Fatal("client factory called before --confirm validation")
+	}
+	if !strings.Contains(stderr, "--confirm is required") {
+		t.Fatalf("expected confirmation diagnostic, got %q", stderr)
+	}
+}
+
 func TestPricingAvailabilitySetCommand_HelpMentionsAllTerritories(t *testing.T) {
 	cmd := PricingAvailabilitySetCommand()
 
@@ -392,6 +466,7 @@ func TestPricingCommands_DefaultOutputJSON(t *testing.T) {
 		{"availability create", PricingAvailabilityCreateCommand},
 		{"availability territory-availabilities", PricingAvailabilityTerritoryAvailabilitiesCommand},
 		{"availability set", PricingAvailabilitySetCommand},
+		{"availability remove-from-sale", PricingAvailabilityRemoveFromSaleCommand},
 	}
 
 	for _, tc := range commands {

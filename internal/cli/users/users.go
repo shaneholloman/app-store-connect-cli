@@ -56,7 +56,13 @@ func UsersListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
 	email := fs.String("email", "", "Filter by email/username")
-	role := fs.String("role", "", "Filter by role (comma-separated): ADMIN, DEVELOPER, APP_MANAGER, etc.")
+	role := fs.String("role", "", "Filter by UserRole (comma-separated): "+strings.Join(userRoleList(), ", "))
+	visibleApp := fs.String("visible-app", "", "[experimental] Filter by visible app ID(s), comma-separated")
+	sort := fs.String("sort", "", "[experimental] Sort by one or more comma-separated expressions: username, -username, lastName, or -lastName")
+	fields := fs.String("fields", "", "[experimental] User fields to include: "+strings.Join(usersFieldsList(), ", "))
+	appFields := fs.String("app-fields", "", "[experimental] Fields to include for related apps, comma-separated")
+	include := fs.String("include", "", "[experimental] Include related resources: visibleApps")
+	visibleAppsLimit := fs.Int("visible-apps-limit", 0, "[experimental] Maximum included visible apps (1-50)")
 	output := shared.BindOutputFlags(fs)
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
@@ -73,16 +79,76 @@ Examples:
   asc users list --email "user@example.com"
   asc users list --role "ADMIN"
   asc users list --role "DEVELOPER,APP_MANAGER"
+  asc users list --visible-app "APP_ID"
+  asc users list --sort "username,-lastName"
+  asc users list --fields "username,lastName" --include visibleApps --app-fields "name,bundleId"
   asc users list --limit 50
   asc users list --paginate`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := shared.ValidateNextURL(*next); err != nil {
+				return fmt.Errorf("users list: %w", err)
+			}
+			if err := shared.RejectNextFlagConflicts(
+				fs,
+				*next,
+				"users list",
+				"email", "role", "visible-app", "sort", "fields", "app-fields", "include", "visible-apps-limit", "limit",
+			); err != nil {
+				return err
+			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("users list: --limit must be between 1 and 200")
 			}
-			if err := shared.ValidateNextURL(*next); err != nil {
-				return fmt.Errorf("users list: %w", err)
+			provided := make(map[string]bool)
+			fs.Visit(func(f *flag.Flag) {
+				provided[f.Name] = true
+			})
+			if provided["visible-apps-limit"] && (*visibleAppsLimit < 1 || *visibleAppsLimit > 50) {
+				return shared.UsageErrorf("users list: --visible-apps-limit must be between 1 and 50")
+			}
+			visibleAppValues := shared.SplitCSV(*visibleApp)
+			if provided["visible-app"] && len(visibleAppValues) == 0 {
+				return shared.UsageErrorf("users list: --visible-app must not be empty")
+			}
+			roleValues, err := normalizeUserRoles(*role, "--role")
+			if err != nil {
+				return shared.UsageErrorf("users list: %v", err)
+			}
+			sortValues, err := normalizeUsersSort(*sort, "--sort")
+			if err != nil {
+				return shared.UsageErrorf("users list: %v", err)
+			}
+			if provided["sort"] && len(sortValues) == 0 {
+				return shared.UsageErrorf("users list: --sort must not be empty")
+			}
+			fieldsValue, err := normalizeUsersFields(*fields, "--fields")
+			if err != nil {
+				return shared.UsageErrorf("users list: %v", err)
+			}
+			if provided["fields"] && len(fieldsValue) == 0 {
+				return shared.UsageErrorf("users list: --fields must not be empty")
+			}
+			appFieldsValue, err := normalizeUsersAppFields(*appFields, "--app-fields")
+			if err != nil {
+				return shared.UsageErrorf("users list: %v", err)
+			}
+			if provided["app-fields"] && len(appFieldsValue) == 0 {
+				return shared.UsageErrorf("users list: --app-fields must not be empty")
+			}
+			includeValue, err := normalizeUsersInclude(*include)
+			if err != nil {
+				return shared.UsageErrorf("users list: %v", err)
+			}
+			if provided["include"] && len(includeValue) == 0 {
+				return shared.UsageErrorf("users list: --include must not be empty")
+			}
+			if len(appFieldsValue) > 0 && !shared.HasInclude(includeValue, "visibleApps") {
+				return shared.UsageErrorf("users list: --app-fields requires --include visibleApps")
+			}
+			if *visibleAppsLimit > 0 && !shared.HasInclude(includeValue, "visibleApps") {
+				return shared.UsageErrorf("users list: --visible-apps-limit requires --include visibleApps")
 			}
 
 			client, err := shared.GetASCClient()
@@ -95,7 +161,13 @@ Examples:
 
 			opts := []asc.UsersOption{
 				asc.WithUsersEmail(*email),
-				asc.WithUsersRoles(shared.SplitCSV(*role)),
+				asc.WithUsersRoles(roleValues),
+				asc.WithUsersVisibleAppIDs(visibleAppValues),
+				asc.WithUsersSort(strings.Join(sortValues, ",")),
+				asc.WithUsersFields(fieldsValue),
+				asc.WithUsersAppFields(appFieldsValue),
+				asc.WithUsersInclude(includeValue),
+				asc.WithUsersVisibleAppsLimit(*visibleAppsLimit),
 				asc.WithUsersLimit(*limit),
 				asc.WithUsersNextURL(*next),
 			}
@@ -150,7 +222,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			includeValues, err := normalizeUsersInclude(*include)
@@ -186,36 +258,66 @@ func UsersUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 
 	id := fs.String("id", "", "User ID")
-	roles := fs.String("roles", "", "Comma-separated role IDs")
-	visibleApps := fs.String("visible-app", "", "Comma-separated app IDs for visible apps")
+	roles := shared.BindOnceCSVFlag(fs, "roles", "Comma-separated UserRole values: "+strings.Join(userRoleList(), ", "))
+	visibleApps := shared.BindOnceCSVFlag(fs, "visible-app", "Comma-separated app IDs for visible apps")
+	confirm := fs.Bool("confirm", false, "[experimental] Confirm replacing visible apps (required with --visible-app)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "update",
-		ShortUsage: "asc users update --id USER_ID --roles ROLE_ID[,ROLE_ID...] [--visible-app APP_ID[,APP_ID...]]",
+		ShortUsage: "asc users update --id USER_ID --roles ROLE_ID[,ROLE_ID...] [--visible-app APP_ID[,APP_ID...]] [--confirm]",
 		ShortHelp:  "Update a user.",
 		LongHelp: `Update a user by ID.
 
+The --visible-app list replaces the user's existing visible-app relationship;
+use --confirm when --visible-app is supplied.
+
 Examples:
   asc users update --id "USER_ID" --roles "ADMIN"
-  asc users update --id "USER_ID" --roles "ADMIN" --visible-app "APP_ID"`,
+  asc users update --id "USER_ID" --roles "ADMIN" --visible-app "APP_ID" --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
-			roleValues := shared.SplitCSV(*roles)
+			roleValues, err := normalizeUserRoles(roles.String(), "--roles")
+			if err != nil {
+				return shared.UsageErrorf("users update: %v", err)
+			}
 			if len(roleValues) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --roles is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--roles")
+			}
+			visibleAppIDs := shared.SplitCSV(visibleApps.String())
+			confirmSet := false
+			fs.Visit(func(parsed *flag.Flag) {
+				if parsed.Name == "confirm" {
+					confirmSet = true
+				}
+			})
+			if len(visibleAppIDs) == 0 && confirmSet {
+				message := "--confirm requires --visible-app"
+				fmt.Fprintln(os.Stderr, "Error:", message)
+				return shared.WithDiagnostic(
+					shared.NewReportedUsageError(shared.UsageErrorInvalidValue, message),
+					shared.DiagnosticConflictingInput,
+					"--confirm",
+				)
+			}
+			if len(visibleAppIDs) > 0 && !*confirm {
+				message := "--confirm is required when --visible-app is set"
+				fmt.Fprintln(os.Stderr, "Error:", message)
+				return shared.WithDiagnostic(
+					shared.NewReportedUsageError(shared.UsageErrorMissingRequired, message),
+					shared.DiagnosticRequiredInputMissing,
+					"--confirm",
+				)
 			}
 			warnDeprecatedUserRoles(roleValues)
-
-			visibleAppIDs := shared.SplitCSV(*visibleApps)
 
 			client, err := shared.GetASCClient()
 			if err != nil {
@@ -233,15 +335,9 @@ Examples:
 				attrs.AllAppsVisible = &allAppsVisible
 			}
 
-			user, err := client.UpdateUser(requestCtx, idValue, attrs)
+			user, err := client.UpdateUser(requestCtx, idValue, attrs, visibleAppIDs)
 			if err != nil {
 				return fmt.Errorf("users update: failed to update: %w", err)
-			}
-
-			if len(visibleAppIDs) > 0 {
-				if err := client.SetUserVisibleApps(requestCtx, idValue, visibleAppIDs); err != nil {
-					return fmt.Errorf("users update: roles updated but failed to set visible apps: %w", err)
-				}
 			}
 
 			return shared.PrintOutput(user, *output.Output, *output.Pretty)
@@ -270,13 +366,13 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -308,9 +404,9 @@ func UsersInviteCommand() *ffcli.Command {
 	email := fs.String("email", "", "Email address to invite")
 	firstName := fs.String("first-name", "", "First name of the invitee (required)")
 	lastName := fs.String("last-name", "", "Last name of the invitee (required)")
-	roles := fs.String("roles", "", "Comma-separated role IDs")
+	roles := shared.BindOnceCSVFlag(fs, "roles", "Comma-separated UserRole values: "+strings.Join(userRoleList(), ", "))
 	allApps := fs.Bool("all-apps", false, "Grant access to all apps")
-	visibleApps := fs.String("visible-app", "", "Comma-separated app IDs for visible apps")
+	visibleApps := shared.BindOnceCSVFlag(fs, "visible-app", "Comma-separated app IDs for visible apps")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -328,38 +424,41 @@ Examples:
 			emailValue := strings.TrimSpace(*email)
 			if emailValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --email is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--email")
 			}
 
 			firstNameValue := strings.TrimSpace(*firstName)
 			if firstNameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --first-name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--first-name")
 			}
 
 			lastNameValue := strings.TrimSpace(*lastName)
 			if lastNameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --last-name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--last-name")
 			}
 
-			roleValues := shared.SplitCSV(*roles)
+			roleValues, err := normalizeUserRoles(roles.String(), "--roles")
+			if err != nil {
+				return shared.UsageErrorf("users invite: %v", err)
+			}
 			if len(roleValues) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --roles is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--roles")
 			}
 			warnDeprecatedUserRoles(roleValues)
 
-			if *allApps && strings.TrimSpace(*visibleApps) != "" {
+			if *allApps && strings.TrimSpace(visibleApps.String()) != "" {
 				fmt.Fprintln(os.Stderr, "Error: --all-apps and --visible-app cannot be used together")
 				return flag.ErrHelp
 			}
 
-			visibleAppIDs := shared.SplitCSV(*visibleApps)
+			visibleAppIDs := shared.SplitCSV(visibleApps.String())
 
 			if !*allApps && len(visibleAppIDs) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --all-apps or --visible-app is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -513,7 +612,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -555,13 +654,13 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()

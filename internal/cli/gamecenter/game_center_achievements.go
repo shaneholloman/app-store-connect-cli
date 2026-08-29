@@ -94,7 +94,7 @@ Examples:
 			nextURL := strings.TrimSpace(*next)
 			if resolvedAppID == "" && nextURL == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := shared.GetASCClient()
@@ -179,7 +179,7 @@ Examples:
 			id := strings.TrimSpace(*achievementID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -225,6 +225,8 @@ func GameCenterAchievementsCreateCommand() *ffcli.Command {
 		ShortHelp:  "Create a new Game Center achievement.",
 		LongHelp: `Create a new Game Center achievement.
 
+V2 creates the required initial achievement version inline.
+
 Examples:
   asc game-center achievements create --app "APP_ID" --reference-name "First Win" --vendor-id "com.example.firstwin" --points 10
   asc game-center achievements create --app "APP_ID" --reference-name "Master" --vendor-id "com.example.master" --points 100 --repeatable
@@ -241,19 +243,19 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if group == "" && resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			name := strings.TrimSpace(*referenceName)
 			if name == "" {
 				fmt.Fprintln(os.Stderr, "Error: --reference-name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--reference-name")
 			}
 
 			vendor := strings.TrimSpace(*vendorID)
 			if vendor == "" {
 				fmt.Fprintln(os.Stderr, "Error: --vendor-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--vendor-id")
 			}
 			if group != "" && !strings.HasPrefix(vendor, "grp.") {
 				fmt.Fprintln(os.Stderr, "Error: --vendor-id must start with \"grp.\" when using --group-id")
@@ -337,7 +339,7 @@ Examples:
 			id := strings.TrimSpace(*achievementID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			attrs := asc.GameCenterAchievementUpdateAttributes{}
@@ -390,7 +392,7 @@ Examples:
 
 			if !hasUpdate {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -440,11 +442,11 @@ Examples:
 			id := strings.TrimSpace(*achievementID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -505,21 +507,21 @@ Examples:
 			vendorValue := strings.TrimSpace(*vendorID)
 			if vendorValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --vendor-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--vendor-id")
 			}
 			if *percentage < 0 {
 				fmt.Fprintln(os.Stderr, "Error: --percentage is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--percentage")
 			}
 			bundleValue := strings.TrimSpace(*bundleID)
 			if bundleValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --bundle-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--bundle-id")
 			}
 			playerValue := strings.TrimSpace(*scopedPlayerID)
 			if playerValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --scoped-player-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--scoped-player-id")
 			}
 
 			var preReleasedValue *bool
@@ -630,7 +632,7 @@ Examples:
 			achID := strings.TrimSpace(*achievementID)
 			if achID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --achievement-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--achievement-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -694,7 +696,7 @@ Examples:
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -741,31 +743,31 @@ Examples:
 			achID := strings.TrimSpace(*achievementID)
 			if achID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --achievement-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--achievement-id")
 			}
 
 			localeVal := strings.TrimSpace(*locale)
 			if localeVal == "" {
 				fmt.Fprintln(os.Stderr, "Error: --locale is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--locale")
 			}
 
 			nameVal := strings.TrimSpace(*name)
 			if nameVal == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			beforeVal := strings.TrimSpace(*beforeEarnedDescription)
 			if beforeVal == "" {
 				fmt.Fprintln(os.Stderr, "Error: --before-earned-description is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--before-earned-description")
 			}
 
 			afterVal := strings.TrimSpace(*afterEarnedDescription)
 			if afterVal == "" {
 				fmt.Fprintln(os.Stderr, "Error: --after-earned-description is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--after-earned-description")
 			}
 
 			client, err := shared.GetASCClient()
@@ -818,7 +820,7 @@ Examples:
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			attrs := asc.GameCenterAchievementLocalizationUpdateAttributes{}
@@ -844,7 +846,7 @@ Examples:
 
 			if !hasUpdate {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -887,11 +889,11 @@ Examples:
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -976,7 +978,7 @@ Examples:
 			id := strings.TrimSpace(*achievementID)
 			if id == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --achievement-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--achievement-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1041,13 +1043,13 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			id := strings.TrimSpace(*achievementID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --achievement-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--achievement-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1096,11 +1098,11 @@ Examples:
 			id := strings.TrimSpace(*releaseID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1176,13 +1178,13 @@ Examples:
 			locID := strings.TrimSpace(*localizationID)
 			if locID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --localization-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--localization-id")
 			}
 
 			path := strings.TrimSpace(*filePath)
 			if path == "" {
 				fmt.Fprintln(os.Stderr, "Error: --file is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--file")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1224,7 +1226,7 @@ Examples:
 			id := strings.TrimSpace(*imageID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1267,11 +1269,11 @@ Examples:
 			id := strings.TrimSpace(*imageID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1340,7 +1342,7 @@ Examples:
 			id := strings.TrimSpace(*achievementID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1405,7 +1407,7 @@ Examples:
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -1470,7 +1472,7 @@ Examples:
 			id := strings.TrimSpace(*localizationID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()

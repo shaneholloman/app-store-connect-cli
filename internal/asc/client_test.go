@@ -133,7 +133,7 @@ func TestBuildFeedbackQuery_IncludesScreenshots(t *testing.T) {
 		t.Fatalf("failed to parse query: %v", err)
 	}
 
-	expected := "createdDate,comment,email,deviceModel,osVersion,appPlatform,devicePlatform,screenshots"
+	expected := "createdDate,comment,email,deviceModel,osVersion,locale,timeZone,architecture,connectionType,pairedAppleWatch,appUptimeInMilliseconds,diskBytesAvailable,diskBytesTotal,batteryPercentage,screenWidthInPoints,screenHeightInPoints,appPlatform,devicePlatform,deviceFamily,buildBundleId,screenshots,build,tester"
 	if got := values.Get("fields[betaFeedbackScreenshotSubmissions]"); got != expected {
 		t.Fatalf("expected fields to be %q, got %q", expected, got)
 	}
@@ -299,6 +299,12 @@ func TestBuildCrashQueryIncludeBuildAndTester(t *testing.T) {
 func TestBuildBetaGroupsQuery(t *testing.T) {
 	query := &betaGroupsQuery{}
 	WithBetaGroupsLimit(10)(query)
+	WithBetaGroupsApps([]string{" app-1 ", "app-2"})(query)
+	WithBetaGroupsBuilds([]string{"build-1"})(query)
+	WithBetaGroupsFields([]string{"name", "isInternalGroup", "hasAccessToAllBuilds"})(query)
+	WithBetaGroupsIsInternal(true)(query)
+	WithBetaGroupsName("  QA Testers  ")(query)
+	WithBetaGroupsSort(" -createdDate ")(query)
 
 	values, err := url.ParseQuery(buildBetaGroupsQuery(query))
 	if err != nil {
@@ -306,6 +312,99 @@ func TestBuildBetaGroupsQuery(t *testing.T) {
 	}
 	if got := values.Get("limit"); got != "10" {
 		t.Fatalf("expected limit=10, got %q", got)
+	}
+	if got := values.Get("filter[app]"); got != "app-1,app-2" {
+		t.Fatalf("expected filter[app]=app-1,app-2, got %q", got)
+	}
+	if got := values.Get("filter[builds]"); got != "build-1" {
+		t.Fatalf("expected filter[builds]=build-1, got %q", got)
+	}
+	if got := values.Get("fields[betaGroups]"); got != "name,isInternalGroup,hasAccessToAllBuilds" {
+		t.Fatalf("unexpected beta group fields %q", got)
+	}
+	if got := values.Get("filter[isInternalGroup]"); got != "true" {
+		t.Fatalf("expected filter[isInternalGroup]=true, got %q", got)
+	}
+	if got := values.Get("filter[name]"); got != "QA Testers" {
+		t.Fatalf("expected filter[name]=QA Testers, got %q", got)
+	}
+	if got := values.Get("sort"); got != "-createdDate" {
+		t.Fatalf("expected sort=-createdDate, got %q", got)
+	}
+}
+
+func TestBuildBetaGroupsQueryOmitsUnsetNameAndSort(t *testing.T) {
+	query := &betaGroupsQuery{}
+	WithBetaGroupsName("   ")(query)
+	WithBetaGroupsSort("")(query)
+
+	values, err := url.ParseQuery(buildBetaGroupsQuery(query))
+	if err != nil {
+		t.Fatalf("failed to parse query: %v", err)
+	}
+	if _, ok := values["filter[name]"]; ok {
+		t.Fatalf("expected no filter[name], got %q", values.Get("filter[name]"))
+	}
+	if _, ok := values["sort"]; ok {
+		t.Fatalf("expected no sort, got %q", values.Get("sort"))
+	}
+}
+
+func TestBuildBetaGroupsQueryOpenAPIParity(t *testing.T) {
+	query := &betaGroupsQuery{}
+	opts := []BetaGroupsOption{
+		WithBetaGroupsIDs([]string{" group-1 ", "group-2"}),
+		WithBetaGroupsPublicLinkEnabled(true),
+		WithBetaGroupsPublicLinkLimitEnabled(false),
+		WithBetaGroupsPublicLink(" https://example.com/public "),
+		WithBetaGroupsFields([]string{"name", "publicLink"}),
+		WithBetaGroupsAppFields([]string{"name", "bundleId"}),
+		WithBetaGroupsBuildFields([]string{"version"}),
+		WithBetaGroupsBetaTesterFields([]string{"email"}),
+		WithBetaGroupsBetaRecruitmentCriteriaFields([]string{"lastModifiedDate"}),
+		WithBetaGroupsInclude([]string{"app", "builds", "betaTesters", "betaRecruitmentCriteria"}),
+		WithBetaGroupsBetaTestersLimit(25),
+		WithBetaGroupsBuildsLimit(100),
+	}
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	values, err := url.ParseQuery(buildBetaGroupsQuery(query))
+	if err != nil {
+		t.Fatalf("failed to parse query: %v", err)
+	}
+	for key, want := range map[string]string{
+		"filter[id]":                      "group-1,group-2",
+		"filter[publicLinkEnabled]":       "true",
+		"filter[publicLinkLimitEnabled]":  "false",
+		"filter[publicLink]":              "https://example.com/public",
+		"fields[betaGroups]":              "name,publicLink,app,builds,betaTesters,betaRecruitmentCriteria",
+		"fields[apps]":                    "name,bundleId",
+		"fields[builds]":                  "version",
+		"fields[betaTesters]":             "email",
+		"fields[betaRecruitmentCriteria]": "lastModifiedDate",
+		"include":                         "app,builds,betaTesters,betaRecruitmentCriteria",
+		"limit[betaTesters]":              "25",
+		"limit[builds]":                   "100",
+	} {
+		if got := values.Get(key); got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestBuildBetaGroupsQueryAddsIncludedRelationshipsToSparseFields(t *testing.T) {
+	query := &betaGroupsQuery{}
+	WithBetaGroupsFields([]string{"name"})(query)
+	WithBetaGroupsInclude([]string{"app", "builds"})(query)
+
+	values, err := url.ParseQuery(buildBetaGroupsQuery(query))
+	if err != nil {
+		t.Fatalf("failed to parse query: %v", err)
+	}
+	if got := values.Get("fields[betaGroups]"); got != "name,app,builds" {
+		t.Fatalf("fields[betaGroups] = %q, want included relationships retained", got)
 	}
 }
 
@@ -810,6 +909,9 @@ func TestBuildBetaTestersQuery(t *testing.T) {
 	opts := []BetaTestersOption{
 		WithBetaTestersLimit(25),
 		WithBetaTestersEmail("tester@example.com"),
+		WithBetaTestersFirstName("Ada"),
+		WithBetaTestersLastName("Lovelace"),
+		WithBetaTestersIDs([]string{"tester-1", " tester-2 "}),
 	}
 	for _, opt := range opts {
 		opt(query)
@@ -828,6 +930,15 @@ func TestBuildBetaTestersQuery(t *testing.T) {
 	}
 	if got := values.Get("filter[email]"); got != "tester@example.com" {
 		t.Fatalf("expected filter[email]=tester@example.com, got %q", got)
+	}
+	if got := values.Get("filter[firstName]"); got != "Ada" {
+		t.Fatalf("expected filter[firstName]=Ada, got %q", got)
+	}
+	if got := values.Get("filter[lastName]"); got != "Lovelace" {
+		t.Fatalf("expected filter[lastName]=Lovelace, got %q", got)
+	}
+	if got := values.Get("filter[id]"); got != "tester-1,tester-2" {
+		t.Fatalf("expected filter[id]=tester-1,tester-2, got %q", got)
 	}
 	if got := values.Get("filter[betaGroups]"); got != "" {
 		t.Fatalf("expected no filter[betaGroups], got %q", got)
@@ -1015,15 +1126,15 @@ func TestAppStoreVersionStateOptionsPreserveExistingComposition(t *testing.T) {
 
 func TestBuildAppStoreVersionQuery(t *testing.T) {
 	query := &appStoreVersionQuery{}
-	WithAppStoreVersionInclude([]string{"appStoreReviewDetail", "ageRatingDeclaration"})(query)
+	WithAppStoreVersionInclude([]string{"app", "appStoreReviewDetail"})(query)
 	WithAppStoreVersionLocalizationsIncludeLimit(50)(query)
 
 	values, err := url.ParseQuery(buildAppStoreVersionQuery(query))
 	if err != nil {
 		t.Fatalf("failed to parse query: %v", err)
 	}
-	if got := values.Get("include"); got != "appStoreReviewDetail,ageRatingDeclaration" {
-		t.Fatalf("expected include=appStoreReviewDetail,ageRatingDeclaration, got %q", got)
+	if got := values.Get("include"); got != "app,appStoreReviewDetail" {
+		t.Fatalf("expected include=app,appStoreReviewDetail, got %q", got)
 	}
 	if got := values.Get("limit[appStoreVersionLocalizations]"); got != "50" {
 		t.Fatalf("expected localization include limit 50, got %q", got)
@@ -3159,6 +3270,22 @@ func TestWithRetry_SuccessOnFirstTry(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Fatalf("expected 1 call, got %d", callCount)
+	}
+}
+
+func TestWithRetry_ExplicitCancellationWinsOverRetryableError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	cancel()
+
+	_, err := WithRetry(ctx, func() (string, error) {
+		return "", &RetryableError{
+			Err:        errors.New("retryable failure"),
+			RetryAfter: time.Hour,
+		}
+	}, RetryOptions{MaxRetries: 1})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want explicit context cancellation", err)
 	}
 }
 

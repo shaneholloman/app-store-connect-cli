@@ -1,6 +1,7 @@
 package xcode
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -253,6 +254,171 @@ func TestFindXcodeprojAcceptsExplicitProjectPath(t *testing.T) {
 	}
 }
 
+func TestFindXcodeprojAcceptsExplicitProjectPathWithTrailingSeparator(t *testing.T) {
+	tempDir := t.TempDir()
+	projectPath := filepath.Join(tempDir, "App.xcodeproj")
+	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+
+	got, err := findXcodeproj(projectPath + string(os.PathSeparator))
+	if err != nil {
+		t.Fatalf("expected trailing separator project path to succeed, got %v", err)
+	}
+	if got != projectPath {
+		t.Fatalf("findXcodeproj() = %q, want %q", got, projectPath)
+	}
+}
+
+func TestResolvedProjectDirNormalizesExplicitProjectPathWithTrailingSeparator(t *testing.T) {
+	projectPath := filepath.Join(t.TempDir(), "App.xcodeproj")
+	got := resolvedProjectDir(projectPath + string(os.PathSeparator))
+	want := filepath.Dir(projectPath)
+	if got != want {
+		t.Fatalf("resolvedProjectDir() = %q, want %q", got, want)
+	}
+}
+
+func TestFindXcodeprojPreservesSymlinkParentTraversal(t *testing.T) {
+	tempDir := t.TempDir()
+	realDir := filepath.Join(tempDir, "real")
+	childDir := filepath.Join(realDir, "child")
+	projectPath := filepath.Join(realDir, "App.xcodeproj")
+	if err := os.MkdirAll(childDir, 0o755); err != nil {
+		t.Fatalf("mkdir child: %v", err)
+	}
+	if err := os.Mkdir(projectPath, 0o755); err != nil {
+		t.Fatalf("mkdir project: %v", err)
+	}
+	linkPath := filepath.Join(tempDir, "link")
+	if err := os.Symlink(childDir, linkPath); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	separator := string(os.PathSeparator)
+	input := linkPath + separator + ".." + separator + "App.xcodeproj" + separator
+	got, err := findXcodeproj(input)
+	if err != nil {
+		t.Fatalf("findXcodeproj() error = %v", err)
+	}
+	want, err := filepath.EvalSymlinks(projectPath)
+	if err != nil {
+		t.Fatalf("resolve project path: %v", err)
+	}
+	if got != want {
+		t.Fatalf("findXcodeproj() = %q, want %q", got, want)
+	}
+	if gotDir := resolvedProjectDir(input); gotDir != filepath.Dir(want) {
+		t.Fatalf("resolvedProjectDir() = %q, want %q", gotDir, filepath.Dir(want))
+	}
+}
+
+func TestFindXcodeprojResolvesDirectoryTraversalBeforeJoiningProject(t *testing.T) {
+	tempDir := t.TempDir()
+	realDir := filepath.Join(tempDir, "real")
+	childDir := filepath.Join(realDir, "child")
+	realProject := filepath.Join(realDir, "App.xcodeproj")
+	siblingProject := filepath.Join(tempDir, "App.xcodeproj")
+	for _, path := range []string{childDir, realProject, siblingProject} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", path, err)
+		}
+	}
+	linkPath := filepath.Join(tempDir, "link")
+	if err := os.Symlink(childDir, linkPath); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	got, err := findXcodeproj(linkPath + string(os.PathSeparator) + "..")
+	if err != nil {
+		t.Fatalf("findXcodeproj() error = %v", err)
+	}
+	want, err := filepath.EvalSymlinks(realProject)
+	if err != nil {
+		t.Fatalf("resolve real project: %v", err)
+	}
+	if got != want {
+		t.Fatalf("findXcodeproj() = %q, want %q", got, want)
+	}
+}
+
+func TestFindXcodeprojPreservesProjectSymlinkAfterParentTraversal(t *testing.T) {
+	tempDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tempDir, "sub"), 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+	targetProject := filepath.Join(t.TempDir(), "Target.xcodeproj")
+	if err := os.Mkdir(targetProject, 0o755); err != nil {
+		t.Fatalf("mkdir target project: %v", err)
+	}
+	aliasProject := filepath.Join(tempDir, "Alias.xcodeproj")
+	if err := os.Symlink(targetProject, aliasProject); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	separator := string(os.PathSeparator)
+	input := filepath.Join(tempDir, "sub") + separator + ".." + separator + "Alias.xcodeproj" + separator
+	got, err := findXcodeproj(input)
+	if err != nil {
+		t.Fatalf("findXcodeproj() error = %v", err)
+	}
+	info, err := os.Lstat(got)
+	if err != nil {
+		t.Fatalf("lstat selected project: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("findXcodeproj() = %q, want selected project symlink", got)
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(got)
+	if err != nil {
+		t.Fatalf("resolve selected project: %v", err)
+	}
+	wantTarget, err := filepath.EvalSymlinks(targetProject)
+	if err != nil {
+		t.Fatalf("resolve target project: %v", err)
+	}
+	if resolvedTarget != wantTarget {
+		t.Fatalf("selected project target = %q, want %q", resolvedTarget, wantTarget)
+	}
+}
+
+func TestFindXcodeprojDoesNotRetargetTrailingWhitespaceProjectPath(t *testing.T) {
+	tempDir := t.TempDir()
+	exactProject := filepath.Join(tempDir, "Foo.xcodeproj")
+	whitespaceProject := exactProject + " "
+	if err := os.MkdirAll(exactProject, 0o755); err != nil {
+		t.Fatalf("mkdir exact project: %v", err)
+	}
+	if err := os.MkdirAll(whitespaceProject, 0o755); err != nil {
+		t.Fatalf("mkdir whitespace project: %v", err)
+	}
+
+	got, err := findXcodeproj(whitespaceProject)
+	if err == nil {
+		t.Fatalf("findXcodeproj(%q) = %q, want no nested project error", whitespaceProject, got)
+	}
+	if got == exactProject {
+		t.Fatalf("trailing-whitespace path was retargeted to %q", exactProject)
+	}
+}
+
+func TestFindXcodeprojPreservesWhitespaceProjectDirectory(t *testing.T) {
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, " Project Root ")
+	projectPath := filepath.Join(projectDir, "Demo.xcodeproj")
+	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+		t.Fatalf("mkdir whitespace project directory: %v", err)
+	}
+
+	got, err := findXcodeproj(projectDir)
+	if err != nil {
+		t.Fatalf("findXcodeproj(%q) error = %v", projectDir, err)
+	}
+	if got != projectPath {
+		t.Fatalf("findXcodeproj(%q) = %q, want %q", projectDir, got, projectPath)
+	}
+}
+
 func TestFindXcodeprojMultipleProjectsSuggestsProjectFlag(t *testing.T) {
 	tempDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(tempDir, "App.xcodeproj"), 0o755); err != nil {
@@ -286,6 +452,206 @@ func TestGetVersionDiscoveryErrorDoesNotFallBackToAgvtool(t *testing.T) {
 	}
 	if logData, readErr := os.ReadFile(logPath); readErr == nil && strings.Contains(string(logData), "agvtool") {
 		t.Fatalf("project discovery error fell back to agvtool: %q", logData)
+	}
+}
+
+func TestGetVersionScopedNeverDoesNotLaunchXcodebuildSettingsFallback(t *testing.T) {
+	projectDir := writeLegacyVersionProject(t)
+	logPath := filepath.Join(t.TempDir(), "commands.log")
+	var diagnostic bytes.Buffer
+
+	restore := overrideTestEnvironment(t)
+	runtimeGOOS = "darwin"
+	lookPathFn = func(file string) (string, error) { return "/usr/bin/" + file, nil }
+	commandContextFn = helperCommandContext(t, logPath)
+	t.Setenv("ASC_XCODE_HELPER_VARIABLE_VERSION", "1")
+	t.Setenv("ASC_XCODE_HELPER_SINGLE_TARGET", "1")
+	t.Cleanup(restore)
+
+	_, err := GetVersionScoped(context.Background(), GetVersionOptions{
+		ProjectDir:              projectDir,
+		BuildSettingsLookup:     BuildSettingsLookupNever,
+		BuildSettingsDiagnostic: &diagnostic,
+	})
+	if err == nil || !strings.Contains(err.Error(), "--xcodebuild-settings-lookup never") {
+		t.Fatalf("expected disabled fallback error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), marketingVersionSetting) || !strings.Contains(err.Error(), currentProjectSetting) {
+		t.Fatalf("expected setting remediation in error, got %v", err)
+	}
+	if diagnostic.String() != "" {
+		t.Fatalf("disabled fallback emitted a warning: %q", diagnostic.String())
+	}
+	logData, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatalf("read helper log: %v", readErr)
+	}
+	if strings.Contains(string(logData), "xcodebuild|-showBuildSettings") {
+		t.Fatalf("never policy launched xcodebuild: %q", logData)
+	}
+}
+
+func TestGetVersionScopedAutoWarnsBeforeXcodebuildSettingsFallback(t *testing.T) {
+	projectDir := writeLegacyVersionProject(t)
+	logPath := filepath.Join(t.TempDir(), "commands.log")
+	var diagnostic bytes.Buffer
+
+	restore := overrideTestEnvironment(t)
+	runtimeGOOS = "darwin"
+	lookPathFn = func(file string) (string, error) { return "/usr/bin/" + file, nil }
+	helpers := helperCommandContext(t, logPath)
+	commandContextFn = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		if name == "xcodebuild" && len(args) > 0 && args[0] == "-showBuildSettings" {
+			warning := diagnostic.String()
+			for _, want := range []string{marketingVersionSetting, currentProjectSetting, "--xcodebuild-settings-lookup never"} {
+				if !strings.Contains(warning, want) {
+					t.Fatalf("warning was not emitted before xcodebuild command creation or omitted %q: %q", want, warning)
+				}
+			}
+		}
+		return helpers(ctx, name, args...)
+	}
+	t.Setenv("ASC_XCODE_HELPER_VARIABLE_VERSION", "1")
+	t.Setenv("ASC_XCODE_HELPER_SINGLE_TARGET", "1")
+	t.Cleanup(restore)
+
+	result, err := GetVersionScoped(context.Background(), GetVersionOptions{
+		ProjectDir:              projectDir,
+		BuildSettingsLookup:     BuildSettingsLookupAuto,
+		BuildSettingsDiagnostic: &diagnostic,
+	})
+	if err != nil {
+		t.Fatalf("GetVersionScoped() error = %v", err)
+	}
+	if result.Version != "4.5.6" || result.BuildNumber != "99" {
+		t.Fatalf("fallback result = %#v", result)
+	}
+	logData, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatalf("read helper log: %v", readErr)
+	}
+	if !strings.Contains(string(logData), "xcodebuild|-showBuildSettings") {
+		t.Fatalf("auto policy did not launch fallback: %q", logData)
+	}
+}
+
+func TestGetVersionScopedStructuredParsingRemainsSilent(t *testing.T) {
+	projectPath := writeStructuredVersionProject(t, true)
+	var diagnostic bytes.Buffer
+	called := false
+
+	restore := overrideTestEnvironment(t)
+	commandContextFn = func(context.Context, string, ...string) *exec.Cmd {
+		called = true
+		return nil
+	}
+	t.Cleanup(restore)
+
+	result, err := GetVersionScoped(context.Background(), GetVersionOptions{
+		ProjectDir:              projectPath,
+		BuildSettingsLookup:     BuildSettingsLookupAuto,
+		BuildSettingsDiagnostic: &diagnostic,
+	})
+	if err != nil {
+		t.Fatalf("GetVersionScoped() error = %v", err)
+	}
+	if result.Version == "" || result.BuildNumber == "" {
+		t.Fatalf("structured result = %#v", result)
+	}
+	if called {
+		t.Fatal("structured parsing created a subprocess")
+	}
+	if diagnostic.String() != "" {
+		t.Fatalf("structured parsing emitted a diagnostic: %q", diagnostic.String())
+	}
+}
+
+func TestBumpVersionLegacyBuildWarnsOnceAcrossPostMutationReread(t *testing.T) {
+	projectDir := writeLegacyVersionProject(t)
+	logPath := filepath.Join(t.TempDir(), "commands.log")
+	var diagnostic bytes.Buffer
+
+	restore := overrideTestEnvironment(t)
+	runtimeGOOS = "darwin"
+	lookPathFn = func(file string) (string, error) { return "/usr/bin/" + file, nil }
+	commandContextFn = helperCommandContext(t, logPath)
+	t.Setenv("ASC_XCODE_HELPER_VARIABLE_VERSION", "1")
+	t.Setenv("ASC_XCODE_HELPER_SINGLE_TARGET", "1")
+	t.Cleanup(restore)
+
+	_, err := BumpVersion(context.Background(), BumpVersionOptions{
+		ProjectDir:              projectDir,
+		BumpType:                BumpBuild,
+		BuildSettingsLookup:     BuildSettingsLookupAuto,
+		BuildSettingsDiagnostic: &diagnostic,
+	})
+	if err != nil {
+		t.Fatalf("BumpVersion() error = %v", err)
+	}
+	if got := strings.Count(diagnostic.String(), "Warning: structured project parsing"); got != 1 {
+		t.Fatalf("fallback warning count = %d, want 1; stderr = %q", got, diagnostic.String())
+	}
+	logData, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatalf("read helper log: %v", readErr)
+	}
+	if got := strings.Count(string(logData), "xcodebuild|-showBuildSettings"); got != 2 {
+		t.Fatalf("xcodebuild fallback count = %d, want 2 fresh reads across mutation; log = %q", got, logData)
+	}
+}
+
+func TestBuildSettingsLookupIsSharedAcrossPreMutationBumpPhases(t *testing.T) {
+	projectDir := writeLegacyVersionProject(t)
+	logPath := filepath.Join(t.TempDir(), "commands.log")
+	var diagnostic bytes.Buffer
+
+	restore := overrideTestEnvironment(t)
+	runtimeGOOS = "darwin"
+	lookPathFn = func(file string) (string, error) { return "/usr/bin/" + file, nil }
+	commandContextFn = helperCommandContext(t, logPath)
+	t.Setenv("ASC_XCODE_HELPER_VARIABLE_VERSION", "1")
+	t.Setenv("ASC_XCODE_HELPER_SINGLE_TARGET", "1")
+	t.Cleanup(restore)
+	lookupSession := NewBuildSettingsLookupSession(BuildSettingsLookupAuto, &diagnostic)
+
+	if err := ValidateBumpVersion(context.Background(), BumpVersionOptions{
+		ProjectDir:              projectDir,
+		BumpType:                BumpBuild,
+		BuildNumber:             "108",
+		BuildSettingsLookup:     BuildSettingsLookupAuto,
+		BuildSettingsDiagnostic: &diagnostic,
+		BuildSettingsSession:    lookupSession,
+	}); err != nil {
+		t.Fatalf("ValidateBumpVersion() error = %v", err)
+	}
+	if _, err := GetConsistentMarketingVersion(context.Background(), GetVersionOptions{
+		ProjectDir:              projectDir,
+		BuildSettingsLookup:     BuildSettingsLookupAuto,
+		BuildSettingsDiagnostic: &diagnostic,
+		BuildSettingsSession:    lookupSession,
+	}); err != nil {
+		t.Fatalf("GetConsistentMarketingVersion() error = %v", err)
+	}
+	if _, err := BumpVersion(context.Background(), BumpVersionOptions{
+		ProjectDir:              projectDir,
+		BumpType:                BumpBuild,
+		BuildNumber:             "108",
+		BuildSettingsLookup:     BuildSettingsLookupAuto,
+		BuildSettingsDiagnostic: &diagnostic,
+		BuildSettingsSession:    lookupSession,
+	}); err != nil {
+		t.Fatalf("BumpVersion() error = %v", err)
+	}
+
+	if got := strings.Count(diagnostic.String(), "Warning: structured project parsing"); got != 1 {
+		t.Fatalf("fallback warning count = %d, want 1; stderr = %q", got, diagnostic.String())
+	}
+	logData, readErr := os.ReadFile(logPath)
+	if readErr != nil {
+		t.Fatalf("read helper log: %v", readErr)
+	}
+	if got := strings.Count(string(logData), "xcodebuild|-showBuildSettings"); got != 1 {
+		t.Fatalf("xcodebuild fallback count = %d, want 1 shared pre-mutation read; log = %q", got, logData)
 	}
 }
 

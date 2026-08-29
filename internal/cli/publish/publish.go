@@ -28,6 +28,19 @@ const (
 	publishPlanStepApplyMetadata          = "apply_metadata"
 	publishPlanStepAttachBuild            = "attach_build"
 	publishPlanStepSubmitReview           = "submit_review"
+
+	publishPartialStatus                  = "partial"
+	publishCompletedStageArchive          = "archive"
+	publishCompletedStageExport           = "export"
+	publishCompletedStageUpload           = "upload"
+	publishCompletedStageBuildProcessing  = "build_processing"
+	publishCompletedStageTestNotes        = "test_notes"
+	publishCompletedStageBetaDistribution = "beta_group_distribution"
+	publishFailureStageBuildProcessing    = "build_processing"
+	publishFailureStageTestNotes          = "test_notes"
+	publishFailureStageBetaDistribution   = "beta_group_distribution"
+	publishFailureStageNotification       = "notification"
+	publishFailureStageBetaReview         = "beta_review_submission"
 )
 
 // PublishCommand returns the publish command with subcommands.
@@ -57,17 +70,19 @@ Examples:
 	}
 }
 
-// PublishTestFlightCommand uploads an IPA and distributes it to TestFlight groups.
+// PublishTestFlightCommand uploads a build and optionally distributes it to TestFlight groups.
 func PublishTestFlightCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("publish testflight", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (required, or ASC_APP_ID env)")
-	ipaPath := fs.String("ipa", "", "Path to .ipa file (required unless --build/--build-number is provided)")
-	buildID := fs.String("build", "", "Existing build ID to distribute (skip upload)")
+	ipaPath := fs.String("ipa", "", "Path to .ipa file (required unless --build-id/--build-number is provided)")
+	buildID := fs.String("build-id", "", "Existing build ID to distribute (skip upload)")
+	legacyBuildID := shared.BindDeprecatedStringFlagAlias(fs, "build", "build-id")
 	version := fs.String("version", "", "CFBundleShortVersionString (auto-extracted from IPA if not provided)")
 	buildNumber := fs.String("build-number", "", "CFBundleVersion (used for upload metadata with --ipa, or build lookup when --ipa is omitted)")
 	platform := fs.String("platform", "IOS", "Platform: IOS, MAC_OS, TV_OS, VISION_OS")
 	groupIDs := fs.String("group", "", "Beta group ID(s) or name(s), comma-separated")
+	uploadOnly := fs.Bool("upload-only", false, "[experimental] Upload the build without adding it to beta groups or submitting beta review")
 	notify := fs.Bool("notify", false, "Notify testers after adding to groups")
 	submit := fs.Bool("submit", false, "Submit build for beta app review after adding external groups")
 	confirm := fs.Bool("confirm", false, "Confirm beta app review submission (required with --submit)")
@@ -83,31 +98,40 @@ func PublishTestFlightCommand() *ffcli.Command {
 		Name:       "testflight",
 		ShortUsage: "asc publish testflight [flags]",
 		ShortHelp:  "Upload and distribute to TestFlight.",
-		LongHelp: `Upload or local-build a binary and distribute it to TestFlight beta groups.
+		LongHelp: `Upload or local-build a binary, then optionally distribute it to TestFlight beta groups.
+
+The --upload-only flag is experimental.
 
 Steps:
-1. Build locally with Xcode or upload an IPA (unless --build/--build-number is provided)
+1. Build locally with Xcode or upload an IPA (unless --build-id/--build-number is provided)
 2. Wait for processing when needed (--wait, --test-notes, or --submit)
-3. Add build to specified beta groups
+3. Stop and return the build metadata with --upload-only, or add the build to specified beta groups
 4. Optionally notify testers
 5. Optionally submit for beta app review with --submit --confirm
 
 Examples:
+  asc publish testflight --app "123" --ipa app.ipa --upload-only --output json
+  asc publish testflight --app "123" --ipa app.ipa --upload-only --wait --output json
   asc publish testflight --app "123" --ipa app.ipa --group "GROUP_ID"
   asc publish testflight --app "123" --workspace App.xcworkspace --scheme App --version 1.2.3 --group "GROUP_ID"
+  asc publish testflight --app "123" --workspace App.xcworkspace --scheme App --version 1.2.3 --group "GROUP_ID" --signing-style manual --team-id TEAM_ID
   asc publish testflight --app "123" --ipa app.ipa --group "External Testers"
   asc publish testflight --app "123" --ipa app.ipa --group "G1,G2" --wait --notify
   asc publish testflight --app "123" --ipa app.ipa --group "External Testers" --submit --confirm
   asc publish testflight --app "123" --ipa app.ipa --group "GROUP_ID" --test-notes "Test instructions" --locale "en-US" --wait
-  asc publish testflight --app "123" --build "BUILD_ID" --group "GROUP_ID" --wait
+  asc publish testflight --app "123" --build-id "BUILD_ID" --group "GROUP_ID" --wait
   asc publish testflight --app "123" --build-number "42" --group "GROUP_ID" --wait`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
+			if err := legacyBuildID.Apply(buildID); err != nil {
+				return err
+			}
+
 			resolvedAppInput := shared.ResolveAppID(*appID)
 			if resolvedAppInput == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			setFlags := collectSetFlags(fs)
@@ -115,9 +139,29 @@ Examples:
 			buildIDValue := strings.TrimSpace(*buildID)
 			buildNumberValue := strings.TrimSpace(*buildNumber)
 			versionValue := strings.TrimSpace(*version)
+			testNotesValue := strings.TrimSpace(*testNotes)
+			localeValue := strings.TrimSpace(*locale)
 			localBuildMode := localBuild.localBuildMode()
+			if *uploadOnly {
+				for _, flagName := range []string{"group", "notify", "submit", "confirm", "test-notes", "locale"} {
+					if setFlags[flagName] {
+						return shared.UsageErrorf("--%s cannot be used with --upload-only", flagName)
+					}
+				}
+				if setFlags["build-id"] || setFlags["build"] {
+					return shared.UsageError("--build-id cannot be used with --upload-only")
+				}
+			}
 			if err := validateLocalBuildFlagUsage(localBuildMode, setFlags); err != nil {
 				return err
+			}
+			if localBuildMode {
+				if err := validatePublishExportOptionsFlags(localBuild, setFlags); err != nil {
+					return err
+				}
+				if err := validatePublishExportXcodebuildArgs(localBuild.exportXcodebuildArg); err != nil {
+					return err
+				}
 			}
 
 			uploadMode := ipaValue != ""
@@ -130,21 +174,24 @@ Examples:
 					return shared.UsageError("--ipa cannot be combined with --workspace or --project")
 				}
 				if buildIDValue != "" {
-					return shared.UsageError("--build cannot be combined with --workspace or --project")
+					return shared.UsageError("--build-id cannot be combined with --workspace or --project")
 				}
 				if versionValue == "" {
 					return shared.UsageError("--version is required")
 				}
 			case uploadMode:
 				if buildIDValue != "" {
-					return shared.UsageError("--ipa and --build are mutually exclusive")
+					return shared.UsageError("--ipa and --build-id are mutually exclusive")
 				}
 			default:
+				if *uploadOnly {
+					return shared.UsageError("--upload-only requires --ipa, --workspace, or --project")
+				}
 				if buildIDValue == "" && buildNumberValue == "" {
-					return shared.UsageError("--ipa is required unless --build or --build-number is provided")
+					return shared.UsageError("--ipa is required unless --build-id or --build-number is provided")
 				}
 				if buildIDValue != "" && buildNumberValue != "" {
-					return shared.UsageError("--build and --build-number are mutually exclusive when --ipa is not provided")
+					return shared.UsageError("--build-id and --build-number are mutually exclusive when --ipa is not provided")
 				}
 				if versionValue != "" {
 					return shared.UsageError("--version is only supported when --ipa is provided")
@@ -152,32 +199,32 @@ Examples:
 			}
 
 			parsedGroupIDs := shared.SplitCSV(*groupIDs)
-			if len(parsedGroupIDs) == 0 {
-				fmt.Fprintf(os.Stderr, "Error: --group is required\n\n")
-				return shared.MissingRequiredUsageError()
-			}
-			if *submit && !*confirm {
-				fmt.Fprintln(os.Stderr, "Error: --confirm is required with --submit")
-				return shared.MissingRequiredUsageError()
-			}
-			if *confirm && !*submit {
-				fmt.Fprintln(os.Stderr, "Error: --confirm requires --submit")
-				return flag.ErrHelp
-			}
+			if !*uploadOnly {
+				if len(parsedGroupIDs) == 0 {
+					fmt.Fprintf(os.Stderr, "Error: --group is required\n\n")
+					return shared.MissingRequiredUsageError("--group")
+				}
+				if *submit && !*confirm {
+					fmt.Fprintln(os.Stderr, "Error: --confirm is required with --submit")
+					return shared.MissingRequiredUsageError("--confirm")
+				}
+				if *confirm && !*submit {
+					fmt.Fprintln(os.Stderr, "Error: --confirm requires --submit")
+					return flag.ErrHelp
+				}
 
-			testNotesValue := strings.TrimSpace(*testNotes)
-			localeValue := strings.TrimSpace(*locale)
-			if testNotesValue != "" && localeValue == "" {
-				fmt.Fprintln(os.Stderr, "Error: --locale is required with --test-notes")
-				return shared.MissingRequiredUsageError()
-			}
-			if testNotesValue == "" && localeValue != "" {
-				fmt.Fprintln(os.Stderr, "Error: --test-notes is required with --locale")
-				return shared.MissingRequiredUsageError()
-			}
-			if testNotesValue != "" {
-				if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
-					return shared.UsageError(err.Error())
+				if testNotesValue != "" && localeValue == "" {
+					fmt.Fprintln(os.Stderr, "Error: --locale is required with --test-notes")
+					return shared.MissingRequiredUsageError("--locale")
+				}
+				if testNotesValue == "" && localeValue != "" {
+					fmt.Fprintln(os.Stderr, "Error: --test-notes is required with --locale")
+					return shared.MissingRequiredUsageError("--test-notes")
+				}
+				if testNotesValue != "" {
+					if err := shared.ValidateBuildLocalizationLocale(localeValue); err != nil {
+						return shared.UsageError(err.Error())
+					}
 				}
 			}
 
@@ -234,10 +281,13 @@ Examples:
 				return fmt.Errorf("publish testflight: resolve app: %w", err)
 			}
 
-			groupLookupCtx := preflightCtx
-			resolvedGroups, err := resolvePublishBetaGroups(groupLookupCtx, client, resolvedPublishAppID, parsedGroupIDs)
-			if err != nil {
-				return fmt.Errorf("publish testflight: %w", err)
+			var resolvedGroups []shared.ResolvedBetaGroup
+			if !*uploadOnly {
+				groupLookupCtx := preflightCtx
+				resolvedGroups, err = resolvePublishBetaGroups(groupLookupCtx, client, resolvedPublishAppID, parsedGroupIDs)
+				if err != nil {
+					return fmt.Errorf("publish testflight: %w", err)
+				}
 			}
 
 			platformValue := asc.Platform(normalizedPlatform)
@@ -306,42 +356,110 @@ Examples:
 				resolvedBuildNumberValue = strings.TrimSpace(buildResp.Data.Attributes.Version)
 			}
 
-			if *wait || testNotesValue != "" || (*submit && !isPublishBuildProcessed(buildResp)) {
-				buildResp, err = waitForPublishBuildProcessingFn(requestCtx, client, buildResp.Data.ID, *pollInterval)
-				if err != nil {
-					return fmt.Errorf("publish testflight: %w", err)
+			result := &asc.TestFlightPublishResult{
+				Mode:            mode,
+				BuildID:         buildResp.Data.ID,
+				BuildVersion:    resolvedVersionValue,
+				BuildNumber:     resolvedBuildNumberValue,
+				GroupIDs:        resolvedPublishBetaGroupIDs(resolvedGroups),
+				Uploaded:        uploaded,
+				UploadOnly:      *uploadOnly,
+				ProcessingState: buildResp.Data.Attributes.ProcessingState,
+			}
+			completedStages := make([]string, 0, 6)
+			if uploaded {
+				if localBuildResult != nil {
+					completedStages = append(completedStages, publishCompletedStageArchive, publishCompletedStageExport)
 				}
+				completedStages = append(completedStages, publishCompletedStageUpload)
+			}
+			reportPartialFailure := func(stage string, failure error) error {
+				if !uploaded {
+					return failure
+				}
+				result.Status = publishPartialStatus
+				result.FailureStage = stage
+				result.Failure = shared.SanitizeTerminal(failure.Error())
+				result.CompletedStages = append([]string(nil), completedStages...)
+				result.ProcessingState = buildResp.Data.Attributes.ProcessingState
+				attachTestFlightLocalPublishResult(result, localBuildResult)
+				if printErr := shared.PrintOutput(result, *output.Output, *output.Pretty); printErr != nil {
+					return errors.Join(failure, fmt.Errorf("print partial publish result: %w", printErr))
+				}
+				return failure
+			}
+
+			if *wait || testNotesValue != "" || (*submit && !isPublishBuildProcessed(buildResp)) {
+				processedBuildResp, waitErr := waitForPublishBuildProcessingFn(requestCtx, client, buildResp.Data.ID, *pollInterval)
+				if processedBuildResp != nil && strings.TrimSpace(processedBuildResp.Data.ID) == strings.TrimSpace(buildResp.Data.ID) {
+					buildResp = processedBuildResp
+					result.ProcessingState = buildResp.Data.Attributes.ProcessingState
+				}
+				if waitErr != nil {
+					return reportPartialFailure(publishFailureStageBuildProcessing, fmt.Errorf("publish testflight: %w", waitErr))
+				}
+				completedStages = append(completedStages, publishCompletedStageBuildProcessing)
+			}
+
+			if *uploadOnly {
+				attachTestFlightLocalPublishResult(result, localBuildResult)
+				return shared.PrintOutput(result, *output.Output, *output.Pretty)
 			}
 
 			if testNotesValue != "" {
 				if _, err := shared.UpsertBetaBuildLocalization(requestCtx, client, buildResp.Data.ID, localeValue, testNotesValue); err != nil {
-					return fmt.Errorf("publish testflight: %w", err)
+					recoveryErr := shared.NewTestNotesRecoveryError(buildResp.Data.ID, localeValue, testNotesValue, err)
+					result.Recovery = recoveryErr.Recovery()
+					return reportPartialFailure(publishFailureStageTestNotes, fmt.Errorf("publish testflight: %w", recoveryErr))
 				}
+				completedStages = append(completedStages, publishCompletedStageTestNotes)
 			}
 
-			addResult, err := shared.AddBuildBetaGroups(requestCtx, client, buildResp.Data.ID, resolvedGroups, shared.AddBuildBetaGroupsOptions{
+			addOptions := shared.AddBuildBetaGroupsOptions{
 				// Apple requires Xcode Cloud builds to be added to internal groups manually,
 				// so only skip redundant internal-group adds for builds uploaded by this command.
 				SkipInternalWithAllBuilds: uploaded,
 				Notify:                    *notify,
-			})
+			}
+			var addResult *shared.AddBuildBetaGroupsResult
+			if uploaded {
+				addResult, err = addUploadedBuildBetaGroupsFn(requestCtx, client, buildResp.Data.ID, resolvedGroups, addOptions)
+			} else {
+				addResult, err = shared.AddBuildBetaGroups(requestCtx, client, buildResp.Data.ID, resolvedGroups, addOptions)
+			}
 			if err != nil {
-				return wrapPublishTestFlightAddGroupsError(err)
+				failureStage := publishFailureStageBetaDistribution
+				var processingFailure *postUploadBuildProcessingFailure
+				if errors.As(err, &processingFailure) {
+					buildResp = processingFailure.build
+					result.ProcessingState = buildResp.Data.Attributes.ProcessingState
+					return reportPartialFailure(publishFailureStageBuildProcessing, fmt.Errorf("publish testflight: %w", err))
+				}
+				var partialErr *asc.BuildBetaGroupsPartialError
+				if errors.As(err, &partialErr) {
+					completedStages = append(completedStages, publishCompletedStageBetaDistribution)
+					failureStage = publishFailureStageNotification
+				}
+				return reportPartialFailure(failureStage, wrapPublishTestFlightAddGroupsError(err))
 			}
-
-			submissionResult, err := shared.SubmitBuildBetaReviewIfNeeded(requestCtx, client, buildResp.Data.ID, resolvedGroups, addResult.AddedGroupIDs, *submit, "publish testflight")
-			if err != nil {
-				return err
-			}
-			if submissionResult.Message != "" {
-				fmt.Fprintln(os.Stderr, submissionResult.Message)
-			}
+			completedStages = append(completedStages, publishCompletedStageBetaDistribution)
 
 			var notified *bool
 			if *notify {
 				value := addResult.NotificationAction == asc.BuildBetaGroupsNotificationActionManual
 				notified = &value
 			}
+			result.Notified = notified
+			result.NotificationAction = addResult.NotificationAction
+
+			submissionResult, err := shared.SubmitBuildBetaReviewIfNeeded(requestCtx, client, buildResp.Data.ID, resolvedGroups, addResult.AddedGroupIDs, *submit, "publish testflight")
+			if err != nil {
+				return reportPartialFailure(publishFailureStageBetaReview, err)
+			}
+			if submissionResult.Message != "" {
+				fmt.Fprintln(os.Stderr, submissionResult.Message)
+			}
+
 			var betaReviewSubmitted *bool
 			if *submit {
 				value := submissionResult.Submitted
@@ -356,36 +474,9 @@ Examples:
 					group.ID,
 				)
 			}
-
-			result := &asc.TestFlightPublishResult{
-				Mode:                   mode,
-				BuildID:                buildResp.Data.ID,
-				BuildVersion:           resolvedVersionValue,
-				BuildNumber:            resolvedBuildNumberValue,
-				GroupIDs:               resolvedPublishBetaGroupIDs(resolvedGroups),
-				Uploaded:               uploaded,
-				ProcessingState:        buildResp.Data.Attributes.ProcessingState,
-				Notified:               notified,
-				NotificationAction:     addResult.NotificationAction,
-				BetaReviewSubmitted:    betaReviewSubmitted,
-				BetaReviewSubmissionID: submissionResult.SubmissionID,
-			}
-			if localBuildResult != nil {
-				result.Archive = localBuildResult.Archive
-				result.Export = localBuildResult.Export
-				result.Publish = &asc.TestFlightPublishStageResult{
-					BuildID:                result.BuildID,
-					BuildVersion:           result.BuildVersion,
-					BuildNumber:            result.BuildNumber,
-					GroupIDs:               append([]string(nil), result.GroupIDs...),
-					Uploaded:               result.Uploaded,
-					ProcessingState:        result.ProcessingState,
-					Notified:               result.Notified,
-					NotificationAction:     result.NotificationAction,
-					BetaReviewSubmitted:    result.BetaReviewSubmitted,
-					BetaReviewSubmissionID: result.BetaReviewSubmissionID,
-				}
-			}
+			result.BetaReviewSubmitted = betaReviewSubmitted
+			result.BetaReviewSubmissionID = submissionResult.SubmissionID
+			attachTestFlightLocalPublishResult(result, localBuildResult)
 
 			return shared.PrintOutput(result, *output.Output, *output.Pretty)
 		},
@@ -435,19 +526,20 @@ Examples:
   asc publish appstore --app "123" --ipa app.ipa --version 1.2.3 --metadata-dir ./metadata --submit --confirm
   asc publish appstore --app "123" --ipa app.ipa --version 1.2.3 --submit --dry-run
   asc publish appstore --app "123" --workspace App.xcworkspace --scheme App --version 1.2.3
+  asc publish appstore --app "123" --workspace App.xcworkspace --scheme App --version 1.2.3 --signing-style manual --team-id TEAM_ID
   asc publish appstore --app "123" --ipa app.ipa --version 1.2.3 --submit --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *submit && !*confirm && !*dryRun {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required with --submit")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			resolvedAppInput := shared.ResolveAppID(*appID)
 			if resolvedAppInput == "" {
 				fmt.Fprintf(os.Stderr, "Error: --app is required (or set ASC_APP_ID)\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			setFlags := collectSetFlags(fs)
@@ -458,6 +550,14 @@ Examples:
 			localBuildMode := localBuild.localBuildMode()
 			if err := validateLocalBuildFlagUsage(localBuildMode, setFlags); err != nil {
 				return err
+			}
+			if localBuildMode {
+				if err := validatePublishExportOptionsFlags(localBuild, setFlags); err != nil {
+					return err
+				}
+				if err := validatePublishExportXcodebuildArgs(localBuild.exportXcodebuildArg); err != nil {
+					return err
+				}
 			}
 			if setFlags["metadata-dir"] && metadataDirValue == "" {
 				return shared.UsageError("--metadata-dir cannot be empty")
@@ -475,7 +575,7 @@ Examples:
 				}
 			case ipaValue == "":
 				fmt.Fprintf(os.Stderr, "Error: --ipa is required\n\n")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--ipa")
 			}
 			if *pollInterval <= 0 {
 				return shared.UsageError("--poll-interval must be greater than 0")
@@ -876,7 +976,7 @@ func uploadBuildAndWaitForID(ctx context.Context, client *asc.Client, appID, ipa
 	}
 
 	commitCtx, commitCancel := contextWithPublishUploadTimeout(ctx, uploadTimeout, overrideUploadTimeout)
-	_, err = shared.CommitBuildUploadFile(commitCtx, client, fileResp.Data.ID, nil)
+	_, err = shared.CommitBuildUploadFile(commitCtx, client, uploadResp.Data.ID, fileResp.Data.ID, nil)
 	commitCancel()
 	if err != nil {
 		return nil, err
@@ -937,10 +1037,7 @@ func resolvePublishTimeout(timeout time.Duration) time.Duration {
 
 func contextWithPublishUploadTimeout(ctx context.Context, timeout time.Duration, override bool) (context.Context, context.CancelFunc) {
 	if override {
-		if ctx == nil {
-			ctx = context.Background()
-		}
-		return context.WithTimeout(ctx, timeout)
+		return shared.ContextWithTimeoutDuration(ctx, timeout)
 	}
 	return shared.ContextWithUploadTimeout(ctx)
 }
@@ -951,4 +1048,25 @@ func wrapPublishTestFlightAddGroupsError(err error) error {
 		return fmt.Errorf("publish testflight: %w", err)
 	}
 	return fmt.Errorf("publish testflight: failed to add groups: %w", err)
+}
+
+func attachTestFlightLocalPublishResult(result *asc.TestFlightPublishResult, localBuildResult *publishLocalBuildExecutionResult) {
+	if result == nil || localBuildResult == nil {
+		return
+	}
+	result.Archive = localBuildResult.Archive
+	result.Export = localBuildResult.Export
+	result.Publish = &asc.TestFlightPublishStageResult{
+		BuildID:                result.BuildID,
+		BuildVersion:           result.BuildVersion,
+		BuildNumber:            result.BuildNumber,
+		GroupIDs:               append([]string(nil), result.GroupIDs...),
+		Uploaded:               result.Uploaded,
+		UploadOnly:             result.UploadOnly,
+		ProcessingState:        result.ProcessingState,
+		Notified:               result.Notified,
+		NotificationAction:     result.NotificationAction,
+		BetaReviewSubmitted:    result.BetaReviewSubmitted,
+		BetaReviewSubmissionID: result.BetaReviewSubmissionID,
+	}
 }

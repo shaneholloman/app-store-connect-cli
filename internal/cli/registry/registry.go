@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"strings"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/completion"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/devices"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/diffcmd"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/distribute"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/docs"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/encryption"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/eula"
@@ -48,6 +50,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/nominations"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/notarization"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/notify"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/optimize"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/passtypeids"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/performance"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/preorders"
@@ -70,6 +73,7 @@ import (
 	storekitcmd "github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/storekit"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/submit"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/subscriptions"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/systemstatus"
 	telemetrycmd "github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/telemetry"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/testflight"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/users"
@@ -105,7 +109,8 @@ type factory struct {
 
 // Catalog constructs root commands on demand while preserving display order.
 type Catalog struct {
-	factories []factory
+	factories   []factory
+	rootFlagSet *flag.FlagSet
 }
 
 // NewCatalog returns the current root command catalog.
@@ -120,13 +125,15 @@ func NewCatalog(version string) *Catalog {
 		commandFactory("init", "Initialize asc helper docs in the current repo.", initcmd.InitCommand),
 		commandFactory("docs", "Access embedded documentation guides and reference helpers.", docs.DocsCommand),
 		commandFactory("diff", "Generate deterministic non-mutating diff plans.", diffcmd.DiffCommand),
+		commandFactory("system-status", "[experimental] Check Apple Developer service health.", systemstatus.Command),
 		commandFactory("status", "Show a release pipeline dashboard for an app.", status.StatusCommand),
 		commandFactory("insights", "Generate weekly and daily insights from App Store data sources.", insights.InsightsCommand),
 		commandFactory("release-notes", "Generate and manage App Store release notes.", releasenotes.ReleaseNotesCommand),
 		commandFactory("reviews", "List and manage App Store customer reviews.", reviews.ReviewsCommand),
 		commandFactory("review", "Manage App Store review details, attachments, and submissions.", reviews.ReviewCommand),
 		commandFactory("analytics", "Request and download analytics and sales reports.", analytics.AnalyticsCommand),
-		commandFactory("ads", "Manage Apple Ads Campaign Management API resources.", ads.AdsCommand),
+		commandFactory("ads", "Manage Apple Ads API resources.", ads.AdsCommand),
+		commandFactory("optimize", "Build cross-API optimization plans. [experimental]", optimize.OptimizeCommand),
 		commandFactory("performance", "Access performance metrics and diagnostic logs.", performance.PerformanceCommand),
 		commandFactory("finance", "Download payments and financial reports.", finance.FinanceCommand),
 		commandFactory("apps", "List and manage apps in App Store Connect.", apps.AppsCommand),
@@ -152,7 +159,8 @@ func NewCatalog(version string) *Catalog {
 		commandFactory("publish", "High-level publish workflows for TestFlight and App Store.", publish.PublishCommand),
 		commandFactory("release", "Run high-level App Store release workflows.", release.ReleaseCommand),
 		commandFactory("workflow", "Run multi-step automation workflows.", workflow.WorkflowCommand),
-		commandFactory("xcode", "Local Xcode archive/export helpers (macOS only).", xcode.XcodeCommand),
+		commandFactory("xcode", "Local Xcode build/archive/export helpers (macOS only).", xcode.XcodeCommand),
+		commandFactory("distribute", "Plan, execute, inspect, and publish iOS distribution artifacts. [experimental]", distribute.DistributeCommand),
 		commandFactory("versions", "Manage App Store versions.", versions.VersionsCommand),
 		commandFactory("product-pages", "Manage custom product pages and product page experiments.", productpages.ProductPagesCommand),
 		commandFactory("routing-coverage", "Manage routing app coverage files.", routingcoverage.RoutingCoverageCommand),
@@ -196,10 +204,17 @@ func NewCatalog(version string) *Catalog {
 			return VersionCommand(version)
 		}),
 		commandFactory("completion", "Print shell completion scripts.", func() *ffcli.Command {
-			return completion.CompletionCommand(catalog.MetadataCommands())
+			return completion.CompletionCommand(catalog.All, func() *flag.FlagSet {
+				return catalog.rootFlagSet
+			})
 		}),
 	}
 	return catalog
+}
+
+// SetCompletionRootFlagSet supplies the flags accepted by the root command.
+func (c *Catalog) SetCompletionRootFlagSet(fs *flag.FlagSet) {
+	c.rootFlagSet = fs
 }
 
 func commandFactory(name, shortHelp string, newCommand func() *ffcli.Command) factory {

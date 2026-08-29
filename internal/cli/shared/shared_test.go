@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/auth"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/config"
 )
@@ -96,6 +98,25 @@ func setTerminalDetection(t *testing.T, detector func(fd int) bool) {
 	})
 }
 
+func clearCIEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"CI",
+		"GITHUB_ACTIONS",
+		"GITLAB_CI",
+		"CIRCLECI",
+		"BUILDKITE",
+		"BITRISE_IO",
+		"TF_BUILD",
+		"TRAVIS",
+		"APPVEYOR",
+		"TEAMCITY_VERSION",
+		"JENKINS_URL",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
 func TestDefaultOutputFormat_ReturnsJSON(t *testing.T) {
 	resetDefaultOutput(t)
 	setTerminalDetection(t, func(int) bool { return false })
@@ -118,11 +139,73 @@ func TestDefaultOutputFormat_UnsetReturnsJSON(t *testing.T) {
 func TestDefaultOutputFormat_UnsetReturnsTableWhenStdoutTTY(t *testing.T) {
 	resetDefaultOutput(t)
 	setTerminalDetection(t, func(int) bool { return true })
+	clearCIEnvironment(t)
 	t.Setenv("ASC_DEFAULT_OUTPUT", "")
 	os.Unsetenv("ASC_DEFAULT_OUTPUT")
 
 	if got := DefaultOutputFormat(); got != "table" {
 		t.Fatalf("expected table, got %q", got)
+	}
+}
+
+func TestDefaultOutputFormat_UnsetReturnsJSONWhenStdoutTTYInCI(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "generic", key: "CI", value: "true"},
+		{name: "GitHub Actions", key: "GITHUB_ACTIONS", value: "1"},
+		{name: "GitLab", key: "GITLAB_CI", value: "yes"},
+		{name: "CircleCI", key: "CIRCLECI", value: "on"},
+		{name: "Buildkite", key: "BUILDKITE", value: "y"},
+		{name: "Bitrise", key: "BITRISE_IO", value: "true"},
+		{name: "Azure Pipelines", key: "TF_BUILD", value: "true"},
+		{name: "Travis", key: "TRAVIS", value: "true"},
+		{name: "AppVeyor", key: "APPVEYOR", value: "true"},
+		{name: "TeamCity", key: "TEAMCITY_VERSION", value: "2026.1"},
+		{name: "Jenkins", key: "JENKINS_URL", value: "https://ci.example.test"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetDefaultOutput(t)
+			setTerminalDetection(t, func(int) bool { return true })
+			clearCIEnvironment(t)
+			t.Setenv("ASC_DEFAULT_OUTPUT", "")
+			os.Unsetenv("ASC_DEFAULT_OUTPUT")
+			t.Setenv(tt.key, tt.value)
+
+			if got := DefaultOutputFormat(); got != "json" {
+				t.Fatalf("DefaultOutputFormat() = %q, want json", got)
+			}
+		})
+	}
+}
+
+func TestDefaultOutputFormat_FalseCIMarkersKeepTTYTableDefault(t *testing.T) {
+	resetDefaultOutput(t)
+	setTerminalDetection(t, func(int) bool { return true })
+	clearCIEnvironment(t)
+	t.Setenv("ASC_DEFAULT_OUTPUT", "")
+	os.Unsetenv("ASC_DEFAULT_OUTPUT")
+	t.Setenv("CI", "false")
+	t.Setenv("GITHUB_ACTIONS", "0")
+
+	if got := DefaultOutputFormat(); got != "table" {
+		t.Fatalf("DefaultOutputFormat() = %q, want table", got)
+	}
+}
+
+func TestDefaultOutputFormat_ExplicitEnvOverridesCI(t *testing.T) {
+	resetDefaultOutput(t)
+	setTerminalDetection(t, func(int) bool { return true })
+	clearCIEnvironment(t)
+	t.Setenv("CI", "true")
+	t.Setenv("ASC_DEFAULT_OUTPUT", "table")
+
+	if got := DefaultOutputFormat(); got != "table" {
+		t.Fatalf("DefaultOutputFormat() = %q, want explicit table", got)
 	}
 }
 
@@ -310,6 +393,7 @@ func TestBindOutputFlagsUsesDefaultOutputFormat(t *testing.T) {
 func TestBindOutputFlagsUsesTTYAwareDefaultWhenEnvUnset(t *testing.T) {
 	resetDefaultOutput(t)
 	setTerminalDetection(t, func(int) bool { return true })
+	clearCIEnvironment(t)
 	t.Setenv("ASC_DEFAULT_OUTPUT", "")
 	os.Unsetenv("ASC_DEFAULT_OUTPUT")
 
@@ -421,7 +505,8 @@ func TestValidateOutputFormat(t *testing.T) {
 		{name: "json allows pretty", input: "json", pretty: true, wantFormat: "json"},
 		{name: "md alias", input: "md", pretty: false, wantFormat: "markdown"},
 		{name: "table pretty rejected", input: "table", pretty: true, wantErr: "--pretty is only valid with JSON output"},
-		{name: "unsupported rejected", input: "yaml", pretty: false, wantErr: "unsupported format: yaml"},
+		{name: "unsupported rejected", input: "yaml", pretty: false, wantErr: `(got "yaml")`},
+		{name: "unsupported preserves whitespace", input: " yaml ", pretty: false, wantErr: `(got " yaml ")`},
 	}
 
 	for _, tc := range tests {
@@ -454,7 +539,7 @@ func TestValidateOutputFormatAllowed(t *testing.T) {
 	}{
 		{name: "text allowed", input: "text", pretty: false, allowed: []string{"text", "json"}, wantFormat: "text"},
 		{name: "json default allowed", input: "", pretty: false, allowed: []string{"text", "json"}, wantFormat: "json"},
-		{name: "md unsupported when not allowed", input: "md", pretty: false, allowed: []string{"text", "json"}, wantErr: "unsupported format: markdown"},
+		{name: "md unsupported when not allowed", input: "md", pretty: false, allowed: []string{"text", "json"}, wantErr: `--output must be one of: text, json (got "md")`},
 		{name: "alias allowed when markdown allowed", input: "md", pretty: false, allowed: []string{"markdown", "json"}, wantFormat: "markdown"},
 		{name: "pretty rejected for text", input: "text", pretty: true, allowed: []string{"text", "json"}, wantErr: "--pretty is only valid with JSON output"},
 	}
@@ -488,7 +573,7 @@ func TestValidateOutputFormatAllowed_EmptyAllowedFallsBackToDefaultSet(t *testin
 	}
 
 	_, err = ValidateOutputFormatAllowed("yaml", false)
-	if err == nil || !strings.Contains(err.Error(), "unsupported format: yaml") {
+	if err == nil || !strings.Contains(err.Error(), `(got "yaml")`) {
 		t.Fatalf("expected unsupported format error, got %v", err)
 	}
 }
@@ -593,6 +678,184 @@ func TestPrintOutputWithRenderers_RequiresMarkdownRenderer(t *testing.T) {
 	err := PrintOutputWithRenderers(struct{}{}, "markdown", false, func() error { return nil }, nil)
 	if err == nil || !strings.Contains(err.Error(), "markdown renderer is required") {
 		t.Fatalf("expected markdown renderer required error, got %v", err)
+	}
+}
+
+type testPageAttributes struct {
+	Name string `json:"name"`
+}
+
+func makeTruncatedTestPage(items int, next string, meta string) *asc.Response[testPageAttributes] {
+	data := make([]asc.Resource[testPageAttributes], 0, items)
+	for i := range items {
+		data = append(data, asc.Resource[testPageAttributes]{
+			Type:       asc.ResourceTypeApps,
+			ID:         fmt.Sprintf("item-%d", i),
+			Attributes: testPageAttributes{Name: fmt.Sprintf("Item %d", i)},
+		})
+	}
+	page := &asc.Response[testPageAttributes]{
+		Data:  data,
+		Links: asc.Links{Next: next},
+	}
+	if meta != "" {
+		page.Meta = json.RawMessage(meta)
+	}
+	return page
+}
+
+func TestPrintOutput_WarnsWithTotalWhenMorePagesExist(t *testing.T) {
+	page := makeTruncatedTestPage(2, "https://api.appstoreconnect.apple.com/v1/apps?cursor=abc", `{"paging":{"total":7,"limit":2}}`)
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := PrintOutput(page, "json", false); err != nil {
+			t.Errorf("PrintOutput() error = %v", err)
+		}
+	})
+
+	want := "Warning: showing 2 of 7 results; more pages exist (use --paginate or --next where supported)\n"
+	if stderr != want {
+		t.Fatalf("stderr = %q, want %q", stderr, want)
+	}
+	if !strings.Contains(stdout, `"item-0"`) || !strings.Contains(stdout, `"item-1"`) {
+		t.Fatalf("expected JSON payload on stdout, got %q", stdout)
+	}
+	if strings.Contains(stdout, "Warning") {
+		t.Fatalf("warning must not leak into stdout, got %q", stdout)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("stdout is no longer valid JSON: %v (%q)", err, stdout)
+	}
+}
+
+func TestPrintOutput_WarnsWithCountWhenTotalUnavailable(t *testing.T) {
+	page := makeTruncatedTestPage(3, "https://api.appstoreconnect.apple.com/v1/apps?cursor=abc", "")
+
+	_, stderr := captureOutput(t, func() {
+		if err := PrintOutput(page, "json", false); err != nil {
+			t.Errorf("PrintOutput() error = %v", err)
+		}
+	})
+
+	want := "Warning: showing 3 results; more pages exist (use --paginate or --next where supported)\n"
+	if stderr != want {
+		t.Fatalf("stderr = %q, want %q", stderr, want)
+	}
+}
+
+func TestPrintOutput_NoWarningWhenNoNextLink(t *testing.T) {
+	// PaginateAll erases links.next on aggregated results, so this models a
+	// fully paginated response.
+	page := makeTruncatedTestPage(4, "", `{"paging":{"total":4,"limit":200}}`)
+
+	_, stderr := captureOutput(t, func() {
+		if err := PrintOutput(page, "json", false); err != nil {
+			t.Errorf("PrintOutput() error = %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected no warning for aggregated page, got %q", stderr)
+	}
+}
+
+func TestPrintOutput_NoWarningForNonPaginatedData(t *testing.T) {
+	_, stderr := captureOutput(t, func() {
+		if err := PrintOutput(map[string]string{"status": "ok"}, "json", false); err != nil {
+			t.Errorf("PrintOutput() error = %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected no warning for non-paginated data, got %q", stderr)
+	}
+}
+
+func TestPrintOutput_TypedNilPaginatedResponseDoesNotPanic(t *testing.T) {
+	var typedNil *asc.Response[testPageAttributes]
+
+	stdout, stderr := captureOutput(t, func() {
+		if err := PrintOutput(typedNil, "json", false); err != nil {
+			t.Errorf("PrintOutput() error = %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected no warning for typed nil response, got %q", stderr)
+	}
+	if !strings.Contains(stdout, "null") {
+		t.Fatalf("expected null JSON output for typed nil, got %q", stdout)
+	}
+}
+
+// rawOnlyPage implements asc.PaginatedResponse without a countable item slice
+// to exercise the generic truncation notice.
+type rawOnlyPage struct {
+	links asc.Links
+	data  json.RawMessage
+}
+
+func (r *rawOnlyPage) GetLinks() *asc.Links { return &r.links }
+func (r *rawOnlyPage) GetData() any         { return r.data }
+
+func TestPrintOutput_GenericWarningWhenCountUnavailable(t *testing.T) {
+	page := &rawOnlyPage{
+		links: asc.Links{Next: "https://api.appstoreconnect.apple.com/v1/apps?cursor=abc"},
+		data:  json.RawMessage(`[{"id":"a"}]`),
+	}
+
+	_, stderr := captureOutput(t, func() {
+		if err := PrintOutput(page, "json", false); err != nil {
+			t.Errorf("PrintOutput() error = %v", err)
+		}
+	})
+
+	want := "Warning: more pages exist (use --paginate or --next where supported)\n"
+	if stderr != want {
+		t.Fatalf("stderr = %q, want %q", stderr, want)
+	}
+}
+
+func TestPrintOutputWithRenderers_WarnsAfterTableRender(t *testing.T) {
+	page := makeTruncatedTestPage(1, "https://api.appstoreconnect.apple.com/v1/apps?cursor=abc", `{"paging":{"total":9,"limit":1}}`)
+
+	_, stderr := captureOutput(t, func() {
+		if err := PrintOutputWithRenderers(
+			page,
+			"table",
+			false,
+			func() error { return nil },
+			func() error { t.Error("markdown renderer should not run"); return nil },
+		); err != nil {
+			t.Errorf("PrintOutputWithRenderers() error = %v", err)
+		}
+	})
+
+	want := "Warning: showing 1 of 9 results; more pages exist (use --paginate or --next where supported)\n"
+	if stderr != want {
+		t.Fatalf("stderr = %q, want %q", stderr, want)
+	}
+}
+
+func TestPrintOutputWithRenderers_NoWarningWhenRendererFails(t *testing.T) {
+	page := makeTruncatedTestPage(1, "https://api.appstoreconnect.apple.com/v1/apps?cursor=abc", "")
+
+	_, stderr := captureOutput(t, func() {
+		err := PrintOutputWithRenderers(
+			page,
+			"table",
+			false,
+			func() error { return errors.New("render failed") },
+			func() error { return nil },
+		)
+		if err == nil || !strings.Contains(err.Error(), "render failed") {
+			t.Errorf("expected renderer error, got %v", err)
+		}
+	})
+
+	if stderr != "" {
+		t.Fatalf("expected no warning after failed render, got %q", stderr)
 	}
 }
 
@@ -747,7 +1010,7 @@ func TestResolvePrivateKeyPathFromRawValue(t *testing.T) {
 	t.Setenv("ASC_PRIVATE_KEY_PATH", "")
 	t.Setenv("ASC_PRIVATE_KEY_B64", "")
 
-	t.Setenv("ASC_PRIVATE_KEY", "line1\\nline2")
+	t.Setenv("ASC_PRIVATE_KEY", "line1\nline2\\nline3")
 	path, err := resolvePrivateKeyPath()
 	if err != nil {
 		t.Fatalf("resolvePrivateKeyPath() error: %v", err)
@@ -756,7 +1019,7 @@ func TestResolvePrivateKeyPathFromRawValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
 	}
-	if string(data) != "line1\nline2" {
+	if string(data) != "line1\nline2\nline3" {
 		t.Fatalf("expected newline expansion, got %q", string(data))
 	}
 }
@@ -1498,6 +1761,50 @@ func TestResolveCredentials_PartialEnvStillMergesStoredKeyMaterial(t *testing.T)
 	}
 }
 
+func TestResolveCredentials_PartialStoredCredentialIgnoresUnusedMalformedEnvPrivateKey(t *testing.T) {
+	resetPrivateKeyTemp(t)
+	storedKeyPath := filepath.Join(t.TempDir(), "AuthKey-Stored.p8")
+	writeECDSAPEM(t, storedKeyPath)
+
+	t.Setenv("ASC_BYPASS_KEYCHAIN", "")
+	t.Setenv("ASC_PROFILE", "")
+	t.Setenv("ASC_KEY_ID", "")
+	t.Setenv("ASC_ISSUER_ID", "ENVISS")
+	t.Setenv("ASC_KEY_TYPE", "")
+	t.Setenv("ASC_PRIVATE_KEY_PATH", "")
+	t.Setenv("ASC_PRIVATE_KEY_B64", "not-base64")
+	t.Setenv("ASC_PRIVATE_KEY", "")
+
+	previousProfile := selectedProfile
+	selectedProfile = ""
+	t.Cleanup(func() { selectedProfile = previousProfile })
+
+	previousStrict := strictAuth
+	strictAuth = false
+	t.Cleanup(func() { strictAuth = previousStrict })
+	t.Setenv(strictAuthEnvVar, "")
+
+	previous := getCredentialsWithSourceFn
+	getCredentialsWithSourceFn = func(string) (*config.Config, string, error) {
+		return &config.Config{
+			KeyID:          "STOREDKEY",
+			PrivateKeyPath: storedKeyPath,
+		}, "keychain", nil
+	}
+	t.Cleanup(func() { getCredentialsWithSourceFn = previous })
+
+	creds, err := resolveCredentials()
+	if err != nil {
+		t.Fatalf("resolveCredentials() error: %v", err)
+	}
+	if creds.keyID != "STOREDKEY" || creds.issuerID != "ENVISS" || creds.keyPath != storedKeyPath {
+		t.Fatalf("expected stored credentials completed by environment issuer, got %+v", creds)
+	}
+	if privateKeyTempPath != "" || len(privateKeyTempPaths) != 0 {
+		t.Fatalf("unused malformed environment key materialized private key files: %q %#v", privateKeyTempPath, privateKeyTempPaths)
+	}
+}
+
 func TestResolveCredentials_ProfileFlagStillPrefersStoredOverCompleteEnv(t *testing.T) {
 	resetPrivateKeyTemp(t)
 
@@ -1872,6 +2179,19 @@ func TestResolveCompleteEnvCredentialMetadataDoesNotMaterializeInlineKey(t *test
 	}
 	if privateKeyTempPath != "" || len(privateKeyTempPaths) != 0 {
 		t.Fatalf("metadata resolution materialized private key files: %q %#v", privateKeyTempPath, privateKeyTempPaths)
+	}
+}
+
+func TestHasCompleteEnvironmentCredentialsRejectsInvalidBase64(t *testing.T) {
+	t.Setenv("ASC_KEY_ID", "ENVKEY")
+	t.Setenv("ASC_ISSUER_ID", "ENVISS")
+	t.Setenv("ASC_PRIVATE_KEY_PATH", "")
+	t.Setenv("ASC_PRIVATE_KEY", "")
+	t.Setenv("ASC_PRIVATE_KEY_B64", "not-base64")
+	t.Setenv(keyTypeEnvVar, "")
+
+	if HasCompleteEnvironmentCredentials() {
+		t.Fatal("expected invalid base64 key material to be ineligible for the environment fast path")
 	}
 }
 

@@ -59,7 +59,7 @@ func callResolveAppCreateSessionFn(ctx context.Context, appleID, password, twoFa
 }
 
 func appCreateCanPromptInteractively() bool {
-	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
+	if tty, err := openTTYFn(); err == nil {
 		_ = tty.Close()
 		return true
 	}
@@ -92,6 +92,16 @@ func normalizeAppsCreateRunOptions(opts AppsCreateRunOptions) AppsCreateRunOptio
 		opts.Version = appCreateDefaultVersion
 	}
 	return opts
+}
+
+func explainAppsCreateError(err error) error {
+	if webcore.IsMissingCompanyNameError(err) {
+		return fmt.Errorf(
+			"web apps create failed: Apple requires a company name for this account; retry with --company-name \"Your Company\": %w",
+			err,
+		)
+	}
+	return fmt.Errorf("web apps create failed: %w", err)
 }
 
 func promptAppsCreateFields(opts *AppsCreateRunOptions) error {
@@ -203,9 +213,23 @@ func promptAppsCreatePassword(password *string) error {
 
 func promptAppsCreateSessionAppleID(appleID *string) error {
 	if !appCreateCanPromptInteractivelyFn() {
-		return shared.UsageError("--apple-id is required when no cached web session is available")
+		return shared.WithDiagnostic(
+			shared.UsageError("--apple-id is required when no cached web session is available"),
+			shared.DiagnosticRequiredInputMissing,
+			"--apple-id",
+		)
 	}
 	return promptAppsCreateAppleID(appleID)
+}
+
+// soleMissingFlag names the failing parameter only when exactly one required
+// flag is absent. Multi-parameter requirements stay unattributed so the
+// telemetry dimension never guesses which flag the caller meant to pass.
+func soleMissingFlag(missingFlags []string) string {
+	if len(missingFlags) != 1 {
+		return ""
+	}
+	return missingFlags[0]
 }
 
 func appCreatePasswordInputProvided(password string) bool {
@@ -238,6 +262,10 @@ func persistFreshAppCreateSession(session *webcore.AuthSession) error {
 	return nil
 }
 
+func persistAutoReauthAppCreateSession(session *webcore.AuthSession) {
+	_ = persistFreshAppCreateSession(session)
+}
+
 func rollbackCreatedBundleID(ctx context.Context, bundleID string) error {
 	bundleID = strings.TrimSpace(bundleID)
 	if bundleID == "" {
@@ -259,6 +287,7 @@ func resolveAppCreateSession(ctx context.Context, appleID, password, twoFactorCo
 		promptAppleID:        promptAppsCreateSessionAppleID,
 		resolvePassword:      resolveAppCreatePassword,
 		persistFresh:         persistFreshAppCreateSession,
+		persistAutoReauth:    persistAutoReauthAppCreateSession,
 		twoFactorCodeCommand: command,
 	})
 	if err != nil {
@@ -286,7 +315,11 @@ func RunAppsCreate(ctx context.Context, opts AppsCreateRunOptions) error {
 			if missingSKU {
 				missingFlags = append(missingFlags, "--sku")
 			}
-			return shared.UsageError(fmt.Sprintf("missing required flags: %s", strings.Join(missingFlags, ", ")))
+			return shared.WithDiagnostic(
+				shared.UsageError(fmt.Sprintf("missing required flags: %s", strings.Join(missingFlags, ", "))),
+				shared.DiagnosticRequiredInputMissing,
+				soleMissingFlag(missingFlags),
+			)
 		}
 		if err := promptAppsCreateFields(&opts); err != nil {
 			return err
@@ -393,7 +426,7 @@ func RunAppsCreate(ctx context.Context, opts AppsCreateRunOptions) error {
 				err = errors.Join(err, fmt.Errorf("failed to roll back created bundle id %q: %w", opts.BundleID, rollbackErr))
 			}
 		}
-		return fmt.Errorf("web apps create failed: %w", err)
+		return explainAppsCreateError(err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Created app successfully (id=%s)\n", strings.TrimSpace(app.Data.ID))

@@ -100,17 +100,26 @@ asc metadata push --app "APP_ID" --version "1.2.3" --dir "./metadata" --allow-de
 
 ### metadata validate
 
-Validate metadata files for errors:
+Validate metadata files for errors. Validation is offline by default:
 
 ```bash  theme={null}
 asc metadata validate --dir "./metadata"
+asc metadata validate --dir "./metadata" --check-urls
 ```
 
 **Flags:**
 
 * `--dir` - Metadata root directory (required)
+* `--check-urls` - Experimental: fetch support and privacy policy URLs to detect failed responses, redirects to another host, and site-root destinations
+* `--subscription-app` - Enable subscription-specific Terms of Use / EULA link checks
 * `--output` - Output format: `json`, `table`, `markdown`
 * `--pretty` - Pretty-print JSON output
+
+`--check-urls` is an explicit network opt-in. It checks each unique URL once
+with bounded concurrency and timeouts, follows redirects, and refuses private,
+loopback, link-local, and reserved network targets. URL findings are warnings:
+they appear in the normal validation result but keep exit status 0 when the
+metadata has no errors.
 
 ## File Format
 
@@ -332,9 +341,10 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_APP_ID: ${{ secrets.APP_ID }}
         run: |
           asc metadata push \
-            --app "${{ secrets.APP_ID }}" \
+            --app "$ASC_APP_ID" \
             --version "1.2.3" \
             --dir "./metadata"
 ```

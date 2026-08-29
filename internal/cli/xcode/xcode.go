@@ -52,17 +52,18 @@ func XcodeCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "xcode",
 		ShortUsage: "asc xcode <subcommand> [flags]",
-		ShortHelp:  "Local Xcode archive/export helpers (macOS only).",
-		LongHelp: `Local Xcode archive/export helpers.
+		ShortHelp:  "Local Xcode build/archive/export helpers (macOS only).",
+		LongHelp: `Local Xcode build/archive/export helpers.
 
 These commands wrap local xcodebuild flows and are visible on every platform so
 docs and workflows stay consistent, but execution is supported on macOS only.
 
-Use these commands to produce deterministic .xcarchive and .ipa paths that can
-be passed directly into asc upload and publish commands.
+Use these commands to compile projects and produce deterministic .xcarchive and
+.ipa paths that can be passed directly into asc upload and publish commands.
 
 Examples:
   asc xcode inject --manifest .asc/deployment.json --set version=1.3.0 --overwrite
+  asc xcode build --project App.xcodeproj --scheme App --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=27.0' --no-code-signing --output json
   asc xcode archive --workspace App.xcworkspace --scheme App --archive-path .asc/artifacts/App.xcarchive --output json
   asc xcode export --archive-path .asc/artifacts/App.xcarchive --ipa-path .asc/artifacts/App.ipa --output json
   asc xcode export-options generate --archive-path .asc/artifacts/App.xcarchive
@@ -73,6 +74,7 @@ Examples:
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			XcodeInjectCommand(),
+			XcodeBuildCommand(),
 			XcodeArchiveCommand(),
 			XcodeExportCommand(),
 			XcodeExportOptionsGroupCommand(),
@@ -122,19 +124,22 @@ Examples:
 			}
 			if strings.TrimSpace(*workspacePath) == "" && strings.TrimSpace(*projectPath) == "" {
 				fmt.Fprintln(os.Stderr, "Error: exactly one of --workspace or --project is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 			if strings.TrimSpace(*workspacePath) != "" && strings.TrimSpace(*projectPath) != "" {
 				fmt.Fprintln(os.Stderr, "Error: exactly one of --workspace or --project is required")
-				return shared.MissingRequiredUsageError()
+				return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticConflictingInput, "")
 			}
 			if strings.TrimSpace(*scheme) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --scheme is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--scheme")
 			}
 			if strings.TrimSpace(*archivePath) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --archive-path is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--archive-path")
+			}
+			if emptyFlag := firstExplicitlyEmptyFlag(fs, "configuration"); emptyFlag != "" {
+				return shared.UsageErrorf("--%s must not be empty", emptyFlag)
 			}
 
 			result, err := runArchive(ctx, localxcode.ArchiveOptions{
@@ -175,13 +180,16 @@ func XcodeExportCommand() *ffcli.Command {
 
 	archivePath := fs.String("archive-path", "", "Path to the .xcarchive input (required)")
 	exportOptions := fs.String("export-options", "", "Path to ExportOptions.plist (generated automatically when omitted)")
+	method := fs.String("method", "app-store-connect", "[experimental] Method for generated options: app-store-connect or release-testing")
+	signingStyle := fs.String("signing-style", "automatic", "Signing style for generated options: automatic or manual")
+	teamID := fs.String("team-id", "", "Apple Developer team ID for generated options (overrides archive metadata)")
 	ipaPath := fs.String("ipa-path", "", "Destination path for a local .ipa when one is produced (required)")
 	overwrite := fs.Bool("overwrite", false, "Replace an existing IPA at --ipa-path")
 	wait := fs.Bool("wait", false, "Wait for App Store Connect build discovery and processing when export uploads directly")
 	pollInterval := fs.Duration("poll-interval", shared.PublishDefaultPollInterval, "Polling interval for --wait when waiting for uploaded builds")
 	timeout := fs.Duration("timeout", 0, "Maximum duration for xcodebuild -exportArchive (0 disables local export timeout)")
 	var xcodebuildFlags shared.MultiStringFlag
-	fs.Var(&xcodebuildFlags, "xcodebuild-flag", "Pass a raw argument through to xcodebuild (repeatable)")
+	fs.Var(&xcodebuildFlags, "xcodebuild-flag", "Pass an additional raw argument through to xcodebuild; asc-managed arguments are rejected (repeatable)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -191,8 +199,11 @@ func XcodeExportCommand() *ffcli.Command {
 		LongHelp: `Export an archive to a deterministic IPA path or direct upload.
 
 This command runs xcodebuild -exportArchive into a temporary directory.
-When --export-options is omitted, asc generates archive-adjacent options with
-automatic signing. It uses destination=upload with --wait, otherwise export.
+When --export-options is omitted, asc generates archive-adjacent options. It
+uses app-store-connect and automatic signing by default. Use
+--method release-testing for a local IPA installable on registered devices. Use
+--signing-style manual to match locally installed certificates and profiles;
+--team-id optionally overrides archive metadata.
 When ExportOptions.plist produces a local IPA, asc moves it to --ipa-path.
 When ExportOptions.plist uses destination=upload, xcodebuild uploads directly
 to App Store Connect and asc returns archive metadata without writing a local
@@ -201,6 +212,8 @@ finishes processing.
 
 Examples:
   asc xcode export --archive-path .asc/artifacts/App.xcarchive --ipa-path .asc/artifacts/App.ipa
+  asc xcode export --archive-path .asc/artifacts/App.xcarchive --ipa-path .asc/artifacts/App.ipa --method release-testing --signing-style manual
+  asc xcode export --archive-path .asc/artifacts/App.xcarchive --ipa-path .asc/artifacts/App.ipa --signing-style manual --team-id TEAM_ID
   asc xcode export --archive-path .asc/artifacts/App.xcarchive --ipa-path .asc/artifacts/App.ipa --timeout 10m
   asc xcode export --archive-path .asc/artifacts/App.xcarchive --export-options UploadExportOptions.plist --ipa-path .asc/artifacts/App.ipa --wait
   asc xcode export --archive-path .asc/artifacts/App.xcarchive --export-options ExportOptions.plist --ipa-path .asc/artifacts/App.ipa --xcodebuild-flag=-allowProvisioningUpdates --output json`,
@@ -213,11 +226,11 @@ Examples:
 			}
 			if strings.TrimSpace(*archivePath) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --archive-path is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--archive-path")
 			}
 			if strings.TrimSpace(*ipaPath) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --ipa-path is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--ipa-path")
 			}
 			if *wait && *pollInterval <= 0 {
 				return shared.UsageError("--poll-interval must be greater than 0")
@@ -225,8 +238,52 @@ Examples:
 			if *timeout < 0 {
 				return shared.UsageError("--timeout must be zero or greater")
 			}
+			if err := localxcode.ValidateExportXcodebuildArgs([]string(xcodebuildFlags)); err != nil {
+				return shared.UsageError(err.Error())
+			}
+			generationFlagsSet := false
+			methodSet := false
+			signingStyleSet := false
+			teamIDSet := false
+			fs.Visit(func(f *flag.Flag) {
+				switch f.Name {
+				case "method":
+					generationFlagsSet = true
+					methodSet = true
+				case "signing-style":
+					generationFlagsSet = true
+					signingStyleSet = true
+				case "team-id":
+					generationFlagsSet = true
+					teamIDSet = true
+				}
+			})
+			if methodSet && strings.TrimSpace(*method) == "" {
+				return shared.UsageError("--method must be one of: app-store-connect, release-testing")
+			}
+			methodValue, err := localxcode.NormalizeExportOptionsMethod(*method)
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+			if signingStyleSet && strings.TrimSpace(*signingStyle) == "" {
+				return shared.UsageError("--signing-style must be one of: automatic, manual")
+			}
+			signingStyleValue, err := localxcode.NormalizeExportOptionsSigningStyle(*signingStyle)
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+			teamIDValue := strings.TrimSpace(*teamID)
+			if teamIDSet && teamIDValue == "" {
+				return shared.UsageError("--team-id must not be empty")
+			}
 			trimmedArchivePath := strings.TrimSpace(*archivePath)
 			exportOptionsPath := strings.TrimSpace(*exportOptions)
+			if exportOptionsPath != "" && generationFlagsSet {
+				return shared.UsageError("--export-options cannot be combined with --method, --signing-style, or --team-id")
+			}
+			if *wait && methodValue == "release-testing" {
+				return shared.UsageError("--wait cannot be combined with --method release-testing")
+			}
 			if exportOptionsPath == "" {
 				destination := "export"
 				if *wait {
@@ -254,8 +311,10 @@ Examples:
 				generated, err := runGenerateExportOptions(ctx, localxcode.ExportOptionsGenerateOptions{
 					ArchivePath:  trimmedArchivePath,
 					OutputPath:   generatedPath,
+					Method:       methodValue,
 					Destination:  destination,
-					SigningStyle: "automatic",
+					SigningStyle: signingStyleValue,
+					TeamID:       teamIDValue,
 					Overwrite:    false,
 				})
 				if err != nil {
@@ -406,7 +465,7 @@ Examples:
 			}
 			if trimmedIPAPath == "" {
 				fmt.Fprintln(os.Stderr, "Error: --ipa is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--ipa")
 			}
 			if !strings.EqualFold(filepath.Ext(trimmedIPAPath), ".ipa") {
 				return shared.UsageError("--ipa must end with .ipa")
@@ -440,6 +499,25 @@ Examples:
 			)
 		},
 	}
+}
+
+// firstExplicitlyEmptyFlag reports the first of names that the caller supplied
+// with a blank value, in the order given. Commands use it to reject values they
+// would otherwise silently ignore, because a supplied-but-empty flag (typically
+// an unset CI variable) is never the same request as an omitted flag.
+func firstExplicitlyEmptyFlag(fs *flag.FlagSet, names ...string) string {
+	empty := make(map[string]struct{}, len(names))
+	fs.Visit(func(f *flag.Flag) {
+		if strings.TrimSpace(f.Value.String()) == "" {
+			empty[f.Name] = struct{}{}
+		}
+	})
+	for _, name := range names {
+		if _, ok := empty[name]; ok {
+			return name
+		}
+	}
+	return ""
 }
 
 func archiveResultRows(result *localxcode.ArchiveResult) [][]string {

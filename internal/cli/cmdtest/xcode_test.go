@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	rootcmd "github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
 )
 
 func TestXcodeCommandExists(t *testing.T) {
@@ -22,6 +24,19 @@ func TestXcodeCommandExists(t *testing.T) {
 	}
 	if strings.HasPrefix(xcodeCmd.ShortHelp, "[experimental]") {
 		t.Fatalf("expected xcode command not to be experimental, got %q", xcodeCmd.ShortHelp)
+	}
+	buildCmd := findSubcommand(root, "xcode", "build")
+	if buildCmd == nil {
+		t.Fatal("expected xcode build command")
+		return
+	}
+	if !strings.HasPrefix(buildCmd.ShortHelp, "[experimental]") {
+		t.Fatalf("expected xcode build to be introduced as experimental, got %q", buildCmd.ShortHelp)
+	}
+	for _, name := range []string{"project", "workspace", "scheme", "configuration", "destination", "derived-data-path", "result-bundle-path", "clean", "no-code-signing", "xcodebuild-flag", "output"} {
+		if buildCmd.FlagSet.Lookup(name) == nil {
+			t.Fatalf("expected xcode build to expose --%s", name)
+		}
 	}
 	if findSubcommand(root, "xcode", "archive") == nil {
 		t.Fatal("expected xcode archive command")
@@ -46,6 +61,9 @@ func TestXcodeCommandExists(t *testing.T) {
 	if viewCmd.FlagSet.Lookup("project") == nil {
 		t.Fatal("expected xcode version view to expose --project")
 	}
+	if viewCmd.FlagSet.Lookup("xcodebuild-settings-lookup") == nil {
+		t.Fatal("expected xcode version view to expose --xcodebuild-settings-lookup")
+	}
 	editCmd := findSubcommand(root, "xcode", "version", "edit")
 	if editCmd == nil {
 		t.Fatal("expected xcode version edit command")
@@ -62,6 +80,14 @@ func TestXcodeCommandExists(t *testing.T) {
 	}
 	if editCmd.FlagSet.Lookup("next-build-number") == nil {
 		t.Fatal("expected xcode version edit to expose --next-build-number")
+	}
+	if editCmd.FlagSet.Lookup("xcodebuild-settings-lookup") == nil {
+		t.Fatal("expected xcode version edit to expose --xcodebuild-settings-lookup")
+	}
+	if flag := editCmd.FlagSet.Lookup("allow-external-xcconfig"); flag == nil {
+		t.Fatal("expected xcode version edit to expose --allow-external-xcconfig")
+	} else if !strings.HasPrefix(flag.Usage, "[experimental]") {
+		t.Fatalf("expected --allow-external-xcconfig to be introduced as experimental, usage = %q", flag.Usage)
 	}
 	bumpCmd := findSubcommand(root, "xcode", "version", "bump")
 	if bumpCmd == nil {
@@ -80,12 +106,28 @@ func TestXcodeCommandExists(t *testing.T) {
 	if bumpCmd.FlagSet.Lookup("next-build-number") == nil {
 		t.Fatal("expected xcode version bump to expose --next-build-number")
 	}
+	if bumpCmd.FlagSet.Lookup("xcodebuild-settings-lookup") == nil {
+		t.Fatal("expected xcode version bump to expose --xcodebuild-settings-lookup")
+	}
+	if flag := bumpCmd.FlagSet.Lookup("allow-external-xcconfig"); flag == nil {
+		t.Fatal("expected xcode version bump to expose --allow-external-xcconfig")
+	} else if !strings.HasPrefix(flag.Usage, "[experimental]") {
+		t.Fatalf("expected --allow-external-xcconfig to be introduced as experimental, usage = %q", flag.Usage)
+	}
 	if findSubcommand(root, "xcode", "version", "get") != nil {
 		t.Fatal("expected xcode version get command to be absent")
 	}
 	if findSubcommand(root, "xcode", "version", "set") != nil {
 		t.Fatal("expected xcode version set command to be absent")
 	}
+}
+
+func TestXcodeBuildRejectsBlankPassthroughValue(t *testing.T) {
+	assertUsageExit(
+		t,
+		[]string{"xcode", "build", "--project", "Demo.xcodeproj", "--scheme", "Demo", "--xcodebuild-flag="},
+		`invalid value "" for flag -xcodebuild-flag: value cannot be empty`,
+	)
 }
 
 func TestXcodeVersionHelpShowsCanonicalSubcommands(t *testing.T) {
@@ -114,6 +156,31 @@ func TestXcodeVersionHelpShowsCanonicalSubcommands(t *testing.T) {
 		if strings.Contains(stderr, hidden) {
 			t.Fatalf("expected help to hide %q, got %q", hidden, stderr)
 		}
+	}
+}
+
+func TestXcodeVersionSettingsLookupInvalidValueReturnsUsageExitCode(t *testing.T) {
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	var runErr error
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"xcode", "version", "view", "--xcodebuild-settings-lookup", "sometimes",
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "--xcodebuild-settings-lookup must be one of: auto, never") {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+	if got := rootcmd.ExitCodeFromError(runErr); got != rootcmd.ExitUsage {
+		t.Fatalf("exit code = %d, want %d", got, rootcmd.ExitUsage)
 	}
 }
 
@@ -324,6 +391,22 @@ func TestXcodeExportRequiresArchivePath(t *testing.T) {
 }
 
 func TestXcodeExportWithoutExportOptionsPreflightsBeforeGeneration(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		binDir := t.TempDir()
+		xcodebuildPath := filepath.Join(binDir, "xcodebuild")
+		script := "#!/bin/sh\n" +
+			"if [ \"$1\" = \"-version\" ]; then\n" +
+			"  printf 'Xcode 16.0\\nBuild version 16A1\\n'\n" +
+			"  exit 0\n" +
+			"fi\n" +
+			"printf 'unexpected xcodebuild invocation: %s\\n' \"$*\" >&2\n" +
+			"exit 1\n"
+		if err := os.WriteFile(xcodebuildPath, []byte(script), 0o755); err != nil {
+			t.Fatalf("write fake xcodebuild: %v", err)
+		}
+		t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 

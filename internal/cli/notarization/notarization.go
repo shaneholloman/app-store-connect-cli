@@ -2,8 +2,12 @@ package notarization
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +17,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/secureopen"
 )
 
 // NotarizationCommand returns the notarization command group.
@@ -78,7 +83,7 @@ Examples:
 			pathValue := strings.TrimSpace(*filePath)
 			if pathValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --file is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--file")
 			}
 
 			interval, err := time.ParseDuration(strings.TrimSpace(*pollInterval))
@@ -91,16 +96,37 @@ Examples:
 				return fmt.Errorf("notarization submit: --timeout must be a valid positive duration (e.g. 30m, 1h)")
 			}
 
-			// Validate file
-			info, err := os.Lstat(pathValue)
+			// Preserve the explicit symlink error while relying on the no-follow
+			// open below for the actual security boundary.
+			pathInfo, err := os.Lstat(pathValue)
 			if err != nil {
 				return fmt.Errorf("notarization submit: %w", err)
 			}
-			if info.Mode()&os.ModeSymlink != 0 {
+			if pathInfo.Mode()&os.ModeSymlink != 0 {
 				return fmt.Errorf("notarization submit: refusing to read symlink %q", pathValue)
+			}
+			if pathInfo.IsDir() {
+				return fmt.Errorf("notarization submit: %q is a directory", pathValue)
+			}
+			if !pathInfo.Mode().IsRegular() {
+				return fmt.Errorf("notarization submit: %q is not a regular file", pathValue)
+			}
+
+			fileHandle, err := secureopen.OpenExistingNoFollow(pathValue)
+			if err != nil {
+				return fmt.Errorf("notarization submit: failed to open file: %w", err)
+			}
+			defer fileHandle.Close()
+
+			info, err := fileHandle.Stat()
+			if err != nil {
+				return fmt.Errorf("notarization submit: failed to stat opened file: %w", err)
 			}
 			if info.IsDir() {
 				return fmt.Errorf("notarization submit: %q is a directory", pathValue)
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("notarization submit: %q is not a regular file", pathValue)
 			}
 			if info.Size() <= 0 {
 				return fmt.Errorf("notarization submit: file must not be empty")
@@ -115,7 +141,7 @@ Examples:
 			if shared.ProgressEnabled() {
 				fmt.Fprintf(os.Stderr, "Computing SHA-256 hash of %s...\n", pathValue)
 			}
-			sha256Hash, err := asc.ComputeFileSHA256(pathValue)
+			sha256Hash, err := asc.ComputeFileSHA256(fileHandle)
 			if err != nil {
 				return fmt.Errorf("notarization submit: failed to compute SHA-256: %w", err)
 			}
@@ -148,12 +174,6 @@ Examples:
 			if shared.ProgressEnabled() {
 				fmt.Fprintf(os.Stderr, "Uploading %s to Apple...\n", submissionName)
 			}
-
-			fileHandle, err := os.Open(pathValue)
-			if err != nil {
-				return fmt.Errorf("notarization submit: failed to open file: %w", err)
-			}
-			defer fileHandle.Close()
 
 			uploadCtx, uploadCancel := shared.ContextWithUploadTimeout(ctx)
 			defer uploadCancel()
@@ -254,7 +274,7 @@ Examples:
 			idValue := strings.TrimSpace(*submissionID)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -300,7 +320,7 @@ Examples:
 			idValue := strings.TrimSpace(*submissionID)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -367,36 +387,147 @@ Examples:
 	}
 }
 
-// waitForNotarization polls the notarization status until it completes or the context is cancelled.
+// notarizationPollMaxBackoff caps the delay applied after repeated transient
+// status-check failures.
+const notarizationPollMaxBackoff = 2 * time.Minute
+
+// waitForNotarization polls the notarization status until the submission reaches
+// a terminal state, the wait deadline expires, or a status check fails for a
+// reason that will not resolve on its own. Transient failures (transport errors,
+// request timeouts, and retryable HTTP statuses) are reported on stderr and
+// retried with backoff, because the archive is already uploaded and the
+// submission keeps progressing server-side.
 func waitForNotarization(ctx context.Context, client *asc.Client, submissionID string, pollInterval time.Duration) (*asc.NotarySubmissionStatusResponse, error) {
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
+	consecutiveFailures := 0
+	var lastTransientErr error
 
 	for {
 		requestCtx, cancel := shared.ContextWithTimeout(ctx)
 		resp, err := client.GetNotarizationStatus(requestCtx, submissionID)
 		cancel()
 
-		if err != nil {
+		delay := pollInterval
+		switch {
+		case err == nil:
+			consecutiveFailures = 0
+			lastTransientErr = nil
+
+			switch resp.Data.Attributes.Status {
+			case asc.NotaryStatusAccepted, asc.NotaryStatusInvalid, asc.NotaryStatusRejected:
+				return resp, nil
+			default:
+				// Treat unknown statuses (including InProgress) as non-terminal and continue polling
+				if shared.ProgressEnabled() {
+					fmt.Fprintf(os.Stderr, "Status: %s (checking again in %s)\n", resp.Data.Attributes.Status, pollInterval)
+				}
+			}
+		case ctx.Err() != nil:
+			// The wait deadline expired (or the caller cancelled) while the
+			// status request was still in flight.
+			return nil, notarizationWaitEndedError(ctx, lastTransientErr)
+		case isTransientNotarizationPollError(err):
+			consecutiveFailures++
+			lastTransientErr = err
+			delay = notarizationPollBackoff(pollInterval, consecutiveFailures)
+			fmt.Fprintf(os.Stderr, "Warning: notarization status check failed (%v); retrying in %s\n", err, delay)
+		default:
 			return nil, fmt.Errorf("failed to check status: %w", err)
 		}
 
-		switch resp.Data.Attributes.Status {
-		case asc.NotaryStatusAccepted, asc.NotaryStatusInvalid, asc.NotaryStatusRejected:
-			return resp, nil
-		default:
-			// Treat unknown statuses (including InProgress) as non-terminal and continue polling
-			if shared.ProgressEnabled() {
-				fmt.Fprintf(os.Stderr, "Status: %s (checking again in %s)\n", resp.Data.Attributes.Status, pollInterval)
-			}
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("timed out waiting for notarization: %w", ctx.Err())
-		case <-ticker.C:
+		if !waitBeforeNextNotarizationPoll(ctx, delay) {
+			return nil, notarizationWaitEndedError(ctx, lastTransientErr)
 		}
 	}
+}
+
+// waitBeforeNextNotarizationPoll sleeps for delay and reports whether the wait
+// context is still live.
+func waitBeforeNextNotarizationPoll(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// notarizationWaitEndedError explains why the wait stopped once the wait context
+// finished, preserving the most recent transient status-check failure.
+func notarizationWaitEndedError(ctx context.Context, lastTransientErr error) error {
+	reason := "timed out waiting for notarization"
+	if errors.Is(ctx.Err(), context.Canceled) {
+		reason = "canceled while waiting for notarization"
+	}
+	if lastTransientErr != nil {
+		return fmt.Errorf("%s (last status check failed: %w): %w", reason, lastTransientErr, ctx.Err())
+	}
+	return fmt.Errorf("%s: %w", reason, ctx.Err())
+}
+
+// isTransientNotarizationPollError reports whether a status-check failure is
+// worth retrying. The Notary API path has no client-side retry wrapper, so the
+// wait loop classifies transport failures, per-request timeouts, and retryable
+// HTTP statuses itself.
+func isTransientNotarizationPollError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if asc.IsRetryable(err) {
+		return true
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		// Only the per-request timeout reaches here; callers check the wait
+		// context before classifying.
+		return true
+	}
+
+	var statusErr interface{ HTTPStatusCode() int }
+	if errors.As(err, &statusErr) {
+		switch statusErr.HTTPStatusCode() {
+		case http.StatusRequestTimeout,
+			http.StatusTooManyRequests,
+			http.StatusInternalServerError,
+			http.StatusBadGateway,
+			http.StatusServiceUnavailable,
+			http.StatusGatewayTimeout:
+			return true
+		default:
+			return false
+		}
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed)
+}
+
+// notarizationPollBackoff spaces out retries after consecutive transient
+// failures without ever polling faster than the caller's interval.
+func notarizationPollBackoff(pollInterval time.Duration, consecutiveFailures int) time.Duration {
+	maxBackoff := notarizationPollMaxBackoff
+	if pollInterval > maxBackoff {
+		maxBackoff = pollInterval
+	}
+
+	delay := pollInterval
+	for i := 1; i < consecutiveFailures; i++ {
+		if delay >= maxBackoff {
+			return maxBackoff
+		}
+		delay *= 2
+	}
+	if delay > maxBackoff {
+		return maxBackoff
+	}
+	return delay
 }
 
 func notaryContentType(path string) string {

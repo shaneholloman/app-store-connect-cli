@@ -68,7 +68,7 @@ Examples:
 			versionIDValue := strings.TrimSpace(*versionID)
 			if versionIDValue == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > backgroundAssetsMaxLimit) {
 				return fmt.Errorf("background-assets upload-files list: --limit must be between 1 and %d", backgroundAssetsMaxLimit)
@@ -138,7 +138,7 @@ Examples:
 			uploadFileIDValue := strings.TrimSpace(*uploadFileID)
 			if uploadFileIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --upload-file-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--upload-file-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -184,18 +184,18 @@ Examples:
 			versionIDValue := strings.TrimSpace(*versionID)
 			if versionIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 
 			pathValue := strings.TrimSpace(*filePath)
 			if pathValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --file is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--file")
 			}
 
 			if strings.TrimSpace(*assetType) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --asset-type is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--asset-type")
 			}
 
 			typeValue, err := normalizeBackgroundAssetUploadFileAssetType(*assetType)
@@ -280,7 +280,7 @@ func BackgroundAssetsUploadFilesUpdateCommand() *ffcli.Command {
 
 	uploadFileID := fs.String("upload-file-id", "", "Background asset upload file ID")
 	uploaded := fs.String("uploaded", "", "Mark upload as complete (true/false)")
-	filePath := fs.String("file", "", "Path to file for checksum verification")
+	filePath := fs.String("file", "", "Path to file for checksum verification (requires --checksum)")
 	checksum := fs.Bool("checksum", false, "Verify source file checksums before committing")
 	output := shared.BindOutputFlags(fs)
 
@@ -299,13 +299,13 @@ Examples:
 			uploadFileIDValue := strings.TrimSpace(*uploadFileID)
 			if uploadFileIDValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --upload-file-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--upload-file-id")
 			}
 
 			uploadedValue := strings.TrimSpace(*uploaded)
 			if uploadedValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --uploaded is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--uploaded")
 			}
 			uploadedBool, err := shared.ParseBoolFlag(uploadedValue, "--uploaded")
 			if err != nil {
@@ -313,6 +313,9 @@ Examples:
 			}
 
 			pathValue := strings.TrimSpace(*filePath)
+			if pathValue != "" && !*checksum {
+				return shared.UsageError("--file requires --checksum")
+			}
 			if *checksum && pathValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --checksum requires --file")
 				return flag.ErrHelp
@@ -349,19 +352,16 @@ Examples:
 					return fmt.Errorf("background-assets upload-files update: failed to fetch: %w", err)
 				}
 
+				// --file requires --checksum, so verification always runs here.
 				sourceChecksums := resp.Data.Attributes.SourceFileChecksums
-				if *checksum {
-					if sourceChecksums == nil || (sourceChecksums.File == nil && sourceChecksums.Composite == nil) {
-						fmt.Fprintln(os.Stderr, "Warning: --checksum requested but API provided no checksums to verify; skipping")
-					} else {
-						computed, err := asc.VerifySourceFileChecksums(pathValue, sourceChecksums)
-						if err != nil {
-							return fmt.Errorf("background-assets upload-files update: checksum verification failed: %w", err)
-						}
-						checksums = computed
+				if sourceChecksums == nil || (sourceChecksums.File == nil && sourceChecksums.Composite == nil) {
+					fmt.Fprintln(os.Stderr, "Warning: --checksum requested but API provided no checksums to verify; skipping")
+				} else {
+					computed, err := asc.VerifySourceFileChecksums(pathValue, sourceChecksums)
+					if err != nil {
+						return fmt.Errorf("background-assets upload-files update: checksum verification failed: %w", err)
 					}
-				} else if sourceChecksums != nil {
-					checksums = sourceChecksums
+					checksums = computed
 				}
 			}
 

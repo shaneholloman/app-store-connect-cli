@@ -16,6 +16,23 @@ import (
 
 var iapQueryClientFactory = shared.GetASCClient
 
+var iapListStates = []string{
+	"MISSING_METADATA",
+	"WAITING_FOR_UPLOAD",
+	"PROCESSING_CONTENT",
+	"READY_TO_SUBMIT",
+	"WAITING_FOR_REVIEW",
+	"IN_REVIEW",
+	"DEVELOPER_ACTION_NEEDED",
+	"PENDING_BINARY_APPROVAL",
+	"APPROVED",
+	"DEVELOPER_REMOVED_FROM_SALE",
+	"REMOVED_FROM_SALE",
+	"REJECTED",
+}
+
+var iapListSortValues = []string{"name", "-name", "inAppPurchaseType", "-inAppPurchaseType"}
+
 // IAPCommand returns the in-app purchases command group.
 func IAPCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("iap", flag.ExitOnError)
@@ -70,6 +87,11 @@ func IAPListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
+	productID := fs.String("product-id", "", "[experimental] Filter by product ID(s), comma-separated")
+	name := fs.String("name", "", "[experimental] Filter by name(s), comma-separated")
+	state := fs.String("state", "", "[experimental] Filter by state(s), comma-separated: "+strings.Join(iapListStates, ", "))
+	iapType := fs.String("type", "", "[experimental] Filter by type(s), comma-separated: "+strings.Join(asc.ValidIAPTypes, ", "))
+	sort := fs.String("sort", "", "[experimental] Sort by (comma-separated): "+strings.Join(iapListSortValues, ", "))
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
@@ -88,6 +110,8 @@ func IAPListCommand() *ffcli.Command {
 
 Examples:
   asc iap list --app "APP_ID"
+  asc iap list --app "APP_ID" --product-id "com.example.pro"
+  asc iap list --app "APP_ID" --state READY_TO_SUBMIT --type CONSUMABLE --sort name
   asc iap list --app "APP_ID" --limit 50
   asc iap list --app "APP_ID" --paginate
   asc iap list --app "APP_ID" --include-versions --versions-limit 10
@@ -102,7 +126,7 @@ Examples:
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("iap list: %w", err)
 			}
-			if err := rejectIAPVersionNextFlagConflicts(fs, *next, "iap list", "app", "limit", "include-versions", "versions-limit", "fields", "version-fields"); err != nil {
+			if err := rejectIAPVersionNextFlagConflicts(fs, *next, "iap list", "app", "product-id", "name", "state", "type", "sort", "limit", "include-versions", "versions-limit", "fields", "version-fields"); err != nil {
 				return err
 			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
@@ -117,6 +141,46 @@ Examples:
 			if *legacy && (*includeVersions || *versionsLimit != 0 || strings.TrimSpace(*versionFields) != "") {
 				return shared.UsageError("iap list: --include-versions, --versions-limit, and --version-fields require the v2 endpoint")
 			}
+			for _, name := range []string{"product-id", "name", "state", "type", "sort"} {
+				if *legacy && flagSet(fs, name) {
+					return shared.UsageErrorf("iap list: --%s requires the v2 endpoint", name)
+				}
+			}
+			for _, selector := range []struct {
+				name  string
+				value string
+			}{
+				{"product-id", *productID},
+				{"name", *name},
+				{"state", *state},
+				{"type", *iapType},
+				{"sort", *sort},
+			} {
+				if flagSet(fs, selector.name) && strings.TrimSpace(selector.value) == "" {
+					return shared.UsageErrorf("iap list: --%s must not be empty", selector.name)
+				}
+			}
+
+			productIDValues, err := normalizeIAPListCSV(*productID, "--product-id")
+			if err != nil {
+				return shared.UsageError("iap list: " + err.Error())
+			}
+			nameValues, err := normalizeIAPListCSV(*name, "--name")
+			if err != nil {
+				return shared.UsageError("iap list: " + err.Error())
+			}
+			stateValues, err := normalizeIAPListEnum(*state, "--state", iapListStates)
+			if err != nil {
+				return shared.UsageError("iap list: " + err.Error())
+			}
+			typeValues, err := normalizeIAPListEnum(*iapType, "--type", asc.ValidIAPTypes)
+			if err != nil {
+				return shared.UsageError("iap list: " + err.Error())
+			}
+			sortValues, err := normalizeIAPListSort(*sort)
+			if err != nil {
+				return shared.UsageError("iap list: " + err.Error())
+			}
 			fieldValues, err := shared.NormalizeSelection(*fields, iapVersionIAPFields, "--fields")
 			if err != nil {
 				return shared.UsageError("iap list: " + err.Error())
@@ -129,7 +193,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 			client, err := iapQueryClientFactory()
 			if err != nil {
@@ -142,6 +206,11 @@ Examples:
 			opts := []asc.IAPOption{
 				asc.WithIAPLimit(*limit),
 				asc.WithIAPNextURL(*next),
+				asc.WithIAPProductIDs(productIDValues),
+				asc.WithIAPNames(nameValues),
+				asc.WithIAPStates(stateValues),
+				asc.WithIAPTypes(typeValues),
+				asc.WithIAPSort(sortValues),
 				asc.WithIAPFields(fieldValues),
 				asc.WithIAPNestedVersionsLimit(*versionsLimit),
 				asc.WithIAPVersionFields(versionFieldValues),
@@ -234,7 +303,7 @@ Examples:
 			id := strings.TrimSpace(*iapID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if *versionsLimit != 0 && (*versionsLimit < 1 || *versionsLimit > 50) {
 				return shared.UsageError("iap view: --versions-limit must be between 1 and 50")
@@ -315,7 +384,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			normalizedType, err := normalizeIAPType(*iapType)
@@ -327,13 +396,13 @@ Examples:
 			name := strings.TrimSpace(*refName)
 			if name == "" {
 				fmt.Fprintln(os.Stderr, "Error: --ref-name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--ref-name")
 			}
 
 			product := strings.TrimSpace(*productID)
 			if product == "" {
 				fmt.Fprintln(os.Stderr, "Error: --product-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--product-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -387,13 +456,13 @@ Examples:
 			id := strings.TrimSpace(*iapID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			name := strings.TrimSpace(*refName)
 			if name == "" && !*familySharable {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -445,11 +514,11 @@ Examples:
 			id := strings.TrimSpace(*iapID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -536,7 +605,7 @@ Examples:
 			}
 			if resolvedID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --iap-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--iap-id")
 			}
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
 				return fmt.Errorf("iap localizations list: --limit must be between 1 and 200")
@@ -606,4 +675,60 @@ func normalizeIAPType(value string) (string, error) {
 		return normalized, nil
 	}
 	return "", fmt.Errorf("--type must be one of: %s", strings.Join(asc.ValidIAPTypes, ", "))
+}
+
+func normalizeIAPListCSV(value, flagName string) ([]string, error) {
+	if strings.TrimSpace(value) == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, fmt.Errorf("%s must not contain empty values", flagName)
+		}
+		if _, ok := seen[part]; ok {
+			continue
+		}
+		seen[part] = struct{}{}
+		values = append(values, part)
+	}
+	return values, nil
+}
+
+func normalizeIAPListEnum(value, flagName string, allowed []string) ([]string, error) {
+	values, err := normalizeIAPListCSV(value, flagName)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(values))
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.ToUpper(value)
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		if !slices.Contains(allowed, value) {
+			return nil, fmt.Errorf("%s must be one of: %s", flagName, strings.Join(allowed, ", "))
+		}
+		normalized = append(normalized, value)
+	}
+	return normalized, nil
+}
+
+func normalizeIAPListSort(value string) ([]string, error) {
+	values, err := normalizeIAPListCSV(value, "--sort")
+	if err != nil {
+		return nil, err
+	}
+	for _, value := range values {
+		if !slices.Contains(iapListSortValues, value) {
+			return nil, fmt.Errorf("--sort must be one of: %s", strings.Join(iapListSortValues, ", "))
+		}
+	}
+	return values, nil
 }

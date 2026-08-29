@@ -4,17 +4,153 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared/errfmt"
 	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
+
+func TestFormatAppNameWithSuffixCountsCharacters(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseName string
+		suffix   string
+		want     string
+	}{
+		{
+			name:     "unicode at truncation boundary",
+			baseName: "12345678901234567890123🚀Launch",
+			suffix:   "app",
+			want:     "12345678901234567890123🚀 - app",
+		},
+		{
+			name:     "ascii behavior",
+			baseName: "123456789012345678901234567890123",
+			suffix:   "app",
+			want:     "123456789012345678901234 - app",
+		},
+		{
+			name:     "unicode suffix-only fallback",
+			baseName: "A",
+			suffix:   strings.Repeat("🚀", maxAppNameLen+1),
+			want:     strings.Repeat("🚀", maxAppNameLen),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatAppNameWithSuffix(tt.baseName, tt.suffix)
+			if !utf8.ValidString(got) {
+				t.Errorf("formatAppNameWithSuffix() returned invalid UTF-8: %q", got)
+			}
+			if gotRunes, wantRunes := utf8.RuneCountInString(got), utf8.RuneCountInString(tt.want); gotRunes != wantRunes {
+				t.Errorf("formatAppNameWithSuffix() rune count = %d, want %d", gotRunes, wantRunes)
+			}
+			if gotRunes := utf8.RuneCountInString(got); gotRunes > maxAppNameLen {
+				t.Errorf("formatAppNameWithSuffix() rune count = %d, limit %d", gotRunes, maxAppNameLen)
+			}
+			if got != tt.want {
+				t.Errorf("formatAppNameWithSuffix() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunAppsCreateAutoRenamePreservesUnicode(t *testing.T) {
+	origResolveAppCreateSession := resolveAppCreateSessionFn
+	t.Cleanup(func() {
+		resolveAppCreateSessionFn = origResolveAppCreateSession
+	})
+
+	const originalName = "12345678901234567890123🚀Launch"
+	const retryName = "12345678901234567890123🚀 - app"
+	var requestBodies []string
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		requestBodies = append(requestBodies, string(body))
+
+		status := http.StatusOK
+		responseBody := `{"data":{"id":"app-123","type":"apps","attributes":{}}}`
+		if len(requestBodies) == 1 {
+			status = http.StatusUnprocessableEntity
+			responseBody = `{"errors":[{"code":"ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE.DIFFERENT_ACCOUNT","detail":"The app name you entered is already being used."}]}`
+		}
+		return &http.Response{
+			StatusCode: status,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(responseBody)),
+			Request:    req,
+		}, nil
+	})
+
+	resolveAppCreateSessionFn = func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
+		return &webcore.AuthSession{Client: &http.Client{Transport: transport}}, "cache", nil
+	}
+
+	t.Setenv("ASC_WEB_MIN_REQUEST_INTERVAL", "0")
+	err := RunAppsCreate(context.Background(), AppsCreateRunOptions{
+		Name:                     originalName,
+		BundleID:                 "com.example.app",
+		SKU:                      "SKU123",
+		AppleID:                  "user@example.com",
+		Output:                   "json",
+		AutoRename:               true,
+		DisableBundleIDPreflight: true,
+	})
+	if err != nil {
+		t.Fatalf("RunAppsCreate returned error: %v", err)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 create requests, got %d", len(requestBodies))
+	}
+	if !strings.Contains(requestBodies[0], `"name":"`+originalName+`"`) {
+		t.Errorf("initial serialized request did not preserve name: %s", requestBodies[0])
+	}
+	if !strings.Contains(requestBodies[1], `"name":"`+retryName+`"`) {
+		t.Errorf("retry serialized request did not preserve name: %s", requestBodies[1])
+	}
+}
+
+func TestAppCreateCanPromptInteractivelyUsesControllingTTYWhenStdinIsNotTerminal(t *testing.T) {
+	origOpenTTY := openTTYFn
+	origIsTerminal := termIsTerminalFn
+	t.Cleanup(func() {
+		openTTYFn = origOpenTTY
+		termIsTerminalFn = origIsTerminal
+	})
+
+	tty, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("open test TTY: %v", err)
+	}
+	t.Cleanup(func() { _ = tty.Close() })
+
+	openTTYFn = func() (*os.File, error) {
+		return tty, nil
+	}
+	termIsTerminalFn = func(fd int) bool {
+		return false
+	}
+
+	if !appCreateCanPromptInteractively() {
+		t.Fatal("expected controlling TTY to allow app-create prompts when stdin is not a terminal")
+	}
+	if _, err := tty.Stat(); err == nil {
+		t.Fatal("expected controlling TTY availability probe to close its file")
+	}
+}
 
 func TestWebAppsCreatePassesPasswordCompatibilityFlagToSessionResolver(t *testing.T) {
 	origResolveAppCreateSession := resolveAppCreateSessionFn
@@ -1093,6 +1229,73 @@ func TestWebAppsCreateRollsBackCreatedBundleIDWhenCreateFails(t *testing.T) {
 	}
 }
 
+func TestWebAppsCreateMissingCompanyNameProvidesActionableHint(t *testing.T) {
+	origResolveAppCreateSession := resolveAppCreateSessionFn
+	origNewWebClient := newWebClientFn
+	origEnsureBundleID := ensureBundleIDFn
+	origDeleteBundleID := deleteBundleIDFn
+	t.Cleanup(func() {
+		resolveAppCreateSessionFn = origResolveAppCreateSession
+		newWebClientFn = origNewWebClient
+		ensureBundleIDFn = origEnsureBundleID
+		deleteBundleIDFn = origDeleteBundleID
+	})
+
+	const secret = "account-secret-token"
+	transport := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusUnprocessableEntity,
+			Header:     make(http.Header),
+			Body: io.NopCloser(strings.NewReader(`{"errors":[{
+				"title":"The provided entity is missing a required attribute",
+				"detail":"You must provide a value for the attribute 'companyName' with this request",
+				"code":"ENTITY_ERROR.ATTRIBUTE.REQUIRED",
+				"secret":"` + secret + `"
+			}]}`)),
+			Request: req,
+		}, nil
+	})
+	resolveAppCreateSessionFn = func(ctx context.Context, appleID, password, twoFactorCode string) (*webcore.AuthSession, string, error) {
+		return &webcore.AuthSession{Client: &http.Client{Transport: transport}}, "cache", nil
+	}
+	newWebClientFn = webcore.NewClient
+	ensureBundleIDFn = func(ctx context.Context, bundleID, appName, platform string) (bool, error) {
+		return true, nil
+	}
+	deletedBundleID := ""
+	deleteBundleIDFn = func(ctx context.Context, bundleID string) error {
+		deletedBundleID = bundleID
+		return nil
+	}
+	t.Setenv("ASC_WEB_MIN_REQUEST_INTERVAL", "0")
+
+	err := RunAppsCreate(context.Background(), AppsCreateRunOptions{
+		Name:     "My App",
+		BundleID: "com.example.app",
+		SKU:      "SKU123",
+		AppleID:  "user@example.com",
+		Output:   "json",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "Apple requires a company name for this account") {
+		t.Fatalf("error = %q, want actionable company-name guidance", err)
+	}
+	if !strings.Contains(err.Error(), "--company-name") {
+		t.Fatalf("error = %q, want --company-name hint", err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("error leaked raw response body secret: %q", err)
+	}
+	if got := errfmt.FormatStderr(err); !strings.Contains(got, "Error: web apps create failed:") {
+		t.Fatalf("formatted stderr = %q, want command error prefix", got)
+	}
+	if deletedBundleID != "com.example.app" {
+		t.Fatalf("expected rollback for bundle id %q, got %q", "com.example.app", deletedBundleID)
+	}
+}
+
 func TestWebAppsCreateSurfacesBundleIDRollbackFailure(t *testing.T) {
 	origResolveAppCreateSession := resolveAppCreateSessionFn
 	origNewWebClient := newWebClientFn
@@ -1149,13 +1352,23 @@ func TestWebAppsCreateSurfacesBundleIDRollbackFailure(t *testing.T) {
 }
 
 func TestBundleIDPlatformForWebApp(t *testing.T) {
-	t.Run("maps UNIVERSAL to IOS for bundle id create", func(t *testing.T) {
+	t.Run("keeps universal bundle id platform", func(t *testing.T) {
 		got, err := bundleIDPlatformForWebApp("UNIVERSAL")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got != asc.PlatformIOS {
-			t.Fatalf("expected %q, got %q", asc.PlatformIOS, got)
+		if got != asc.BundleIDPlatformUniversal {
+			t.Fatalf("expected %q, got %q", asc.BundleIDPlatformUniversal, got)
+		}
+	})
+
+	t.Run("maps tvOS app to iOS bundle id platform", func(t *testing.T) {
+		got, err := bundleIDPlatformForWebApp("TV_OS")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != asc.BundleIDPlatformIOS {
+			t.Fatalf("expected %q, got %q", asc.BundleIDPlatformIOS, got)
 		}
 	})
 
@@ -1164,8 +1377,8 @@ func TestBundleIDPlatformForWebApp(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got != asc.PlatformMacOS {
-			t.Fatalf("expected %q, got %q", asc.PlatformMacOS, got)
+		if got != asc.BundleIDPlatformMacOS {
+			t.Fatalf("expected %q, got %q", asc.BundleIDPlatformMacOS, got)
 		}
 	})
 

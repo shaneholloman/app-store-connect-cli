@@ -108,13 +108,13 @@ Examples:
 			locID := strings.TrimSpace(*localizationID)
 			if locID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --localization-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--localization-id")
 			}
 
 			file := strings.TrimSpace(*filePath)
 			if file == "" {
 				fmt.Fprintln(os.Stderr, "Error: --file is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--file")
 			}
 
 			client, err := shared.GetASCClient()
@@ -157,11 +157,11 @@ Examples:
 			id := strings.TrimSpace(*imageID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -220,7 +220,7 @@ Examples:
 			nextURL := strings.TrimSpace(*next)
 			if resolvedAppID == "" && nextURL == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := shared.GetASCClient()
@@ -305,7 +305,7 @@ Examples:
 			id := strings.TrimSpace(*leaderboardID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -338,7 +338,7 @@ func GameCenterLeaderboardsCreateCommand() *ffcli.Command {
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
 	referenceName := fs.String("reference-name", "", "Reference name for the leaderboard")
 	vendorID := fs.String("vendor-id", "", "Vendor identifier (e.g., com.example.leaderboard)")
-	formatter := fs.String("formatter", "", "Score formatter: INTEGER, DECIMAL_POINT_1_PLACE, DECIMAL_POINT_2_PLACE, DECIMAL_POINT_3_PLACE, ELAPSED_TIME_MILLISECOND, ELAPSED_TIME_SECOND, ELAPSED_TIME_MINUTE, MONEY_WHOLE, MONEY_POINT_2_PLACE")
+	formatter := fs.String("formatter", "", "Score formatter: "+strings.Join(asc.ValidLeaderboardFormatters, ", "))
 	sortType := fs.String("sort", "", "Score sort type: ASC, DESC")
 	submissionType := fs.String("submission-type", "", "Submission type: BEST_SCORE, MOST_RECENT_SCORE")
 	scoreRangeStart := fs.String("score-range-start", "", "Score range start (optional)")
@@ -353,9 +353,11 @@ func GameCenterLeaderboardsCreateCommand() *ffcli.Command {
 		ShortHelp:  "Create a new Game Center leaderboard.",
 		LongHelp: `Create a new Game Center leaderboard.
 
+V2 creates the required initial leaderboard version inline.
+
 Examples:
   asc game-center leaderboards create --app "APP_ID" --reference-name "High Score" --vendor-id "com.example.highscore" --formatter INTEGER --sort DESC --submission-type BEST_SCORE
-  asc game-center leaderboards create --app "APP_ID" --reference-name "Time Trial" --vendor-id "com.example.timetrial" --formatter ELAPSED_TIME_MILLISECOND --sort ASC --submission-type BEST_SCORE
+  asc game-center leaderboards create --app "APP_ID" --reference-name "Time Trial" --vendor-id "com.example.timetrial" --formatter ELAPSED_TIME_CENTISECOND --sort ASC --submission-type BEST_SCORE
   asc game-center leaderboards create --group-id "GROUP_ID" --reference-name "Group Score" --vendor-id "grp.com.example.groupscore" --formatter INTEGER --sort DESC --submission-type BEST_SCORE --v2`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -369,19 +371,19 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if group == "" && resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			name := strings.TrimSpace(*referenceName)
 			if name == "" {
 				fmt.Fprintln(os.Stderr, "Error: --reference-name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--reference-name")
 			}
 
 			vendor := strings.TrimSpace(*vendorID)
 			if vendor == "" {
 				fmt.Fprintln(os.Stderr, "Error: --vendor-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--vendor-id")
 			}
 			if group != "" && !strings.HasPrefix(vendor, "grp.") {
 				fmt.Fprintln(os.Stderr, "Error: --vendor-id must start with \"grp.\" when using --group-id")
@@ -391,7 +393,7 @@ Examples:
 			formatterVal := strings.TrimSpace(strings.ToUpper(*formatter))
 			if formatterVal == "" {
 				fmt.Fprintln(os.Stderr, "Error: --formatter is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--formatter")
 			}
 			if !isValidLeaderboardFormatter(formatterVal) {
 				fmt.Fprintf(os.Stderr, "Error: --formatter must be one of: %s\n", strings.Join(asc.ValidLeaderboardFormatters, ", "))
@@ -401,7 +403,7 @@ Examples:
 			sortVal := strings.TrimSpace(strings.ToUpper(*sortType))
 			if sortVal == "" {
 				fmt.Fprintln(os.Stderr, "Error: --sort is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--sort")
 			}
 			if !isValidScoreSortType(sortVal) {
 				fmt.Fprintf(os.Stderr, "Error: --sort must be one of: %s\n", strings.Join(asc.ValidScoreSortTypes, ", "))
@@ -411,7 +413,7 @@ Examples:
 			submissionVal := strings.TrimSpace(strings.ToUpper(*submissionType))
 			if submissionVal == "" {
 				fmt.Fprintln(os.Stderr, "Error: --submission-type is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--submission-type")
 			}
 			if !isValidSubmissionType(submissionVal) {
 				fmt.Fprintf(os.Stderr, "Error: --submission-type must be one of: %s\n", strings.Join(asc.ValidSubmissionTypes, ", "))
@@ -488,7 +490,7 @@ Examples:
 			id := strings.TrimSpace(*leaderboardID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			attrs := asc.GameCenterLeaderboardUpdateAttributes{}
@@ -512,7 +514,7 @@ Examples:
 
 			if !hasUpdate {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := shared.GetASCClient()
@@ -562,11 +564,11 @@ Examples:
 			id := strings.TrimSpace(*leaderboardID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -628,22 +630,22 @@ Examples:
 			vendorValue := strings.TrimSpace(*vendorID)
 			if vendorValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --vendor-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--vendor-id")
 			}
 			scoreValue := strings.TrimSpace(*score)
 			if scoreValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --score is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--score")
 			}
 			bundleValue := strings.TrimSpace(*bundleID)
 			if bundleValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --bundle-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--bundle-id")
 			}
 			playerValue := strings.TrimSpace(*scopedPlayerID)
 			if playerValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --scoped-player-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--scoped-player-id")
 			}
 
 			var preReleasedValue *bool
@@ -733,7 +735,7 @@ Examples:
 			id := strings.TrimSpace(*leaderboardID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -814,7 +816,7 @@ Examples:
 			lbID := strings.TrimSpace(*leaderboardID)
 			if lbID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --leaderboard-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--leaderboard-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -881,13 +883,13 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			lbID := strings.TrimSpace(*leaderboardID)
 			if lbID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --leaderboard-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--leaderboard-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -936,11 +938,11 @@ Examples:
 			id := strings.TrimSpace(*releaseID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()

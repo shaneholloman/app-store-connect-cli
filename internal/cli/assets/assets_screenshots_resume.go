@@ -4,18 +4,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/rootfs"
 )
 
 type screenshotUploadFailureArtifact struct {
 	VersionLocalizationID string                       `json:"versionLocalizationId"`
 	Path                  string                       `json:"path,omitempty"`
+	RootPath              string                       `json:"rootPath,omitempty"`
 	DeviceType            string                       `json:"deviceType,omitempty"`
 	DisplayType           string                       `json:"displayType,omitempty"`
 	SkipExisting          bool                         `json:"skipExisting,omitempty"`
@@ -24,10 +28,19 @@ type screenshotUploadFailureArtifact struct {
 	Files                 []string                     `json:"files,omitempty"`
 	OrderedIDs            []string                     `json:"orderedIds,omitempty"`
 	PendingFiles          []string                     `json:"pendingFiles,omitempty"`
+	PendingAssets         []screenshotPendingAsset     `json:"pendingAssets,omitempty"`
 	Results               []asc.AssetUploadResultItem  `json:"results,omitempty"`
 	Failures              []asc.AssetUploadFailureItem `json:"failures,omitempty"`
 	Error                 string                       `json:"error,omitempty"`
 	GeneratedAt           string                       `json:"generatedAt"`
+}
+
+type screenshotPendingAsset struct {
+	FileName string `json:"fileName"`
+	FilePath string `json:"filePath"`
+	AssetID  string `json:"assetId"`
+	Checksum string `json:"checksum"`
+	State    string `json:"state"`
 }
 
 type screenshotUploadPreparedState struct {
@@ -128,43 +141,53 @@ func prepareAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 	if cfg.UploadContext == nil {
 		cfg.UploadContext = contextWithAssetUploadTimeout
 	}
+	if strings.TrimSpace(cfg.InspectCommand) == "" {
+		cfg.InspectCommand = screenshotInspectionCommand(cfg.LocalizationID)
+	}
+	if strings.TrimSpace(cfg.ReplaceCommand) == "" {
+		cfg.ReplaceCommand = "--replace --confirm"
+	}
 
-	requestCtx, reqCancel := cfg.RequestContext(ctx)
 	var (
 		set asc.Resource[asc.AppScreenshotSetAttributes]
 		err error
 	)
 	if cfg.DryRun {
-		set, err = findScreenshotSetWithAccess(requestCtx, cfg.Client, cfg.LocalizationID, cfg.DisplayType, cfg.Access)
+		set, err = findScreenshotSetWithAccess(ctx, cfg.Client, cfg.LocalizationID, cfg.DisplayType, cfg.Access, cfg.RequestContext)
 	} else {
-		set, err = ensureScreenshotSetWithAccess(requestCtx, cfg.Client, cfg.LocalizationID, cfg.DisplayType, cfg.Access)
+		set, err = ensureScreenshotSetWithAccess(ctx, cfg.Client, cfg.LocalizationID, cfg.DisplayType, cfg.Access, cfg.RequestContext)
 	}
-	reqCancel()
 	if err != nil {
 		return screenshotUploadPreparedState{}, err
 	}
 
 	existingScreenshots := make([]asc.Resource[asc.AppScreenshotAttributes], 0)
 	if (cfg.SkipExisting || cfg.Replace || (!cfg.Replace && len(cfg.Files) > 0)) && set.ID != "" {
-		fetchCtx, fetchCancel := cfg.RequestContext(ctx)
-		existingResp, err := cfg.Client.GetAppScreenshots(fetchCtx, set.ID)
-		fetchCancel()
+		existingResp, err := cfg.Client.GetAllAppScreenshots(ctx, set.ID, asc.WithAppScreenshotsRequestContext(cfg.RequestContext))
 		if err != nil {
 			return screenshotUploadPreparedState{}, err
 		}
 		existingScreenshots = existingResp.Data
+	}
+	if cfg.SkipExisting && len(existingScreenshots) > 0 {
+		settleCtx, settleCancel := cfg.RequestContext(ctx)
+		existingScreenshots, err = settleExistingScreenshotChecksums(settleCtx, cfg.Client, existingScreenshots)
+		settleCancel()
+		if err != nil {
+			return screenshotUploadPreparedState{}, err
+		}
 	}
 
 	skippedResults := make([]asc.AssetUploadResultItem, 0)
 	files := cfg.Files
 	if cfg.SkipExisting {
 		var filterErr error
-		files, skippedResults, filterErr = filterExistingScreenshotFiles(cfg.Files, existingScreenshots)
+		files, skippedResults, filterErr = filterExistingScreenshotFiles(cfg.Files, existingScreenshots, cfg.InspectCommand)
 		if filterErr != nil {
 			return screenshotUploadPreparedState{}, filterErr
 		}
 	}
-	files, err = limitScreenshotUploadFilesForExistingSet(files, cfg.MaxScreenshots, existingScreenshots, cfg.Replace, set.ID)
+	files, err = limitScreenshotUploadFilesForExistingSet(files, cfg.MaxScreenshots, existingScreenshots, cfg.Replace, set.ID, cfg.InspectCommand, cfg.ReplaceCommand)
 	if err != nil {
 		return screenshotUploadPreparedState{}, err
 	}
@@ -174,15 +197,6 @@ func prepareAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 		orderCtx, orderCancel := cfg.UploadContext(ctx)
 		orderedIDs, err = GetOrderedAppScreenshotIDs(orderCtx, cfg.Client, set.ID)
 		orderCancel()
-		if err != nil {
-			return screenshotUploadPreparedState{}, err
-		}
-	}
-
-	if !cfg.DryRun && cfg.Replace {
-		deleteCtx, deleteCancel := cfg.UploadContext(ctx)
-		err = deleteExistingScreenshots(deleteCtx, cfg.Client, existingScreenshots)
-		deleteCancel()
 		if err != nil {
 			return screenshotUploadPreparedState{}, err
 		}
@@ -200,6 +214,13 @@ func prepareAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 func executeAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[asc.AppScreenshotUploadResult], artifactPath string) (asc.AppScreenshotUploadResult, error) {
 	if cfg.UploadContext == nil {
 		cfg.UploadContext = contextWithAssetUploadTimeout
+	}
+	if len(cfg.Files) > 0 {
+		sourceRootPath, err := resolveScreenshotUploadRoot(cfg.RootPath, cfg.Files)
+		if err != nil {
+			return asc.AppScreenshotUploadResult{}, fmt.Errorf("resolve screenshot source root: %w", err)
+		}
+		cfg.RootPath = sourceRootPath
 	}
 	prepared, err := prepareAppScreenshotUpload(ctx, cfg)
 	if err != nil {
@@ -231,7 +252,23 @@ func executeAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 	uploadCtx, cancel := cfg.UploadContext(ctx)
 	defer cancel()
 
-	progress, uploadErr := uploadScreenshotsWithOrderState(uploadCtx, cfg.Client, prepared.Set.ID, prepared.OrderedIDs, prepared.Files, false, true)
+	var openedFiles openedScreenshotFiles
+	if cfg.Replace && len(prepared.Files) > 0 {
+		openedFiles, err = openAndValidateScreenshotFiles(cfg.RootPath, prepared.Files)
+		if err != nil {
+			return asc.AppScreenshotUploadResult{}, err
+		}
+		defer closeOpenedScreenshotFiles(openedFiles)
+		if err := deleteExistingScreenshots(uploadCtx, cfg.Client, prepared.ExistingScreenshots); err != nil {
+			return asc.AppScreenshotUploadResult{}, err
+		}
+	} else if cfg.Replace {
+		if err := deleteExistingScreenshots(uploadCtx, cfg.Client, prepared.ExistingScreenshots); err != nil {
+			return asc.AppScreenshotUploadResult{}, err
+		}
+	}
+
+	progress, uploadErr := uploadScreenshotsWithOrderStateWithOpenedFiles(uploadCtx, cfg.Client, prepared.Set.ID, prepared.OrderedIDs, prepared.Files, cfg.RootPath, false, true, openedFiles)
 	if uploadErr == nil && cfg.SkipExisting && len(prepared.SkippedResults) > 0 {
 		desiredIDs, err := syncSkippedScreenshotOrder(uploadCtx, cfg.Client, prepared.Set.ID, cfg.Files, prepared.SkippedResults, progress.Results)
 		if err != nil {
@@ -256,7 +293,7 @@ func executeAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 
 	orderedIDs := append([]string(nil), progress.OrderedIDs...)
 	if cfg.SkipExisting && len(prepared.SkippedResults) > 0 && (len(prepared.Files) > 0 || strings.TrimSpace(progress.FailedFile) != "") {
-		desiredIDs := orderScreenshotIDsForLocalFiles(prepared.OrderedIDs, cfg.Files, prepared.SkippedResults, progress.Results)
+		desiredIDs := orderAssetIDsForLocalFiles(prepared.OrderedIDs, cfg.Files, prepared.SkippedResults, progress.Results)
 		if len(desiredIDs) > 0 {
 			orderedIDs = desiredIDs
 		}
@@ -265,6 +302,7 @@ func executeAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 	artifact := screenshotUploadFailureArtifact{
 		VersionLocalizationID: cfg.LocalizationID,
 		Path:                  artifactPath,
+		RootPath:              cfg.RootPath,
 		DeviceType:            strings.TrimPrefix(cfg.DisplayType, "APP_"),
 		DisplayType:           cfg.DisplayType,
 		SkipExisting:          cfg.SkipExisting,
@@ -273,6 +311,7 @@ func executeAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 		Files:                 append([]string(nil), cfg.Files...),
 		OrderedIDs:            orderedIDs,
 		PendingFiles:          append([]string(nil), progress.PendingFiles...),
+		PendingAssets:         append([]screenshotPendingAsset(nil), progress.PendingAssets...),
 		Results:               append([]asc.AssetUploadResultItem(nil), result.Results...),
 		Failures:              append([]asc.AssetUploadFailureItem(nil), result.Failures...),
 		Error:                 uploadErr.Error(),
@@ -284,10 +323,18 @@ func executeAppScreenshotUpload(ctx context.Context, cfg screenshotUploadConfig[
 
 	writtenPath, artifactErr := persistScreenshotUploadFailureArtifact(artifactPath, artifact)
 	if artifactErr != nil {
-		return result, fmt.Errorf("write screenshot upload failure artifact: %w", artifactErr)
+		return result, screenshotUploadArtifactWriteError(uploadErr, artifactErr)
 	}
 	result.FailureArtifactPath = writtenPath
 	return result, screenshotUploadRetryError(progress)
+}
+
+// screenshotUploadArtifactWriteError reports that the upload failed and that no
+// resume artifact could be written for it. The upload error is kept because it
+// is the actionable cause, and the pending-retry framing is dropped because
+// there is no artifact left to resume from.
+func screenshotUploadArtifactWriteError(uploadErr, artifactErr error) error {
+	return errors.Join(uploadErr, fmt.Errorf("write screenshot upload failure artifact: %w", artifactErr))
 }
 
 func resumeAppScreenshotUpload(ctx context.Context, client *asc.Client, artifactPath string) (asc.AppScreenshotUploadResult, error) {
@@ -307,7 +354,17 @@ func resumeAppScreenshotUpload(ctx context.Context, client *asc.Client, artifact
 	defer cancel()
 
 	syncAfterUpload := !artifact.SkipExisting || len(artifact.Files) == 0
-	progress, uploadErr := uploadScreenshotsWithOrderState(uploadCtx, client, artifact.SetID, artifact.OrderedIDs, artifact.PendingFiles, true, syncAfterUpload)
+	sourceRootPath := strings.TrimSpace(artifact.RootPath)
+	if screenshotArtifactNeedsSourceFiles(artifact) {
+		sourceRootPath, err = resolveScreenshotUploadRoot(artifact.RootPath, screenshotArtifactSourcePaths(artifact))
+		if err != nil {
+			return asc.AppScreenshotUploadResult{}, fmt.Errorf("resolve resume source root: %w", err)
+		}
+	}
+	if err := validateResumedScreenshotFiles(sourceRootPath, artifact.PendingFiles); err != nil {
+		return asc.AppScreenshotUploadResult{}, shared.NewValidationError(err)
+	}
+	progress, uploadErr := resumeScreenshotsWithOrderState(uploadCtx, client, artifact.SetID, artifact.OrderedIDs, artifact.PendingFiles, artifact.PendingAssets, sourceRootPath, true, syncAfterUpload)
 
 	result := asc.AppScreenshotUploadResult{
 		VersionLocalizationID: artifact.VersionLocalizationID,
@@ -322,7 +379,7 @@ func resumeAppScreenshotUpload(ctx context.Context, client *asc.Client, artifact
 		currentOrder, err := GetOrderedAppScreenshotIDs(uploadCtx, client, artifact.SetID)
 		if err != nil {
 			uploadErr = err
-		} else if desiredIDs := orderScreenshotIDsForLocalFiles(currentOrder, artifact.Files, skippedResults, uploadedResults); len(desiredIDs) > 0 && !sameScreenshotIDOrder(currentOrder, desiredIDs) {
+		} else if desiredIDs := orderAssetIDsForLocalFiles(currentOrder, artifact.Files, skippedResults, uploadedResults); len(desiredIDs) > 0 && !sameAssetIDOrder(currentOrder, desiredIDs) {
 			if err := SetOrderedAppScreenshots(uploadCtx, client, artifact.SetID, desiredIDs); err != nil {
 				progress.OrderedIDs = desiredIDs
 				uploadErr = err
@@ -345,6 +402,7 @@ func resumeAppScreenshotUpload(ctx context.Context, client *asc.Client, artifact
 	nextArtifact := screenshotUploadFailureArtifact{
 		VersionLocalizationID: artifact.VersionLocalizationID,
 		Path:                  artifactPath,
+		RootPath:              sourceRootPath,
 		DeviceType:            artifact.DeviceType,
 		DisplayType:           artifact.DisplayType,
 		SkipExisting:          artifact.SkipExisting,
@@ -353,6 +411,7 @@ func resumeAppScreenshotUpload(ctx context.Context, client *asc.Client, artifact
 		Files:                 append([]string(nil), artifact.Files...),
 		OrderedIDs:            append([]string(nil), progress.OrderedIDs...),
 		PendingFiles:          append([]string(nil), progress.PendingFiles...),
+		PendingAssets:         append([]screenshotPendingAsset(nil), progress.PendingAssets...),
 		Results:               append([]asc.AssetUploadResultItem(nil), result.Results...),
 		Failures:              append([]asc.AssetUploadFailureItem(nil), result.Failures...),
 		Error:                 uploadErr.Error(),
@@ -364,7 +423,7 @@ func resumeAppScreenshotUpload(ctx context.Context, client *asc.Client, artifact
 
 	writtenPath, artifactErr := persistScreenshotUploadFailureArtifact(artifactPath, nextArtifact)
 	if artifactErr != nil {
-		return result, fmt.Errorf("write screenshot upload failure artifact: %w", artifactErr)
+		return result, screenshotUploadArtifactWriteError(uploadErr, artifactErr)
 	}
 	result.FailureArtifactPath = writtenPath
 	return result, screenshotUploadRetryError(progress)
@@ -421,6 +480,14 @@ func normalizeScreenshotUploadFailureArtifactPaths(artifact screenshotUploadFail
 		artifact.PendingFiles[i] = normalized
 	}
 
+	for i := range artifact.PendingAssets {
+		normalized, err := normalizeScreenshotUploadArtifactFilePath(artifact.PendingAssets[i].FilePath)
+		if err != nil {
+			return screenshotUploadFailureArtifact{}, err
+		}
+		artifact.PendingAssets[i].FilePath = normalized
+	}
+
 	for i := range artifact.Results {
 		normalized, err := normalizeScreenshotUploadArtifactFilePath(artifact.Results[i].FilePath)
 		if err != nil {
@@ -437,7 +504,260 @@ func normalizeScreenshotUploadFailureArtifactPaths(artifact screenshotUploadFail
 		artifact.Failures[i].FilePath = normalized
 	}
 
+	if screenshotArtifactNeedsSourceFiles(artifact) {
+		rootPath, err := resolveScreenshotUploadRoot(artifact.RootPath, screenshotArtifactSourcePaths(artifact))
+		if err != nil {
+			return screenshotUploadFailureArtifact{}, err
+		}
+		artifact.RootPath = rootPath
+	} else if strings.TrimSpace(artifact.RootPath) != "" {
+		rootPath, err := filepath.Abs(artifact.RootPath)
+		if err != nil {
+			return screenshotUploadFailureArtifact{}, err
+		}
+		artifact.RootPath = filepath.Clean(rootPath)
+	}
+
 	return artifact, nil
+}
+
+// validateResumedScreenshotFiles preflights the files a resume will upload,
+// before the first reservation, so an artifact written by an older build or a
+// pending file replaced on disk after the original failure cannot deliver an
+// asset the upload paths already reject.
+//
+// A single in-flight pending asset must match the first pending file, so the
+// pending file list covers everything the resume reads. Only the format check
+// runs here: it needs nothing but the bytes and the file name, so it holds for
+// every artifact regardless of what the payload records. Sizes stay the
+// business of the run that wrote the artifact, which validated them against
+// the display type it had; re-deciding them here would reject artifacts that
+// were valid when written.
+func validateResumedScreenshotFiles(sourceRootPath string, pendingFiles []string) error {
+	if len(pendingFiles) == 0 {
+		return nil
+	}
+
+	// The upload opens pending files through the operator-selected root, so the
+	// preflight reads them the same way: containment and open stay one
+	// operation, and a path swapped after the root was resolved cannot send
+	// this read outside it.
+	root, err := rootfs.New(sourceRootPath)
+	if err != nil {
+		return err
+	}
+
+	for _, pendingFile := range pendingFiles {
+		trimmed := strings.TrimSpace(pendingFile)
+		if trimmed == "" {
+			continue
+		}
+		path, err := filepath.Abs(trimmed)
+		if err != nil {
+			return err
+		}
+		if err := validateResumedScreenshotFileFormat(root, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateResumedScreenshotFileFormat(root rootfs.Root, path string) error {
+	file, err := root.OpenFile(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return validateOpenedScreenshotFileFormat(path, file)
+}
+
+func screenshotArtifactNeedsSourceFiles(artifact screenshotUploadFailureArtifact) bool {
+	return len(artifact.PendingFiles) > 0 || len(artifact.PendingAssets) > 0
+}
+
+func screenshotArtifactSourcePaths(artifact screenshotUploadFailureArtifact) []string {
+	paths := make([]string, 0, len(artifact.Files)+len(artifact.PendingFiles)+len(artifact.PendingAssets))
+	paths = append(paths, artifact.Files...)
+	paths = append(paths, artifact.PendingFiles...)
+	for _, pending := range artifact.PendingAssets {
+		paths = append(paths, pending.FilePath)
+	}
+	return paths
+}
+
+func resolveScreenshotUploadRoot(rootPath string, filePaths []string) (string, error) {
+	if err := validateScreenshotSourceAncestry(filePaths); err != nil {
+		return "", err
+	}
+
+	rootPath = strings.TrimSpace(rootPath)
+	if rootPath != "" {
+		absolute, err := filepath.Abs(rootPath)
+		if err != nil {
+			return "", err
+		}
+		absolute = filepath.Clean(absolute)
+		for _, filePath := range filePaths {
+			fileAbsolute, err := filepath.Abs(strings.TrimSpace(filePath))
+			if err != nil {
+				return "", err
+			}
+			if filepath.Clean(fileAbsolute) == absolute {
+				absolute = filepath.Dir(absolute)
+				break
+			}
+		}
+		root, err := rootfs.New(absolute)
+		if err != nil {
+			return "", err
+		}
+		if err := root.CheckContained("."); err != nil {
+			return "", err
+		}
+		for _, filePath := range filePaths {
+			if strings.TrimSpace(filePath) == "" {
+				continue
+			}
+			fileAbsolute, err := filepath.Abs(filePath)
+			if err != nil {
+				return "", err
+			}
+			if err := root.CheckContained(fileAbsolute); err != nil {
+				return "", err
+			}
+		}
+		return root.Path(), nil
+	}
+
+	cleaned := make([]string, 0, len(filePaths))
+	for _, filePath := range filePaths {
+		filePath = strings.TrimSpace(filePath)
+		if filePath == "" {
+			continue
+		}
+		absolute, err := filepath.Abs(filePath)
+		if err != nil {
+			return "", err
+		}
+		cleaned = append(cleaned, filepath.Clean(absolute))
+	}
+	if len(cleaned) == 0 {
+		return "", nil
+	}
+
+	root := filepath.Dir(cleaned[0])
+	for _, filePath := range cleaned[1:] {
+		for {
+			relative, err := filepath.Rel(root, filePath)
+			if err != nil {
+				return "", err
+			}
+			if relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				break
+			}
+			parent := filepath.Dir(root)
+			if parent == root {
+				return "", fmt.Errorf("screenshot files do not share a common source root")
+			}
+			root = parent
+		}
+	}
+	trustedRoot, err := rootfs.New(root)
+	if err != nil {
+		return "", err
+	}
+	if err := trustedRoot.CheckContained("."); err != nil {
+		return "", err
+	}
+	for _, filePath := range cleaned {
+		if err := trustedRoot.CheckContained(filePath); err != nil {
+			return "", err
+		}
+	}
+	return trustedRoot.Path(), nil
+}
+
+func validateScreenshotSourceAncestry(filePaths []string) error {
+	for _, filePath := range filePaths {
+		filePath = strings.TrimSpace(filePath)
+		if filePath == "" {
+			continue
+		}
+		absolute, err := filepath.Abs(filePath)
+		if err != nil {
+			return err
+		}
+		validationRoot, ok := screenshotSourceValidationRoot(absolute)
+		if !ok {
+			// The source lives outside the working, home and system temporary
+			// directories, so every remaining ancestor is one the operator
+			// named. Platform aliases live there too (macOS reaches /tmp, /var
+			// and /etc through symlinks into /private), and auditing that chain
+			// only produces errors about paths the caller never wrote. Anchor
+			// on the file's physical parent instead: the file itself is still
+			// refused when it is a symlink, and resolveScreenshotUploadRoot
+			// still refuses a symlinked source root and any symlink below it.
+			validationRoot = physicalParentDir(absolute)
+			absolute = filepath.Join(validationRoot, filepath.Base(absolute))
+		}
+		root, err := rootfs.New(validationRoot)
+		if err != nil {
+			return err
+		}
+		if err := root.CheckContained(absolute); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// screenshotSourceValidationRoot returns the deepest directory the operator
+// controls for this process that contains absolutePath, reporting false when
+// the path lives outside all of them.
+func screenshotSourceValidationRoot(absolutePath string) (string, bool) {
+	absolutePath = filepath.Clean(absolutePath)
+
+	candidates := make([]string, 0, 3)
+	if cwd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, cwd)
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates, home)
+	}
+	if temporary := strings.TrimSpace(os.TempDir()); temporary != "" {
+		candidates = append(candidates, temporary)
+	}
+
+	best := ""
+	for _, candidate := range candidates {
+		candidate, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		candidate = filepath.Clean(candidate)
+		relative, err := filepath.Rel(candidate, absolutePath)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if len(candidate) > len(best) {
+			best = candidate
+		}
+	}
+	return best, best != ""
+}
+
+// physicalParentDir resolves the parent directory of absolutePath through any
+// symlinks so platform aliases do not read as untrusted path components. The
+// base name is deliberately left unresolved so a symlinked source file is still
+// rejected.
+func physicalParentDir(absolutePath string) string {
+	parent := filepath.Dir(absolutePath)
+	resolved, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return parent
+	}
+	return resolved
 }
 
 func persistScreenshotUploadFailureArtifact(path string, artifact screenshotUploadFailureArtifact) (string, error) {

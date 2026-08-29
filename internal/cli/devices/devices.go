@@ -45,6 +45,7 @@ Examples:
   asc devices view --id "DEVICE_ID"
   asc devices local-udid
   asc devices register --name "iPhone 15" --udid "UDID" --platform IOS
+  asc devices register-batch --file "./devices.txt" --confirm
   asc devices update --id "DEVICE_ID" --status DISABLED`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -53,6 +54,7 @@ Examples:
 			DevicesGetCommand(),
 			DevicesLocalUDIDCommand(),
 			DevicesRegisterCommand(),
+			DevicesRegisterBatchCommand(),
 			DevicesUpdateCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
@@ -95,28 +97,28 @@ Examples:
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("devices list: --limit must be between 1 and 200")
+				return shared.UsageErrorf("devices list: --limit must be between 1 and 200")
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
-				return fmt.Errorf("devices list: %w", err)
+				return shared.UsageErrorf("devices list: %v", err)
 			}
 			if err := shared.ValidateSort(*sort, "id", "-id", "name", "-name", "platform", "-platform", "status", "-status", "udid", "-udid"); err != nil {
-				return fmt.Errorf("devices list: %w", err)
+				return shared.UsageErrorf("devices list: %v", err)
 			}
 
 			platformValues, err := normalizeDevicePlatforms(shared.SplitCSV(*platform))
 			if err != nil {
-				return fmt.Errorf("devices list: %w", err)
+				return fmt.Errorf("devices list: %w", shared.UsageError(err.Error()))
 			}
 
 			statusValue, err := normalizeDeviceStatus(*status)
 			if err != nil {
-				return fmt.Errorf("devices list: %w", err)
+				return shared.UsageErrorf("devices list: %v", err)
 			}
 
 			fieldsValue, err := normalizeDeviceFields(*fields)
 			if err != nil {
-				return fmt.Errorf("devices list: %w", err)
+				return shared.UsageErrorf("devices list: %v", err)
 			}
 
 			client, err := shared.GetASCClient()
@@ -197,7 +199,7 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			fieldsValue, err := normalizeDeviceFields(*fields)
@@ -281,7 +283,7 @@ Examples:
 			nameValue := strings.TrimSpace(*name)
 			if nameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			udidValue := strings.TrimSpace(*udid)
@@ -298,7 +300,7 @@ Examples:
 			}
 			if udidValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --udid is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--udid")
 			}
 
 			platformValue := strings.TrimSpace(*platform)
@@ -307,7 +309,7 @@ Examples:
 			}
 			if platformValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --platform is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--platform")
 			}
 			if *udidFromSystem && strings.ToUpper(platformValue) != "MAC_OS" {
 				fmt.Fprintln(os.Stderr, "Error: --udid-from-system requires --platform MAC_OS")
@@ -316,7 +318,7 @@ Examples:
 
 			platformValue, err := normalizeDevicePlatform(platformValue)
 			if err != nil {
-				return fmt.Errorf("devices register: %w", err)
+				return fmt.Errorf("devices register: %w", shared.UsageError(err.Error()))
 			}
 
 			client, err := shared.GetASCClient()
@@ -420,14 +422,14 @@ Examples:
 			idValue := strings.TrimSpace(*id)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			nameValue := strings.TrimSpace(*name)
 			statusRaw := strings.TrimSpace(*status)
 			if nameValue == "" && statusRaw == "" {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			statusValue, err := normalizeDeviceStatus(statusRaw)
@@ -467,11 +469,11 @@ func normalizeDevicePlatform(value string) (string, error) {
 	if trimmed == "" {
 		return "", nil
 	}
-	normalized := strings.ToUpper(trimmed)
-	if slices.Contains(devicePlatformList(), normalized) {
-		return normalized, nil
+	platform, err := shared.NormalizeBundleIDPlatform(trimmed)
+	if err != nil {
+		return "", err
 	}
-	return "", fmt.Errorf("--platform must be one of: %s", strings.Join(devicePlatformList(), ", "))
+	return string(platform), nil
 }
 
 func normalizeDevicePlatforms(values []string) ([]string, error) {
@@ -527,7 +529,7 @@ func normalizeDeviceFields(value string) ([]string, error) {
 }
 
 func devicePlatformList() []string {
-	return []string{"IOS", "MAC_OS", "TV_OS", "VISION_OS"}
+	return shared.BundleIDPlatformList()
 }
 
 func deviceStatusList() []string {

@@ -22,11 +22,13 @@ func WebCommand() *ffcli.Command {
 		ShortHelp:  "Apple web-session workflows.",
 		LongHelp: `WEB SESSION WORKFLOWS
 
-Use Apple web-session /iris flows for App Store Connect workflows.
+Use Apple web sessions for App Store Connect and Developer Portal workflows.
 Use ` + "`asc web apps create`" + ` as the canonical app-creation command in this family.
 
 Examples:
   asc web auth status
+  asc web agreements status
+  asc web api-keys create --name "Release automation"
   asc web sandbox create --first-name "Jane" --last-name "Tester" --email "jane+sandbox@example.com" --password "Passwordtest1" --territory "USA"
   asc web auth login --apple-id "user@example.com"
   asc web apps create --name "My App" --bundle-id "com.example.app" --sku "MYAPP123"
@@ -41,10 +43,13 @@ Examples:
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
 			WebAuthCommand(),
+			WebAgreementsCommand(),
+			WebAPIKeysCommand(),
 			WebSandboxCommand(),
 			WebAppsCommand(),
 			WebRemovedAppsCommand(),
 			WebBundleIDsCommand(),
+			WebAppGroupsCommand(),
 			WebPrivacyCommand(),
 			WebReviewCommand(),
 			WebSubscriptionsCommand(),

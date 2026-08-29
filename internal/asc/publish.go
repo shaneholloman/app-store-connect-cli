@@ -47,6 +47,7 @@ type TestFlightPublishStageResult struct {
 	BuildNumber            string                            `json:"buildNumber,omitempty"`
 	GroupIDs               []string                          `json:"groupIds,omitempty"`
 	Uploaded               bool                              `json:"uploaded"`
+	UploadOnly             bool                              `json:"uploadOnly,omitempty"`
 	ProcessingState        string                            `json:"processingState,omitempty"`
 	Notified               *bool                             `json:"notified,omitempty"`
 	NotificationAction     BuildBetaGroupsNotificationAction `json:"notificationAction,omitempty"`
@@ -69,12 +70,18 @@ type AppStorePublishStageResult struct {
 
 // Result types for the publish workflow.
 type TestFlightPublishResult struct {
+	Status                 string                            `json:"status,omitempty"`
+	FailureStage           string                            `json:"failureStage,omitempty"`
+	Failure                string                            `json:"failure,omitempty"`
+	CompletedStages        []string                          `json:"completedStages,omitempty"`
+	Recovery               *TestNotesRecovery                `json:"recovery,omitempty"`
 	Mode                   PublishMode                       `json:"mode,omitempty"`
 	BuildID                string                            `json:"buildId"`
 	BuildVersion           string                            `json:"buildVersion,omitempty"`
 	BuildNumber            string                            `json:"buildNumber,omitempty"`
 	GroupIDs               []string                          `json:"groupIds,omitempty"`
 	Uploaded               bool                              `json:"uploaded"`
+	UploadOnly             bool                              `json:"uploadOnly,omitempty"`
 	ProcessingState        string                            `json:"processingState,omitempty"`
 	Notified               *bool                             `json:"notified,omitempty"`
 	NotificationAction     BuildBetaGroupsNotificationAction `json:"notificationAction,omitempty"`

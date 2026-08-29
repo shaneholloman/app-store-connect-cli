@@ -34,7 +34,7 @@ func TestWebCommandUsesProductionHelpContract(t *testing.T) {
 		t.Fatalf("expected web-session help heading, got %q", usage)
 	}
 	lowerUsage := strings.ToLower(usage)
-	for _, token := range []string{"experimental", "unofficial", "discouraged", "private", "risk"} {
+	for _, token := range []string{"unofficial", "discouraged", "private", "risk"} {
 		if !strings.Contains(lowerUsage, token) {
 			continue
 		}
@@ -77,6 +77,19 @@ func TestWebBundleIDCapabilitiesSyncAppClipSubcommandIsRegistered(t *testing.T) 
 	}
 }
 
+func TestWebBundleIDCapabilitiesEnableSubcommandIsRegistered(t *testing.T) {
+	root := RootCommand("1.2.3")
+	sub := findSubcommand(root, "web", "bundle-ids", "capabilities", "enable")
+	if sub == nil {
+		t.Fatalf("expected web bundle-ids capabilities enable to be registered")
+	}
+	for _, flagName := range []string{"bundle-id", "capability", "confirm", "apple-id", "output"} {
+		if sub.FlagSet.Lookup(flagName) == nil {
+			t.Fatalf("expected --%s flag", flagName)
+		}
+	}
+}
+
 func TestWebSandboxCreateSubcommandIsRegistered(t *testing.T) {
 	root := RootCommand("1.2.3")
 	if sub := findSubcommand(root, "web", "sandbox", "create"); sub == nil {
@@ -103,14 +116,11 @@ func TestWebAppsCreateMissingRequiredFlags(t *testing.T) {
 	root.FlagSet.SetOutput(io.Discard)
 
 	var runErr error
-	var stderr string
-	withNonTTYStdin(t, func() {
-		_, stderr = captureOutput(t, func() {
-			if err := root.Parse([]string{"web", "apps", "create", "--name", "My App"}); err != nil {
-				t.Fatalf("parse error: %v", err)
-			}
-			runErr = root.Run(context.Background())
-		})
+	_, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"web", "apps", "create", "--name", "My App"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
 	})
 
 	if !errors.Is(runErr, flag.ErrHelp) {
@@ -196,6 +206,17 @@ func TestWebAuthLoginExposesDeprecatedTwoFactorAliasWithoutPlaintextPasswordFlag
 	}
 	if cmd.FlagSet.Lookup("two-factor-code-command") == nil {
 		t.Fatal("expected --two-factor-code-command flag on web auth login")
+	}
+	for _, phrase := range []string{
+		"Phone-code fallback (including SMS):",
+		"interactive: if Apple offers a registered phone fallback",
+		"enter an incorrect trusted-device code once",
+		"Apple then delivers a phone verification code and asc prompts again",
+		"automated: asc reruns the configured 2FA code command after phone fallback",
+	} {
+		if !strings.Contains(cmd.LongHelp, phrase) {
+			t.Fatalf("expected %q in web auth login help, got %q", phrase, cmd.LongHelp)
+		}
 	}
 }
 

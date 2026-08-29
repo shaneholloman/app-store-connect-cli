@@ -112,6 +112,29 @@ func TestGenerateReview_WritesManifestAndHTML(t *testing.T) {
 	}
 }
 
+func TestMatchingAppDisplayTypesCanonicalizesAPIAliases(t *testing.T) {
+	got := strings.Join(matchingAppDisplayTypes(1260, 2736), ",")
+	if want := "APP_IPHONE_67"; got != want {
+		t.Fatalf("matchingAppDisplayTypes() = %q, want %q", got, want)
+	}
+}
+
+func TestMatchingAppDisplayTypesPreservesDistinctCanonicalSlots(t *testing.T) {
+	got := strings.Join(matchingAppDisplayTypes(3840, 2160), ",")
+	if want := "APP_APPLE_TV,APP_APPLE_VISION_PRO"; got != want {
+		t.Fatalf("matchingAppDisplayTypes() = %q, want %q", got, want)
+	}
+}
+
+func TestMatchingAppDisplayTypesPrefersCurrentIPadSlot(t *testing.T) {
+	for _, size := range [][2]int{{2048, 2732}, {2732, 2048}, {2064, 2752}} {
+		got := strings.Join(matchingAppDisplayTypes(size[0], size[1]), ",")
+		if want := "APP_IPAD_PRO_3GEN_129"; got != want {
+			t.Fatalf("matchingAppDisplayTypes(%d, %d) = %q, want %q", size[0], size[1], got, want)
+		}
+	}
+}
+
 func TestGenerateReview_RequiresFramedDirectory(t *testing.T) {
 	_, err := GenerateReview(context.Background(), ReviewRequest{
 		FramedDir: filepath.Join(t.TempDir(), "missing"),

@@ -50,6 +50,11 @@ func TestExitCodeFromError(t *testing.T) {
 			expected: ExitUsage,
 		},
 		{
+			name:     "reported usage error returns usage",
+			err:      shared.NewReportedUsageError(shared.UsageErrorInvalidValue, "invalid selector"),
+			expected: ExitUsage,
+		},
+		{
 			name:     "ErrMissingAuth returns auth failure",
 			err:      shared.ErrMissingAuth,
 			expected: ExitAuth,
@@ -84,6 +89,34 @@ func TestExitCodeFromError(t *testing.T) {
 			err:      errors.New("something went wrong"),
 			expected: ExitError,
 		},
+		{
+			name:     "child exit code is preserved",
+			err:      shared.NewProcessExitError(42),
+			expected: 42,
+		},
+		{
+			name:     "wrapped child signal exit code is preserved",
+			err:      fmt.Errorf("cleanup failed: %w", shared.NewProcessExitError(143)),
+			expected: 143,
+		},
+		{
+			name:     "ordinary exec exit error remains generic",
+			err:      ordinaryExecExitError(t, 128),
+			expected: ExitError,
+		},
+		{
+			name:     "ordinary setup and cleanup failures remain generic",
+			err:      errors.Join(errors.New("setup failed"), errors.New("cleanup failed")),
+			expected: ExitError,
+		},
+		{
+			name: "child exit remains exact with a rendered companion",
+			err: errors.Join(
+				shared.NewProcessExitError(42),
+				shared.NewReportedError(errors.New("cleanup failed")),
+			),
+			expected: 42,
+		},
 	}
 
 	for _, tt := range tests {
@@ -94,6 +127,33 @@ func TestExitCodeFromError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func ordinaryExecExitError(t *testing.T, code int) error {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestExitCodeHelperProcess$")
+	cmd.Env = append(os.Environ(), "ASC_EXIT_CODE_HELPER="+strconv.Itoa(code))
+	err := cmd.Run()
+	if err == nil {
+		t.Fatalf("helper unexpectedly exited successfully")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("helper error = %T, want *exec.ExitError", err)
+	}
+	return err
+}
+
+func TestExitCodeHelperProcess(t *testing.T) {
+	value := os.Getenv("ASC_EXIT_CODE_HELPER")
+	if value == "" {
+		return
+	}
+	code, err := strconv.Atoi(value)
+	if err != nil {
+		os.Exit(125)
+	}
+	os.Exit(code)
 }
 
 func TestExitCodeFromError_Conflict(t *testing.T) {
@@ -126,6 +186,18 @@ func TestExitCodeConstants(t *testing.T) {
 	}
 	if ExitConflict != 5 {
 		t.Errorf("ExitConflict = %d, want 5", ExitConflict)
+	}
+}
+
+func TestExitHTTPUnprocessableMatchesRuntimeMapping(t *testing.T) {
+	const want = 10 + (http.StatusUnprocessableEntity - 400)
+
+	err := &asc.APIError{StatusCode: http.StatusUnprocessableEntity}
+	if got := ExitCodeFromError(err); got != want {
+		t.Fatalf("ExitCodeFromError(HTTP 422) = %d, want %d", got, want)
+	}
+	if ExitHTTPUnprocessable != want {
+		t.Fatalf("ExitHTTPUnprocessable = %d, want %d", ExitHTTPUnprocessable, want)
 	}
 }
 
@@ -484,6 +556,199 @@ func TestBuildsListMissingAppExitCode(t *testing.T) {
 	}
 }
 
+func TestSigningReconcileInvalidDevicesFileExitsTwoWithoutSideEffects(t *testing.T) {
+	binaryPath := buildASCBlackboxBinary(t)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "malformed JSON", body: `{"schemaVersion":1,"devices":[`},
+		{name: "unknown field", body: `{"schemaVersion":1,"devices":[{"name":"Phone","udid":"ABCD1234","platform":"IOS","SECRET-UDID-Rudrank-Phone":true}]}`},
+		{name: "invalid UDID", body: `{"schemaVersion":1,"devices":[{"name":"Phone","udid":"ABC/DEF?123","platform":"IOS"}]}`},
+		{name: "duplicate device", body: `{"schemaVersion":1,"devices":[{"name":"One","udid":"00-aa-11-bb","platform":"IOS"},{"name":"Two","udid":"00aa11bb","platform":"IOS"}]}`},
+		{name: "unsupported platform", body: `{"schemaVersion":1,"devices":[{"name":"Phone","udid":"ABCD1234","platform":"MAC_OS"}]}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			devicesPath := filepath.Join(tmpDir, "devices.json")
+			if err := os.WriteFile(devicesPath, []byte(test.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			stateDir := filepath.Join(tmpDir, "signing-state")
+
+			runCmd := exec.Command(
+				binaryPath,
+				"signing", "reconcile", "plan",
+				"--archive-path", filepath.Join(tmpDir, "App.xcarchive"),
+				"--devices-file", devicesPath,
+				"--state-dir", stateDir,
+			)
+			runCmd.Env = isolatedCLITestEnv(filepath.Join(tmpDir, "config.json"))
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			runCmd.Stdout = &stdout
+			runCmd.Stderr = &stderr
+			err := runCmd.Run()
+			if err == nil {
+				t.Fatal("expected invalid devices file to fail")
+			}
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected *exec.ExitError, got %T (%v)", err, err)
+			}
+			if exitErr.ExitCode() != ExitUsage {
+				t.Fatalf("exit code = %d, want %d; stderr=%q", exitErr.ExitCode(), ExitUsage, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), "invalid devices file") {
+				t.Fatalf("stderr = %q, want devices validation error", stderr.String())
+			}
+			if strings.Contains(stderr.String(), "SECRET-UDID-Rudrank-Phone") {
+				t.Fatalf("stderr leaked untrusted devices content: %q", stderr.String())
+			}
+			if _, statErr := os.Stat(stateDir); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("state directory exists after invalid input: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestSigningReconcileProtectedDevicesFileExitsTwoWithoutLeakingPath(t *testing.T) {
+	binaryPath := buildASCBlackboxBinary(t)
+	tmpDir := t.TempDir()
+	const secret = "SECRET-UDID-Rudrank-Phone"
+	devicesPath := filepath.Join(tmpDir, secret, "devices.json")
+	stateDir := filepath.Join(tmpDir, "signing-state")
+
+	runCmd := exec.Command(
+		binaryPath,
+		"signing", "reconcile", "plan",
+		"--archive-path", filepath.Join(tmpDir, "App.xcarchive"),
+		"--devices-file", devicesPath,
+		"--state-dir", stateDir,
+	)
+	runCmd.Env = isolatedCLITestEnv(filepath.Join(tmpDir, "config.json"))
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runCmd.Stdout = &stdout
+	runCmd.Stderr = &stderr
+	err := runCmd.Run()
+	if err == nil {
+		t.Fatal("expected missing protected devices file to fail")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *exec.ExitError, got %T (%v)", err, err)
+	}
+	if exitErr.ExitCode() != ExitUsage {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", exitErr.ExitCode(), ExitUsage, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid devices file") {
+		t.Fatalf("stderr = %q, want protected input diagnostic", stderr.String())
+	}
+	if strings.Contains(stderr.String(), secret) || strings.Contains(stderr.String(), devicesPath) {
+		t.Fatalf("stderr leaked protected input path: %q", stderr.String())
+	}
+	if _, statErr := os.Stat(stateDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("state directory exists after invalid input: %v", statErr)
+	}
+}
+
+func TestAnalyticsViewInvalidGranularityExitCode(t *testing.T) {
+	binaryPath := buildASCBlackboxBinary(t)
+
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "unsupported", value: "HOURLY"},
+		{name: "empty", value: ""},
+		{name: "empty entry", value: "DAILY,,WEEKLY"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			runCmd := exec.Command(
+				binaryPath,
+				"analytics", "view",
+				"--request-id", "11111111-1111-1111-1111-111111111111",
+				"--granularity", test.value,
+			)
+			runCmd.Env = isolatedCLITestEnv(filepath.Join(tmpDir, "config.json"))
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			runCmd.Stdout = &stdout
+			runCmd.Stderr = &stderr
+			err := runCmd.Run()
+			if err == nil {
+				t.Fatalf("expected non-zero exit for granularity %q", test.value)
+			}
+
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected *exec.ExitError, got %T (%v)", err, err)
+			}
+			if exitErr.ExitCode() != ExitUsage {
+				t.Fatalf("exit code = %d, want %d; stderr=%q", exitErr.ExitCode(), ExitUsage, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("expected empty stdout, got %q", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), "--granularity must be a comma-separated list of: DAILY, WEEKLY, MONTHLY") {
+				t.Fatalf("unexpected stderr: %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestAnalyticsViewInvalidProcessingDateExitCode(t *testing.T) {
+	binaryPath := buildASCBlackboxBinary(t)
+	for _, value := range []string{"2024-13-40", ""} {
+		t.Run(fmt.Sprintf("value=%q", value), func(t *testing.T) {
+			tmpDir := t.TempDir()
+			runCmd := exec.Command(
+				binaryPath,
+				"analytics", "view",
+				"--request-id", "11111111-1111-1111-1111-111111111111",
+				"--processing-date", value,
+			)
+			runCmd.Env = isolatedCLITestEnv(filepath.Join(tmpDir, "config.json"))
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			runCmd.Stdout = &stdout
+			runCmd.Stderr = &stderr
+			err := runCmd.Run()
+			if err == nil {
+				t.Fatal("expected invalid --processing-date to fail")
+			}
+
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("expected *exec.ExitError, got %T (%v)", err, err)
+			}
+			if exitErr.ExitCode() != ExitUsage {
+				t.Fatalf("exit code = %d, want %d; stderr=%q", exitErr.ExitCode(), ExitUsage, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("expected empty stdout, got %q", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), "--processing-date must be in YYYY-MM-DD format") {
+				t.Fatalf("unexpected stderr: %q", stderr.String())
+			}
+		})
+	}
+}
+
 func TestScreenshotsUploadResumeMissingValueExitCode(t *testing.T) {
 	tmpDir := t.TempDir()
 	binaryPath := buildASCBlackboxBinary(t)
@@ -595,6 +860,38 @@ func TestBuildsExpiredFlagsInvalidBooleanExitCode(t *testing.T) {
 			}
 			if !strings.Contains(stderr, test.flag) {
 				t.Fatalf("expected stderr to mention %s flag, got %q", test.flag, stderr)
+			}
+		})
+	}
+}
+
+func TestTestFlightExternalTestingInvalidBooleanExitCode(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		flag []string
+	}{
+		{name: "equals", flag: []string{"--external-testing=maybe"}},
+		{name: "space separated", flag: []string{"--external-testing", "maybe"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resetReportFlags(t)
+
+			args := []string{
+				"testflight", "distribution", "edit",
+				"--id", "DETAIL_ID",
+			}
+			args = append(args, test.flag...)
+			stdout, stderr := captureCommandOutput(t, func() {
+				if code := Run(args, "1.0.0"); code != ExitUsage {
+					t.Fatalf("Run() exit code = %d, want %d", code, ExitUsage)
+				}
+			})
+
+			if stdout != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if !strings.Contains(stderr, "invalid boolean value") || !strings.Contains(stderr, "external-testing") {
+				t.Fatalf("expected invalid --external-testing boolean diagnostic, got %q", stderr)
 			}
 		})
 	}
@@ -924,8 +1221,10 @@ func TestWebAuthLoginPromptInterruptSkipsSkillsAutoCheck(t *testing.T) {
 
 	markerPath := filepath.Join(tmpDir, "skills-check-ran")
 	scriptPath := filepath.Join(scriptDir, "skills")
+	// Marker paths are baked into the script: helper processes receive an
+	// allowlisted environment, so arbitrary test variables cannot reach them.
 	script := "#!/bin/sh\n" +
-		"printf 'ran' > \"$SKILLS_MARKER\"\n" +
+		"printf 'ran' > '" + markerPath + "'\n" +
 		"sleep 2\n" +
 		"printf 'update available\\n'\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
@@ -941,7 +1240,6 @@ func TestWebAuthLoginPromptInterruptSkipsSkillsAutoCheck(t *testing.T) {
 		"ASC_IRIS_SESSION_CACHE=0",
 		"ASC_SKILLS_AUTO_CHECK=1",
 		"CI=",
-		"SKILLS_MARKER="+markerPath,
 		"PATH="+scriptDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 	)
 	runCmd.Env = env
@@ -999,7 +1297,7 @@ func TestWebAuthLoginPromptInterruptSkipsSkillsAutoCheck(t *testing.T) {
 	}
 }
 
-func TestSkillsAutoCheckDoesNotDelayForegroundCommand(t *testing.T) {
+func TestSkillsAutoCheckIsDisabledEvenWhenEnvironmentOptsIn(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("PTY timing regression requires a Unix shell")
 	}
@@ -1031,10 +1329,12 @@ func TestSkillsAutoCheckDoesNotDelayForegroundCommand(t *testing.T) {
 		}
 	})
 	scriptPath := filepath.Join(scriptDir, "skills")
+	// Marker paths are baked into the script: helper processes receive an
+	// allowlisted environment, so arbitrary test variables cannot reach them.
 	script := "#!/bin/sh\n" +
-		"printf 'ran' > \"$SKILLS_MARKER\"\n" +
+		"printf 'ran' > '" + markerPath + "'\n" +
 		"sleep 10 &\n" +
-		"printf '%s' \"$!\" > \"$SKILLS_SLEEP_PID\"\n" +
+		"printf '%s' \"$!\" > '" + sleepPIDPath + "'\n" +
 		"printf '2 updates available\\n'\n"
 	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("failed to write fake skills command: %v", err)
@@ -1045,8 +1345,6 @@ func TestSkillsAutoCheckDoesNotDelayForegroundCommand(t *testing.T) {
 		isolatedCLITestEnv(configPath),
 		"ASC_SKILLS_AUTO_CHECK=1",
 		"CI=",
-		"SKILLS_MARKER="+markerPath,
-		"SKILLS_SLEEP_PID="+sleepPIDPath,
 		"PATH="+scriptDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 	)
 
@@ -1084,63 +1382,12 @@ func TestSkillsAutoCheckDoesNotDelayForegroundCommand(t *testing.T) {
 		t.Fatalf("PTY stayed open after foreground exit\noutput:\n%s", output.String())
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if _, statErr := os.Stat(markerPath); statErr == nil {
-			break
-		} else if !os.IsNotExist(statErr) {
-			t.Fatalf("failed to stat skills marker: %v", statErr)
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("detached skills checker did not start")
-		}
-		time.Sleep(10 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
+	if _, statErr := os.Stat(markerPath); !os.IsNotExist(statErr) {
+		t.Fatalf("automatic skills checker ran despite being disabled: %v", statErr)
 	}
-
-	cachePath := filepath.Join(tmpDir, "skills-check.json")
-	lockPath := filepath.Join(tmpDir, "skills-check.lock")
-	deadline = time.Now().Add(3 * time.Second)
-	for {
-		_, cacheErr := os.Stat(cachePath)
-		_, lockErr := os.Stat(lockPath)
-		if cacheErr == nil && os.IsNotExist(lockErr) {
-			break
-		}
-		if cacheErr != nil && !os.IsNotExist(cacheErr) {
-			t.Fatalf("stat skills cache: %v", cacheErr)
-		}
-		if lockErr != nil && !os.IsNotExist(lockErr) {
-			t.Fatalf("stat skills worker lock: %v", lockErr)
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("detached worker did not finish cache publication (cache: %v, lock: %v)", cacheErr, lockErr)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	deadline = time.Now().Add(2 * time.Second)
-	for {
-		pidBytes, readErr := os.ReadFile(sleepPIDPath)
-		if readErr == nil {
-			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-			if parseErr != nil {
-				t.Fatalf("parse checker sleep PID: %v", parseErr)
-			}
-			process, findErr := os.FindProcess(pid)
-			if findErr != nil {
-				t.Fatalf("find checker sleep process: %v", findErr)
-			}
-			_ = process.Kill()
-			_ = os.Remove(sleepPIDPath)
-			break
-		}
-		if !os.IsNotExist(readErr) {
-			t.Fatalf("read checker sleep PID: %v", readErr)
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("checker did not record descendant PID")
-		}
-		time.Sleep(10 * time.Millisecond)
+	if _, statErr := os.Stat(sleepPIDPath); !os.IsNotExist(statErr) {
+		t.Fatalf("automatic skills checker spawned a descendant despite being disabled: %v", statErr)
 	}
 }
 

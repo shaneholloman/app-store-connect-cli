@@ -32,6 +32,7 @@ func SubscriptionsIntroductoryOffersImportCommand() *ffcli.Command {
 	startDate := fs.String("start-date", "", "Default start date (YYYY-MM-DD)")
 	endDate := fs.String("end-date", "", "Default end date (YYYY-MM-DD)")
 	dryRun := fs.Bool("dry-run", false, "Validate input and print summary without creating offers")
+	confirm := fs.Bool("confirm", false, "Confirm creating introductory offers (required unless --dry-run)")
 	continueOnError := fs.Bool("continue-on-error", true, "Continue processing rows after runtime failures (default true)")
 	output := shared.BindOutputFlags(fs)
 
@@ -59,19 +60,19 @@ Precedence:
   Row values override command-level defaults.
 
 Examples:
-  asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv"
-  asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv" --offer-duration ONE_WEEK --offer-mode FREE_TRIAL --number-of-periods 1
+  asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv" --confirm
+  asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv" --offer-duration ONE_WEEK --offer-mode FREE_TRIAL --number-of-periods 1 --confirm
   asc subscriptions introductory-offers import --subscription-id "SUB_ID" --input "./offers.csv" --dry-run --offer-duration ONE_WEEK --offer-mode FREE_TRIAL --number-of-periods 1`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if strings.TrimSpace(*subscriptionID) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --subscription-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--subscription-id")
 			}
 			if strings.TrimSpace(*inputPath) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --input is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--input")
 			}
 			normalizedOfferDuration := ""
 			if strings.TrimSpace(*offerDuration) != "" {
@@ -112,6 +113,9 @@ Examples:
 					return flag.ErrHelp
 				}
 				normalizedEndDate = date
+			}
+			if err := shared.RequireConfirmUnlessDryRun(*dryRun, *confirm); err != nil {
+				return err
 			}
 			rows, err := readSubscriptionIntroductoryOffersImportCSV(*inputPath)
 			if err != nil {

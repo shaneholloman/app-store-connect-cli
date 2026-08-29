@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	rootcmd "github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/validate"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/validation"
@@ -267,7 +268,7 @@ func validValidateFixture() validateFixture {
 		appInfos:           `{"data":[{"type":"appInfos","id":"info-1","attributes":{"state":"PREPARE_FOR_SUBMISSION"}}]}`,
 		appInfoLocs:        `{"data":[{"type":"appInfoLocalizations","id":"info-loc-1","attributes":{"locale":"en-US","name":"My App","subtitle":"Subtitle","privacyPolicyUrl":"https://example.com/privacy"}}]}`,
 		versionLocs:        fmt.Sprintf(`{"data":[{"type":"appStoreVersionLocalizations","id":"ver-loc-1","attributes":{"locale":"en-US","description":"Description. Terms of Use: %s","keywords":"keyword","whatsNew":"Notes","promotionalText":"Promo","supportUrl":"https://support.example.com","marketingUrl":"https://marketing.example.com"}}]}`, validation.AppleStandardEULAURL),
-		reviewDetails:      `{"data":{"type":"appStoreReviewDetails","id":"review-detail-1","attributes":{"contactFirstName":"A","contactLastName":"B","contactEmail":"a@example.com","contactPhone":"123","demoAccountName":"","demoAccountPassword":"","demoAccountRequired":false,"notes":"Review notes"}}}`,
+		reviewDetails:      `{"data":{"type":"appStoreReviewDetails","id":"review-detail-1","attributes":{"contactFirstName":"A","contactLastName":"B","contactEmail":"a@example.com","contactPhone":"+1 555 010 1234","demoAccountName":"","demoAccountPassword":"","demoAccountRequired":false,"notes":"Review notes"}}}`,
 		primaryCategory:    `{"data":{"type":"appCategories","id":"cat-1"}}`,
 		build:              `{"data":{"type":"builds","id":"build-1","attributes":{"version":"1.0","processingState":"VALID","expired":false,"usesNonExemptEncryption":false}}}`,
 		priceSchedule:      `{"data":{"type":"appPriceSchedules","id":"sched-1","attributes":{}}}`,
@@ -378,6 +379,97 @@ func TestValidateVersionAndVersionIDMutuallyExclusive(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "mutually exclusive") {
 		t.Fatalf("expected mutually exclusive error, got %q", stderr)
+	}
+}
+
+func TestValidateWarnsCopyrightWithoutLeadingAcquisitionYear(t *testing.T) {
+	fixture := validValidateFixture()
+	fixture.version = strings.Replace(fixture.version, `"copyright":"2026 Test Company"`, `"copyright":"Example Inc."`, 1)
+
+	client := newValidateTestClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+	var runErr error
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1", "--output", "json"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if runErr != nil {
+		t.Fatalf("expected copyright format to be advisory, got %T: %v", runErr, runErr)
+	}
+	if got := rootcmd.ExitCodeFromError(runErr); got != rootcmd.ExitSuccess {
+		t.Fatalf("exit code = %d, want %d", got, rootcmd.ExitSuccess)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var report validation.Report
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v; stdout=%q", err, stdout)
+	}
+
+	var matches []validation.CheckResult
+	for _, check := range report.Checks {
+		if check.ID == "legal.format.copyright_year" {
+			matches = append(matches, check)
+		}
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected exactly one copyright-year check, got %d: %+v", len(matches), report.Checks)
+	}
+	if report.Summary.Errors != 0 || report.Summary.Blocking != 0 {
+		t.Fatalf("expected no blocking issues, got %+v", report.Summary)
+	}
+	check := matches[0]
+	if check.Severity != validation.SeverityWarning || check.Field != "copyright" || check.ResourceType != "appStoreVersion" {
+		t.Fatalf("unexpected copyright-year check: %+v", check)
+	}
+}
+
+func TestValidateAcceptsCopyrightMarkersAndYearRanges(t *testing.T) {
+	for _, copyright := range []string{"© 2026 Test Company", "Copyright 2026 Test Company", "2019-2026 Test Company"} {
+		t.Run(copyright, func(t *testing.T) {
+			fixture := validValidateFixture()
+			fixture.version = strings.Replace(fixture.version, `"copyright":"2026 Test Company"`, `"copyright":"`+copyright+`"`, 1)
+
+			client := newValidateTestClient(t, fixture)
+			restore := validate.SetClientFactory(func() (*asc.Client, error) {
+				return client, nil
+			})
+			defer restore()
+
+			root := RootCommand("1.2.3")
+			var runErr error
+			stdout, stderr := captureOutput(t, func() {
+				if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1", "--output", "json"}); err != nil {
+					t.Fatalf("parse error: %v", err)
+				}
+				runErr = root.Run(context.Background())
+			})
+
+			if runErr != nil {
+				t.Fatalf("run error: %v", runErr)
+			}
+			if stderr != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+
+			var report validation.Report
+			if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+				t.Fatalf("failed to parse JSON output: %v; stdout=%q", err, stdout)
+			}
+			if hasCheckWithID(report.Checks, "legal.format.copyright_year") {
+				t.Fatalf("copyright %q reported legal.format.copyright_year: %+v", copyright, report.Checks)
+			}
+		})
 	}
 }
 
@@ -1466,7 +1558,7 @@ func TestValidateFailsWhenReviewDetailsMissing(t *testing.T) {
 
 func TestValidateFailsWhenReviewDetailsMissingContactEmail(t *testing.T) {
 	fixture := validValidateFixture()
-	fixture.reviewDetails = `{"data":{"type":"appStoreReviewDetails","id":"review-detail-1","attributes":{"contactFirstName":"A","contactLastName":"B","contactEmail":"","contactPhone":"123","demoAccountRequired":false}}}`
+	fixture.reviewDetails = `{"data":{"type":"appStoreReviewDetails","id":"review-detail-1","attributes":{"contactFirstName":"A","contactLastName":"B","contactEmail":"","contactPhone":"+1 555 010 1234","demoAccountRequired":false}}}`
 
 	client := newValidateTestClient(t, fixture)
 	restore := validate.SetClientFactory(func() (*asc.Client, error) {
@@ -1507,9 +1599,65 @@ func TestValidateFailsWhenReviewDetailsMissingContactEmail(t *testing.T) {
 	}
 }
 
+func TestValidateFlagsMalformedReviewContactDetails(t *testing.T) {
+	fixture := validValidateFixture()
+	fixture.reviewDetails = `{"data":{"type":"appStoreReviewDetails","id":"review-detail-1","attributes":{"contactFirstName":"A","contactLastName":"B","contactEmail":"reviewer.example.com","contactPhone":"123","demoAccountRequired":false}}}`
+
+	client := newValidateTestClient(t, fixture)
+	restore := validate.SetClientFactory(func() (*asc.Client, error) {
+		return client, nil
+	})
+	defer restore()
+
+	root := RootCommand("1.2.3")
+
+	var runErr error
+	stdout, _ := captureOutput(t, func() {
+		if err := root.Parse([]string{"validate", "--app", "app-1", "--version-id", "ver-1"}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if runErr == nil {
+		t.Fatalf("expected error for malformed review contact email")
+	}
+	if _, ok := errors.AsType[ReportedError](runErr); !ok {
+		t.Fatalf("expected ReportedError, got %v", runErr)
+	}
+
+	var report validation.Report
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	foundEmail := false
+	foundPhone := false
+	for _, check := range report.Checks {
+		switch check.ID {
+		case "review_details.format.contact_email":
+			foundEmail = true
+			if check.Severity != validation.SeverityError {
+				t.Fatalf("expected contact email format error, got %+v", check)
+			}
+		case "review_details.format.contact_phone":
+			foundPhone = true
+			if check.Severity != validation.SeverityWarning {
+				t.Fatalf("expected contact phone format warning, got %+v", check)
+			}
+		}
+	}
+	if !foundEmail {
+		t.Fatalf("expected review_details.format.contact_email, got %+v", report.Checks)
+	}
+	if !foundPhone {
+		t.Fatalf("expected review_details.format.contact_phone, got %+v", report.Checks)
+	}
+}
+
 func TestValidateFailsWhenDemoCredentialsMissingAfterOptIn(t *testing.T) {
 	fixture := validValidateFixture()
-	fixture.reviewDetails = `{"data":{"type":"appStoreReviewDetails","id":"review-detail-1","attributes":{"contactFirstName":"A","contactLastName":"B","contactEmail":"a@example.com","contactPhone":"123","demoAccountName":"","demoAccountPassword":"","demoAccountRequired":true,"notes":"Reviewer signs in with the seeded account below."}}}`
+	fixture.reviewDetails = `{"data":{"type":"appStoreReviewDetails","id":"review-detail-1","attributes":{"contactFirstName":"A","contactLastName":"B","contactEmail":"a@example.com","contactPhone":"+1 555 010 1234","demoAccountName":"","demoAccountPassword":"","demoAccountRequired":true,"notes":"Reviewer signs in with the seeded account below."}}}`
 
 	client := newValidateTestClient(t, fixture)
 	restore := validate.SetClientFactory(func() (*asc.Client, error) {

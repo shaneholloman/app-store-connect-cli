@@ -17,6 +17,18 @@ import (
 
 const ratingsAppSearchLimit = 200
 
+type ratingsBundleLookupError struct {
+	cause error
+}
+
+func (e *ratingsBundleLookupError) Error() string {
+	return "could not resolve --app by bundle ID; pass a numeric App Store ID or try again later"
+}
+
+func (e *ratingsBundleLookupError) Unwrap() error {
+	return e.cause
+}
+
 // ReviewsRatingsCommand returns the reviews ratings subcommand.
 func ReviewsRatingsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("ratings", flag.ExitOnError)
@@ -50,22 +62,22 @@ Examples:
 		Exec: func(ctx context.Context, args []string) error {
 			if len(args) > 0 {
 				fmt.Fprintln(os.Stderr, "Error: reviews ratings does not accept positional arguments")
-				return flag.ErrHelp
+				return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "")
 			}
 
 			if strings.TrimSpace(*appID) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			if *workers < 1 {
 				fmt.Fprintln(os.Stderr, "Error: --workers must be at least 1")
-				return flag.ErrHelp
+				return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "--workers")
 			}
 			if !*all {
 				if _, err := itunes.NormalizeCountryCode(*country); err != nil {
 					fmt.Fprintln(os.Stderr, "Error: "+err.Error())
-					return flag.ErrHelp
+					return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "--country")
 				}
 			}
 
@@ -85,19 +97,20 @@ func executeRatingsWithClient(ctx context.Context, client *itunes.Client, appID,
 		return err
 	}
 
-	requestCtx, cancel := shared.ContextWithTimeout(ctx)
-	defer cancel()
-
-	resolvedAppID, err := resolveRatingsAppID(requestCtx, client, appID, ratingsAppLookupCountry(country, all))
+	resolveCtx, resolveCancel := shared.ContextWithTimeout(ctx)
+	resolvedAppID, err := resolveRatingsAppID(resolveCtx, client, appID, ratingsAppLookupCountry(country, all))
+	resolveCancel()
 	if err != nil {
 		return fmt.Errorf("reviews ratings: %w", err)
 	}
 
 	if all {
-		return executeAllRatings(requestCtx, client, resolvedAppID, workers, format, pretty)
+		return executeAllRatings(ctx, client, resolvedAppID, workers, format, pretty)
 	}
 
-	return executeSingleRatings(requestCtx, client, resolvedAppID, country, format, pretty)
+	countryCtx, countryCancel := shared.ContextWithTimeout(ctx)
+	defer countryCancel()
+	return executeSingleRatings(countryCtx, client, resolvedAppID, country, format, pretty)
 }
 
 func ratingsAppLookupCountry(country string, all bool) string {
@@ -121,7 +134,7 @@ func resolveRatingsAppID(ctx context.Context, client *itunes.Client, app string,
 			IncludeSoftwareEntity: true,
 		})
 		if err != nil {
-			return "", fmt.Errorf("could not resolve --app by bundle ID; pass a numeric App Store ID or try again later")
+			return "", &ratingsBundleLookupError{cause: err}
 		}
 		if result != nil && result.AppID != 0 {
 			return strconv.FormatInt(result.AppID, 10), nil
@@ -182,7 +195,7 @@ func executeSingleRatings(ctx context.Context, client *itunes.Client, appID, cou
 }
 
 func executeAllRatings(ctx context.Context, client *itunes.Client, appID string, workers int, output string, pretty bool) error {
-	global, err := client.GetAllRatings(ctx, appID, workers)
+	global, err := client.GetAllRatings(ctx, appID, workers, shared.ContextWithTimeout)
 	if err != nil {
 		return fmt.Errorf("reviews ratings: %w", err)
 	}

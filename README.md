@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/rorkai/App-Store-Connect-CLI/releases/latest"><img src="https://img.shields.io/github/v/release/rorkai/App-Store-Connect-CLI?style=for-the-badge&color=blue" alt="Latest Release"></a>
   <a href="https://github.com/rorkai/App-Store-Connect-CLI/stargazers"><img src="https://img.shields.io/github/stars/rorkai/app-store-connect-cli?style=for-the-badge" alt="GitHub Stars"></a>
-  <img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=for-the-badge&logo=go" alt="Go Version">
+  <img src="https://img.shields.io/github/go-mod/go-version/rorkai/App-Store-Connect-CLI?filename=go.mod&style=for-the-badge&logo=go" alt="Go version from go.mod">
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/Homebrew-compatible-blue?style=for-the-badge" alt="Homebrew">
 </p>
@@ -41,10 +41,19 @@ Install them globally so they are available across projects:
 asc install-skills
 ```
 
-Direct install:
+`asc install-skills` checks out reviewed commit
+`e30039abddbe388179324d0f9cdccb66c3843115` and copies its 23 skills directly
+into the standard global agent-skills directory. It verifies the complete pack
+and every installed file before succeeding, preserves unrelated skills and
+unrelated lock entries, and pins the 23 ASC lock entries to the same reviewed
+commit so external checks cannot update them from a mutable branch. It rolls
+back the pack if any replacement fails. Only
+`git` is required; the command does not execute Node.js, `npx`, an npm package,
+or repository scripts.
 
 ```bash
-npx skills add rorkai/app-store-connect-cli-skills --global --agent codex
+git --version
+asc install-skills
 ```
 
 ## Quick Start
@@ -81,6 +90,8 @@ release binaries directly from the
 [GitHub releases page](https://github.com/rorkai/App-Store-Connect-CLI/releases/latest).
 
 For source builds and contributor setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Released binaries are self-contained and do not require a Go installation;
+source builds use the toolchain version declared by `go.mod`.
 
 ### 2. Authenticate
 
@@ -172,6 +183,13 @@ depending on a command in CI or scripts:
 - If keychain access is blocked, retry with `ASC_BYPASS_KEYCHAIN=1` or re-run `asc auth login --bypass-keychain`
 - Use `asc auth login --local --bypass-keychain ...` when you want repo-local credentials in `./.asc/config.json`
 
+### Apple service health
+
+- `[experimental]` Check Apple's developer services without credentials: `asc system-status`
+- Narrow unexpected API or upload failures: `asc system-status --service "App Store Connect"`
+- Poll only when requested: `asc system-status --watch --poll-interval 30s`
+- Use `--issues-only` for a concise incident view; summary counts still cover all matched services
+
 ### Output
 
 - `asc` defaults to `table` in an interactive terminal and `json` in pipes, files, and CI
@@ -261,7 +279,7 @@ TestFlight group that needs beta app review submission.
 
 ```bash
 # Optional: preview the staging plan before submission
-asc release stage --app "123456789" --version "1.2.3" --build "BUILD_ID" --copy-metadata-from "1.2.2" --dry-run
+asc release stage --app "123456789" --version "1.2.3" --build-id "BUILD_ID" --copy-metadata-from "1.2.2" --dry-run
 
 # Canonical upload + attach + submit command
 asc publish appstore --app "123456789" --ipa "/path/to/MyApp.ipa" --version "1.2.3" --submit --confirm
@@ -278,6 +296,26 @@ asc validate --app "123456789" --version "1.2.3"
 asc submit status --version-id "VERSION_ID"
 asc submit cancel --version-id "VERSION_ID" --confirm
 ```
+
+Readiness validation also warns when localized app names, subtitles,
+descriptions, keywords, promotional text, or What's New copy still contains an
+unmistakable template marker such as `Lorem ipsum`, `TODO`, `TBD`, or `FIXME`.
+`Lorem ipsum` matches in any letter case. `TODO`, `TBD`, and `FIXME` match only
+in uppercase because their lowercase spellings can be ordinary product wording.
+The warning includes the locale, field, matched text, resource ID, and a
+remediation step. It is advisory by default and becomes blocking only with
+`--strict`:
+
+```bash
+asc validate --app "123456789" --version "1.2.3" --output json
+asc validate --app "123456789" --version "1.2.3" --strict
+```
+
+This lint intentionally does not judge platform names, roadmap language, or
+beta/demo wording because those phrases can be legitimate product copy and
+cannot be classified reliably offline. It also leaves shorter Lorem Ipsum
+product wording and ordinary localized `TODO` copy without marker punctuation
+unflagged; only template-like residue is reported.
 
 ### Review status and blockers
 
@@ -333,24 +371,29 @@ asc bundle-ids list
 ### Workflow automation
 
 ```bash
-asc workflow validate
+asc workflow validate --output json
 asc workflow run --dry-run testflight_beta VERSION:1.2.3
 ```
 
 ### Verified local Xcode -> TestFlight workflow
 
-See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for a copyable `.asc/deployment.json`,
-`.asc/workflow.json`, and `ExportOptions.plist` that use `asc builds next-build-number`,
+See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for local compile validation with
+`asc xcode build` and a copyable `.asc/deployment.json`, `.asc/workflow.json`,
+and `ExportOptions.plist` that use `asc builds next-build-number`,
 `asc xcode inject`, `asc xcode archive`, `asc xcode export --timeout 10m`, and
-`asc publish testflight --group ... --wait`. Add `--submit --confirm` when
+`asc publish testflight --group ... --wait`.
+Add `--submit --confirm` when
 distributing to an external TestFlight group that needs beta app review submission.
 
 ```bash
-asc workflow validate
+asc workflow validate --output json
 asc xcode inject --manifest .asc/deployment.json --set version=1.2.3 --set build_number=42 --dry-run --output json
+asc xcode build --project App.xcodeproj --scheme App --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max,OS=27.0' --no-code-signing --output json
 asc workflow run --dry-run testflight_beta VERSION:1.2.3
 asc workflow run testflight_beta VERSION:1.2.3
 ```
+
+Replace the example Xcode destination with a simulator installed on the host.
 
 ### Xcode Cloud workflows and build runs
 
@@ -370,10 +413,10 @@ asc xcode-cloud build-runs get --id "BUILD_RUN_ID"
 Apple Ads uses separate OAuth credentials from App Store Connect:
 
 ```bash
-asc ads auth login --name "Marketing" --client-id "SEARCHADS_CLIENT_ID" --team-id "SEARCHADS_TEAM_ID" --key-id "KEY_ID" --private-key ./ads-key.pem --org "123456"
+asc ads auth login --name "Marketing" --client-id "SEARCHADS_CLIENT_ID" --team-id "SEARCHADS_TEAM_ID" --key-id "KEY_ID" --private-key ./ads-key.pem --ad-account "987654"
 asc ads auth discover --output json
-asc ads campaigns --org "123456" --limit 100 --output json
-asc ads reports campaigns --org "123456" --file reporting-request.json --output json
+asc ads campaigns find --ad-account "987654" --file query.json --output json
+asc ads reports apps campaigns --ad-account "987654" --file report.json --output json
 ```
 
 See [guides/apple-ads-playbooks.mdx](guides/apple-ads-playbooks.mdx) for
@@ -437,6 +480,9 @@ GitHub: https://github.com/bitomule/koubou
 Simulator UI automation for screenshot capture and interactions uses AXe CLI.
 GitHub: https://github.com/cameroncooke/AXe
 
+The keyword difficulty methodology used by `asc optimize keywords score` is adapted from semihcihan's App Store Optimization CLI (MIT licensed).
+GitHub: https://github.com/semihcihan/App-Store-Optimization-CLI
+
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
@@ -444,10 +490,6 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=rorkai/App-Store-Connect-CLI&type=Date)](https://star-history.com/#rorkai/App-Store-Connect-CLI&Date)
 
 ---
 

@@ -49,6 +49,10 @@ func TestRunScreenshotsUploadResumeRejectsExecutionModeFlags(t *testing.T) {
 			args: []string{"--replace"},
 		},
 		{
+			name: "confirm",
+			args: []string{"--confirm"},
+		},
+		{
 			name: "dry-run",
 			args: []string{"--dry-run"},
 		},
@@ -71,7 +75,7 @@ func TestRunScreenshotsUploadResumeRejectsExecutionModeFlags(t *testing.T) {
 				}
 			})
 
-			if !strings.Contains(stderr, "--resume cannot be combined with --skip-existing, --replace, --dry-run, or --max-screenshots") {
+			if !strings.Contains(stderr, "--resume cannot be combined with --skip-existing, --replace, --confirm, --dry-run, or --max-screenshots") {
 				t.Fatalf("expected resume execution-mode conflict message, got %q", stderr)
 			}
 		})
@@ -154,7 +158,7 @@ func TestRunScreenshotsUploadWritesFailureArtifactAndResumeCompletes(t *testing.
 			return screenshotsUploadJSONResponse(http.StatusOK, fmt.Sprintf(`{"data":{"type":"appScreenshots","id":"%s","attributes":{"uploaded":true}}}`, id))
 		case req.Method == http.MethodGet && strings.HasPrefix(req.URL.Path, "/v1/appScreenshots/"):
 			id := strings.TrimPrefix(req.URL.Path, "/v1/appScreenshots/")
-			return screenshotsUploadJSONResponse(http.StatusOK, fmt.Sprintf(`{"data":{"type":"appScreenshots","id":"%s","attributes":{"assetDeliveryState":{"state":"COMPLETE"}}}}`, id))
+			return screenshotsUploadJSONResponse(http.StatusOK, fmt.Sprintf(`{"data":{"type":"appScreenshots","id":"%s","attributes":{"sourceFileChecksum":"settled","assetDeliveryState":{"state":"COMPLETE"}}}}`, id))
 		case req.Method == http.MethodPatch && req.URL.Path == "/v1/appScreenshotSets/set-1/relationships/appScreenshots":
 			relationshipPatchCount++
 			body, readErr := io.ReadAll(req.Body)
@@ -358,9 +362,9 @@ func TestRunScreenshotsUploadFanoutPrintsPartialResultsOnLocaleFailure(t *testin
 		case req.Method == http.MethodPatch && req.URL.Path == "/v1/appScreenshots/new-fr-1":
 			return screenshotsUploadJSONResponse(http.StatusOK, `{"data":{"type":"appScreenshots","id":"new-fr-1","attributes":{"uploaded":true}}}`)
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/appScreenshots/new-en-1":
-			return screenshotsUploadJSONResponse(http.StatusOK, `{"data":{"type":"appScreenshots","id":"new-en-1","attributes":{"assetDeliveryState":{"state":"COMPLETE"}}}}`)
+			return screenshotsUploadJSONResponse(http.StatusOK, `{"data":{"type":"appScreenshots","id":"new-en-1","attributes":{"sourceFileChecksum":"settled","assetDeliveryState":{"state":"COMPLETE"}}}}`)
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/appScreenshots/new-fr-1":
-			return screenshotsUploadJSONResponse(http.StatusOK, `{"data":{"type":"appScreenshots","id":"new-fr-1","attributes":{"assetDeliveryState":{"state":"COMPLETE"}}}}`)
+			return screenshotsUploadJSONResponse(http.StatusOK, `{"data":{"type":"appScreenshots","id":"new-fr-1","attributes":{"sourceFileChecksum":"settled","assetDeliveryState":{"state":"COMPLETE"}}}}`)
 		case req.Method == http.MethodPatch && req.URL.Path == "/v1/appScreenshotSets/set-en/relationships/appScreenshots":
 			body, readErr := io.ReadAll(req.Body)
 			if readErr != nil {

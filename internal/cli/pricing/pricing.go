@@ -43,8 +43,10 @@ Examples:
   asc pricing availability view --app "123456789"
   asc pricing availability view --id "AVAILABILITY_ID"
   asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true
-  asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true --available-in-new-territories true
-  asc pricing availability edit --app "123456789" --all-territories --available true --available-in-new-territories true
+  asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true
+  asc pricing availability edit --app "123456789" --all-territories --available true
+  asc pricing availability platforms --app "123456789"
+  asc pricing availability remove-from-sale --app "123456789" --confirm
   asc pricing availability territory-availabilities --availability "AVAILABILITY_ID"`,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -189,7 +191,7 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := shared.GetASCClient()
@@ -262,7 +264,7 @@ Examples:
 			trimmedPricePointID := strings.TrimSpace(*pricePointID)
 			if trimmedPricePointID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --price-point is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--price-point")
 			}
 
 			client, err := shared.GetASCClient()
@@ -360,7 +362,7 @@ Examples:
 			}
 			if idValue == "" && appValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app or --id is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 			if idValue != "" && strings.TrimSpace(*appID) != "" {
 				fmt.Fprintln(os.Stderr, "Error: --id and --app are mutually exclusive")
@@ -447,7 +449,7 @@ Examples:
 			trimmedScheduleID := strings.TrimSpace(*scheduleID)
 			if trimmedScheduleID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --schedule is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--schedule")
 			}
 
 			client, err := shared.GetASCClient()
@@ -537,7 +539,7 @@ Examples:
 			trimmedScheduleID := strings.TrimSpace(*scheduleID)
 			if trimmedScheduleID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --schedule is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--schedule")
 			}
 
 			client, err := shared.GetASCClient()
@@ -600,8 +602,10 @@ Examples:
   asc pricing availability view --app "123456789"
   asc pricing availability view --id "AVAILABILITY_ID"
   asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true
-  asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true --available-in-new-territories true
-  asc pricing availability edit --app "123456789" --all-territories --available true --available-in-new-territories true
+  asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true
+  asc pricing availability edit --app "123456789" --all-territories --available true
+  asc pricing availability platforms --app "123456789"
+  asc pricing availability remove-from-sale --app "123456789" --confirm
   asc pricing availability territory-availabilities --availability "AVAILABILITY_ID"`,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -609,6 +613,8 @@ Examples:
 			PricingAvailabilityCreateCommand(),
 			PricingAvailabilityTerritoryAvailabilitiesCommand(),
 			PricingAvailabilitySetCommand(),
+			PricingAvailabilityPlatformsCommand(),
+			PricingAvailabilityRemoveFromSaleCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -643,7 +649,7 @@ Examples:
 			}
 			if idValue == "" && appValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app or --id is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 			if idValue != "" && strings.TrimSpace(*appID) != "" {
 				fmt.Fprintln(os.Stderr, "Error: --id and --app are mutually exclusive")
@@ -749,7 +755,10 @@ func PricingAvailabilityCreateCommand() *ffcli.Command {
 		LongHelp: `Initialize app availability for territories.
 
 Creates the initial app availability record and its territory availability
-entries through the public App Store Connect API. Once created, use
+entries through the public App Store Connect API. Apple can reject this
+bootstrap request even when it matches the published schema. If that happens,
+the command fails without treating availability as configured and explains the
+authenticated web-session or App Store Connect fallback. Once created, use
 "asc pricing availability edit" to update the record.
 
 Examples:
@@ -765,11 +774,11 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 			if !availableInNewTerritories.IsSet() {
 				fmt.Fprintln(os.Stderr, "Error: --available-in-new-territories is required (true or false)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--available-in-new-territories")
 			}
 
 			territories, err := shared.NormalizeASCTerritoryCSV(*territory)
@@ -778,11 +787,11 @@ Examples:
 			}
 			if len(territories) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --territory must include at least one value")
-				return shared.MissingRequiredUsageError()
+				return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "--territory")
 			}
 			if !available.IsSet() {
 				fmt.Fprintln(os.Stderr, "Error: --available is required (true or false)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--available")
 			}
 
 			client, err := pricingAvailabilityClientFactory()
@@ -813,12 +822,30 @@ Examples:
 				TerritoryAvailabilities:   territoryAvailabilities,
 			})
 			if err != nil {
+				if isAvailabilityBootstrapRelationshipRejection(err) {
+					return fmt.Errorf(
+						"pricing availability create: Apple rejected the initial availability request through the public API; availability was not configured. Authenticate a web session with \"asc web auth login --apple-id EMAIL\", then retry with \"asc web apps availability create\", or configure Pricing and Availability in App Store Connect: %w",
+						err,
+					)
+				}
 				return fmt.Errorf("pricing availability create: %w", err)
 			}
 
 			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
 		},
 	}
+}
+
+func isAvailabilityBootstrapRelationshipRejection(err error) bool {
+	var apiErr *asc.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "ENTITY_ERROR.RELATIONSHIP.INVALID" {
+		return false
+	}
+
+	detail := apiErr.Detail
+	return strings.Contains(detail, "territoryAvailabilities.territory") &&
+		strings.Contains(detail, "expects an included resource with type 'territories'") &&
+		strings.Contains(detail, "no matching resource was included")
 }
 
 // PricingAvailabilitySetCommand returns the availability edit subcommand.
@@ -831,13 +858,77 @@ func PricingAvailabilitySetCommand() *ffcli.Command {
 		LongHelp: `Edit app availability for territories.
 
 Examples:
-  asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true --available-in-new-territories true
-  asc pricing availability edit --app "123456789" --all-territories --available true --available-in-new-territories true
+  asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true
+  asc pricing availability edit --app "123456789" --all-territories --available true
 
 Note:
   This command only updates an existing app availability. If the app has no
-  availability record yet, use "asc pricing availability create" first.`,
+  availability record yet, use "asc pricing availability create" first.
+  If --available-in-new-territories is supplied, it verifies the existing
+  policy; Apple does not expose an update operation for that setting. If
+  Apple rejects public-API bootstrap, authenticate with
+  "asc web auth login --apple-id EMAIL" and use
+  "asc web apps availability create", or configure Pricing and Availability in
+  App Store Connect.`,
 		ErrorPrefix:                      "pricing availability edit",
 		IncludeAvailableInNewTerritories: true,
+	})
+}
+
+// PricingAvailabilityPlatformsCommand returns the platforms subcommand.
+func PricingAvailabilityPlatformsCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("pricing availability platforms", flag.ExitOnError)
+	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
+	output := shared.BindOutputFlags(fs)
+
+	return &ffcli.Command{
+		Name:       "platforms",
+		ShortUsage: "asc pricing availability platforms --app \"APP_ID\"",
+		ShortHelp:  "[experimental] Summarize each platform's App Store listing.",
+		LongHelp: `[experimental] Summarize each platform's App Store listing.
+
+This command is experimental.
+
+Shows one row per platform: the live listing when one exists, otherwise the
+newest version and its state. Availability is app-wide — every platform
+listing shares one availability record — so removing an app from sale removes
+every live platform at once. Use this command to preview that blast radius
+before "asc pricing availability remove-from-sale".
+
+Examples:
+  asc pricing availability platforms --app "123456789"`,
+		FlagSet:   fs,
+		UsageFunc: shared.DefaultUsageFunc,
+		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return shared.UsageError("pricing availability platforms does not accept positional arguments")
+			}
+			resolvedAppID := shared.ResolveAppID(*appID)
+			if resolvedAppID == "" {
+				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
+				return shared.MissingRequiredUsageError("--app")
+			}
+			client, err := pricingAvailabilityClientFactory()
+			if err != nil {
+				return fmt.Errorf("pricing availability platforms: %w", err)
+			}
+
+			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			defer cancel()
+			listings, err := shared.FetchAvailabilityPlatformListings(requestCtx, client, resolvedAppID)
+			if err != nil {
+				return fmt.Errorf("pricing availability platforms: %w", err)
+			}
+
+			result := &asc.AvailabilityPlatformsResult{AppID: resolvedAppID, Platforms: listings}
+			return shared.PrintOutput(result, *output.Output, *output.Pretty)
+		},
+	}
+}
+
+// PricingAvailabilityRemoveFromSaleCommand returns the remove-from-sale subcommand.
+func PricingAvailabilityRemoveFromSaleCommand() *ffcli.Command {
+	return shared.NewAvailabilityRemoveFromSaleCommand(shared.AvailabilityRemoveFromSaleCommandConfig{
+		ClientFactory: pricingAvailabilityClientFactory,
 	})
 }

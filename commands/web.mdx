@@ -11,8 +11,15 @@ The `asc web` command family automates App Store Connect workflows through Apple
 asc web auth login --apple-id "user@example.com"
 asc web auth status
 
+# Create a team API key and save its one-time P8
+asc web api-keys create --name "Release automation" --output-dir ~/.asc/keys
+
 # Create an app through the web flow
 asc web apps create --name "My App" --bundle-id "com.example.app" --sku "MYAPP123"
+
+# Register and list an App Group unavailable through the public API
+asc web app-groups create --name "My App Shared" --identifier "group.com.example.app.shared" --confirm
+asc web app-groups list --output table
 
 # Bootstrap app availability where the public API falls short
 asc web apps availability create --app "123456789" --territory "USA,GBR" --available-in-new-territories false
@@ -42,7 +49,7 @@ Use `asc web` when one of these is true:
 
 ## Session model
 
-`asc web` does not use App Store Connect API keys. It uses a cached Apple Account web session created with `asc web auth login`.
+`asc web` authenticates with a cached Apple Account web session created with `asc web auth login`. The `api-keys create` command uses that session to create an App Store Connect API key; it does not require an existing API key.
 
 Common session commands:
 
@@ -63,6 +70,34 @@ Available commands:
 * `asc web auth status` - inspect the current session state
 * `asc web auth capabilities` - inspect web-visible capability metadata
 * `asc web auth logout` - clear the cached web session
+
+During an interactive trusted-device challenge, `asc` shows a phone-code
+fallback hint when Apple reports a registered phone number. Enter an incorrect
+trusted-device code once; Apple then delivers the phone verification code by
+its configured method (including SMS) and `asc` prompts again. Automated flows
+rerun the configured `--two-factor-code-command` after phone fallback.
+
+### `asc web api-keys`
+
+Team API key creation through an Apple Account web session.
+
+Available commands:
+
+* `asc web api-keys create` - create an all-apps team key and save its one-time P8 as `AuthKey_<KEY_ID>.p8`
+
+Example:
+
+```bash  theme={null}
+asc web api-keys create \
+  --name "Release automation" \
+  --role APP_MANAGER \
+  --output-dir ~/.asc/keys \
+  --output json
+```
+
+The role defaults to `ADMIN`. The output file is created with mode `0600`, existing files are not replaced, and key contents are not printed to command output.
+
+Role requirement: creating a team API key requires an Account Holder or Admin web session. The `--role` value must be one of Apple's selectable team-key roles.
 
 ### `asc web apps`
 
@@ -86,6 +121,48 @@ Sandbox tester creation via the App Store Connect web UI contract.
 Available commands:
 
 * `asc web sandbox create` - create a sandbox tester
+
+### `asc web app-groups`
+
+App Group registration and Bundle ID assignment through Apple Developer Portal.
+The public App Store Connect API can enable the `APP_GROUPS` capability but
+does not expose App Group resources or their associations.
+
+Available commands:
+
+* `asc web app-groups list` - list the first page of App Groups for the selected Developer team; pass `--paginate` to fetch every page
+* `asc web app-groups create` - register a new `group.` identifier
+* `asc web app-groups assign` - idempotently associate a group with a Bundle ID and enable `APP_GROUPS` when needed
+
+Use the opaque IDs returned by the list commands for assignment:
+
+```bash  theme={null}
+asc web app-groups list --output table
+asc bundle-ids list --output table
+
+asc web app-groups assign \
+  --group "GROUP_RESOURCE_ID" \
+  --bundle-id "BUNDLE_RESOURCE_ID" \
+  --confirm
+```
+
+Repeating an assignment that already exists succeeds without mutating the
+Bundle ID and returns `{"changed":false,"status":"already-assigned"}`.
+
+When an assignment changes the App ID, existing provisioning profiles that
+contain that App ID become invalid. Regenerate affected profiles before the next
+signed build.
+
+These commands require an Account Holder or Admin web session. Because Apple
+does not publish these Developer Portal endpoints, scripts should treat this
+command family as a web-session workflow rather than a public API guarantee.
+If Apple rejects an expired or invalid Developer Portal session, refresh the
+cached session before retrying:
+
+```bash  theme={null}
+asc web auth logout --apple-id "user@example.com"
+asc web auth login --apple-id "user@example.com"
+```
 
 ### `asc web privacy`
 
@@ -227,6 +304,7 @@ Use the CLI help directly to explore the current surface:
 ```bash  theme={null}
 asc web --help
 asc web auth --help
+asc web api-keys --help
 asc web apps --help
 asc web privacy --help
 asc web review --help

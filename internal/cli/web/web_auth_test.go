@@ -153,6 +153,82 @@ func TestReadPasswordFromTerminalFD(t *testing.T) {
 	})
 }
 
+func TestPromptPasswordInteractiveUsesControllingTTYWhenStdinIsNotTerminal(t *testing.T) {
+	origOpenTTY := openTTYFn
+	origIsTerminal := termIsTerminalFn
+	t.Cleanup(func() {
+		openTTYFn = origOpenTTY
+		termIsTerminalFn = origIsTerminal
+	})
+
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open() error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = ptmx.Close()
+		_ = tty.Close()
+	})
+
+	openTTYFn = func() (*os.File, error) {
+		return tty, nil
+	}
+	termIsTerminalFn = func(fd int) bool {
+		return false
+	}
+
+	promptSeen := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 128)
+		for {
+			n, err := ptmx.Read(buf)
+			if n > 0 && strings.Contains(string(buf[:n]), "Apple Account password:") {
+				promptSeen <- nil
+				return
+			}
+			if err != nil {
+				promptSeen <- err
+				return
+			}
+		}
+	}()
+
+	type promptResult struct {
+		password string
+		err      error
+	}
+	resultCh := make(chan promptResult, 1)
+	go func() {
+		password, err := promptPasswordInteractive(context.Background())
+		resultCh <- promptResult{password: password, err: err}
+	}()
+
+	select {
+	case err := <-promptSeen:
+		if err != nil {
+			t.Fatalf("failed waiting for password prompt: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for password prompt on controlling TTY")
+	}
+
+	if _, err := ptmx.Write([]byte("tty-secret\r")); err != nil {
+		t.Fatalf("ptmx.Write() error: %v", err)
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			t.Fatalf("promptPasswordInteractive() error: %v", result.err)
+		}
+		if result.password != "tty-secret" {
+			t.Fatalf("promptPasswordInteractive() = %q, want %q", result.password, "tty-secret")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for password prompt result")
+	}
+}
+
 func TestReadPasswordFromTerminalPropagatesCtrlCAsInterrupt(t *testing.T) {
 	origSignalProcessInterrupt := signalProcessInterruptFn
 	t.Cleanup(func() {
@@ -406,6 +482,47 @@ func TestPromptTwoFactorCodeInteractiveWithoutTTYReturnsSupportedAutomationHint(
 	}
 	if !strings.Contains(err.Error(), "--"+deprecatedTwoFactorCodeFlagName) {
 		t.Fatalf("expected deprecated compatibility flag hint in error, got %v", err)
+	}
+}
+
+func TestPromptTwoFactorCodeInteractiveUsesControllingTTYWhenStdinIsNotTerminal(t *testing.T) {
+	origOpenTTY := openTTYFn
+	origIsTerminal := termIsTerminalFn
+	origReadPassword := termReadPasswordFn
+	t.Cleanup(func() {
+		openTTYFn = origOpenTTY
+		termIsTerminalFn = origIsTerminal
+		termReadPasswordFn = origReadPassword
+	})
+
+	ptmx, tty, err := pty.Open()
+	if err != nil {
+		t.Fatalf("pty.Open() error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = ptmx.Close()
+		_ = tty.Close()
+	})
+
+	openTTYFn = func() (*os.File, error) {
+		return tty, nil
+	}
+	termIsTerminalFn = func(fd int) bool {
+		return false
+	}
+	termReadPasswordFn = func(fd int) ([]byte, error) {
+		if fd != int(tty.Fd()) {
+			t.Fatalf("term.ReadPassword fd = %d, want controlling TTY fd %d", fd, tty.Fd())
+		}
+		return []byte(" 123456 "), nil
+	}
+
+	code, err := promptTwoFactorCodeInteractive()
+	if err != nil {
+		t.Fatalf("promptTwoFactorCodeInteractive() error: %v", err)
+	}
+	if code != "123456" {
+		t.Fatalf("promptTwoFactorCodeInteractive() = %q, want %q", code, "123456")
 	}
 }
 
@@ -910,13 +1027,20 @@ func TestLoginWithOptionalTwoFactorRepromptsAfterFallbackPhoneRequest(t *testing
 		return &webcore.AuthSession{}, &webcore.TwoFactorRequiredError{}
 	}
 	prepareTwoFactorChallengeFn = func(ctx context.Context, session *webcore.AuthSession) (*webcore.TwoFactorChallenge, error) {
-		return &webcore.TwoFactorChallenge{Method: "trusted-device"}, nil
+		return &webcore.TwoFactorChallenge{
+			Method:                 "trusted-device",
+			Destination:            "+1 (•••) •••-••66",
+			PhoneFallbackAvailable: true,
+		}, nil
 	}
 	ensureTwoFactorCodeRequestedFn = func(ctx context.Context, session *webcore.AuthSession) (*webcore.TwoFactorChallenge, error) {
 		t.Fatal("did not expect upfront phone-code request for trusted-device challenge")
 		return nil, nil
 	}
 	promptTwoFactorCodeFn = func() (string, error) {
+		if promptCalls == 0 && !strings.Contains(statusOutput.String(), "Need a phone verification code?") {
+			t.Fatalf("expected phone fallback guidance before the first prompt, got %q", statusOutput.String())
+		}
 		promptCalls++
 		switch promptCalls {
 		case 1:
@@ -953,10 +1077,22 @@ func TestLoginWithOptionalTwoFactorRepromptsAfterFallbackPhoneRequest(t *testing
 	if got, want := submitted, []string{"111111", "222222"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected submitted codes %v, got %v", want, got)
 	}
-	if output := statusOutput.String(); !strings.Contains(output, "Verification code sent to +1 (•••) •••-••66.") {
+	output := statusOutput.String()
+	guidanceIndex := strings.Index(output, "Need a phone verification code? Enter an incorrect trusted-device code once; Apple will then deliver a verification code to +1 (•••) •••-••66.")
+	if guidanceIndex < 0 {
+		t.Fatalf("expected initial phone fallback guidance, got %q", output)
+	}
+	if strings.Contains(output, "SMS") {
+		t.Fatalf("expected delivery-neutral guidance for voice-capable phone fallbacks, got %q", output)
+	}
+	deliveryIndex := strings.Index(output, "Verification code sent to +1 (•••) •••-••66.")
+	if deliveryIndex < 0 {
 		t.Fatalf("expected fallback delivery notice, got %q", output)
 	}
-	if output := statusOutput.String(); !strings.Contains(output, "Trusted-device verification was rejected. Enter the phone verification code that was just sent.") {
+	if guidanceIndex > deliveryIndex {
+		t.Fatalf("expected phone fallback guidance before delivery notice, got %q", output)
+	}
+	if !strings.Contains(output, "Trusted-device verification was rejected. Enter the phone verification code that was just sent.") {
 		t.Fatalf("expected fallback phone prompt guidance, got %q", output)
 	}
 }
@@ -987,7 +1123,11 @@ func TestLoginWithOptionalTwoFactorRerunsCommandAfterFallbackPhoneRequest(t *tes
 		return &webcore.AuthSession{}, &webcore.TwoFactorRequiredError{}
 	}
 	prepareTwoFactorChallengeFn = func(ctx context.Context, session *webcore.AuthSession) (*webcore.TwoFactorChallenge, error) {
-		return &webcore.TwoFactorChallenge{Method: "trusted-device"}, nil
+		return &webcore.TwoFactorChallenge{
+			Method:                 "trusted-device",
+			Destination:            "+1 (•••) •••-••66",
+			PhoneFallbackAvailable: true,
+		}, nil
 	}
 	ensureTwoFactorCodeRequestedFn = func(ctx context.Context, session *webcore.AuthSession) (*webcore.TwoFactorChallenge, error) {
 		t.Fatal("did not expect upfront phone-code request for trusted-device challenge")
@@ -1038,6 +1178,9 @@ func TestLoginWithOptionalTwoFactorRerunsCommandAfterFallbackPhoneRequest(t *tes
 	}
 	if output := statusOutput.String(); !strings.Contains(output, "Trusted-device verification was rejected. Re-running the configured 2FA code command for the phone verification code.") {
 		t.Fatalf("expected fallback command guidance, got %q", output)
+	}
+	if output := statusOutput.String(); strings.Contains(output, "Need a phone verification code?") {
+		t.Fatalf("did not expect interactive phone fallback guidance for configured command, got %q", output)
 	}
 }
 

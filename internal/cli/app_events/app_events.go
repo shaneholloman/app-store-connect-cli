@@ -57,6 +57,12 @@ func AppEventsListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
+	eventState := fs.String("event-state", "", "[experimental] Filter by lifecycle state(s), comma-separated: "+strings.Join(appEventStateList(), ", "))
+	ids := fs.String("id", "", "[experimental] Filter by app event ID(s), comma-separated")
+	fields := fs.String("fields", "", "[experimental] Fields to include: "+strings.Join(appEventFieldsList(), ", "))
+	localizationFields := fs.String("localization-fields", "", "[experimental] Fields to include for localizations: "+strings.Join(appEventLocalizationFieldsList(), ", "))
+	include := fs.String("include", "", "[experimental] Include related resources: "+strings.Join(appEventIncludeList(), ", "))
+	localizationsLimit := fs.Int("localizations-limit", 0, "[experimental] Maximum included localizations (1-50)")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
@@ -70,21 +76,79 @@ func AppEventsListCommand() *ffcli.Command {
 
 Examples:
   asc app-events list --app "APP_ID"
+  asc app-events list --app "APP_ID" --event-state PUBLISHED --include localizations --localizations-limit 10
   asc app-events list --app "APP_ID" --paginate`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
-			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("app-events list: --limit must be between 1 and 200")
-			}
 			if err := shared.ValidateNextURL(*next); err != nil {
 				return fmt.Errorf("app-events list: %w", err)
+			}
+			if err := shared.RejectNextFlagConflicts(
+				fs,
+				*next,
+				"app-events list",
+				"event-state",
+				"id",
+				"fields",
+				"localization-fields",
+				"include",
+				"localizations-limit",
+			); err != nil {
+				return err
+			}
+			for _, selection := range []struct {
+				name  string
+				value string
+			}{
+				{name: "event-state", value: *eventState},
+				{name: "id", value: *ids},
+				{name: "fields", value: *fields},
+				{name: "localization-fields", value: *localizationFields},
+				{name: "include", value: *include},
+			} {
+				if !appEventFlagWasProvided(fs, selection.name) {
+					continue
+				}
+				if err := validateAppEventCSV(selection.value, "--"+selection.name); err != nil {
+					return shared.UsageErrorf("app-events list: %v", err)
+				}
+			}
+			localizationsLimitProvided := appEventFlagWasProvided(fs, "localizations-limit")
+			if *limit != 0 && (*limit < 1 || *limit > 200) {
+				return shared.UsageErrorf("app-events list: --limit must be between 1 and 200")
+			}
+			if localizationsLimitProvided && (*localizationsLimit < 1 || *localizationsLimit > 50) {
+				return shared.UsageErrorf("app-events list: --localizations-limit must be between 1 and 50")
+			}
+
+			stateValues, err := normalizeAppEventStates(*eventState)
+			if err != nil {
+				return shared.UsageErrorf("app-events list: %v", err)
+			}
+			fieldValues, err := shared.NormalizeSelection(*fields, appEventFieldsList(), "--fields")
+			if err != nil {
+				return shared.UsageErrorf("app-events list: %v", err)
+			}
+			localizationFieldValues, err := shared.NormalizeSelection(*localizationFields, appEventLocalizationFieldsList(), "--localization-fields")
+			if err != nil {
+				return shared.UsageErrorf("app-events list: %v", err)
+			}
+			includeValues, err := shared.NormalizeSelection(*include, appEventIncludeList(), "--include")
+			if err != nil {
+				return shared.UsageErrorf("app-events list: %v", err)
+			}
+			if len(localizationFieldValues) > 0 && !shared.HasInclude(includeValues, "localizations") {
+				return shared.UsageError("app-events list: --localization-fields requires --include localizations")
+			}
+			if *localizationsLimit > 0 && !shared.HasInclude(includeValues, "localizations") {
+				return shared.UsageError("app-events list: --localizations-limit requires --include localizations")
 			}
 
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			client, err := appEventsClientFactory()
@@ -96,6 +160,12 @@ Examples:
 			defer cancel()
 
 			opts := []asc.AppEventsOption{
+				asc.WithAppEventsStates(stateValues),
+				asc.WithAppEventsIDs(shared.SplitCSV(*ids)),
+				asc.WithAppEventsFields(fieldValues),
+				asc.WithAppEventsLocalizationFields(localizationFieldValues),
+				asc.WithAppEventsInclude(includeValues),
+				asc.WithAppEventsLocalizationsLimit(*localizationsLimit),
 				asc.WithAppEventsLimit(*limit),
 				asc.WithAppEventsNextURL(*next),
 			}
@@ -147,7 +217,7 @@ Examples:
 			id := strings.TrimSpace(*eventID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --event-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--event-id")
 			}
 
 			client, err := appEventsClientFactory()
@@ -178,7 +248,7 @@ func AppEventsCreateCommand() *ffcli.Command {
 	start := fs.String("start", "", "Event start time (RFC3339)")
 	end := fs.String("end", "", "Event end time (RFC3339)")
 	publishStart := fs.String("publish-start", "", "Publish start time (RFC3339)")
-	territories := fs.String("territories", "", "Territory codes (comma-separated)")
+	territories := shared.BindOnceCSVFlag(fs, "territories", "Territory codes (comma-separated)")
 	deepLink := fs.String("deep-link", "", "Deep link URL")
 	purchaseRequirement := fs.String("purchase-requirement", "", "Purchase requirement (currently supported: "+supportedAppEventPurchaseRequirementValues()+")")
 	primaryLocale := fs.String("primary-locale", "", "Primary locale (e.g., en-US)")
@@ -193,6 +263,7 @@ func AppEventsCreateCommand() *ffcli.Command {
 		LongHelp: `Create a new in-app event.
 
 Examples:
+  asc app-events create --app "APP_ID" --name "Summer Challenge"
   asc app-events create --app "APP_ID" --name "Summer Challenge" --event-type CHALLENGE --start "2026-06-01T00:00:00Z" --end "2026-06-30T23:59:59Z"
   asc app-events create --app "APP_ID" --name "Launch Party" --event-type PREMIERE --priority HIGH --purpose ATTRACT_NEW_USERS
   asc app-events create --app "APP_ID" --name "Retro Challenge" --event-type LIVE_EVENT --priority HIGH --purpose APPROPRIATE_FOR_ALL_USERS`,
@@ -202,16 +273,16 @@ Examples:
 			resolvedAppID := shared.ResolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app")
 			}
 
 			nameValue := strings.TrimSpace(*name)
 			if nameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
-			normalizedBadge, err := normalizeAppEventBadge(*eventType, true)
+			normalizedBadge, err := normalizeAppEventBadge(*eventType)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err.Error())
 				return flag.ErrHelp
@@ -239,7 +310,7 @@ Examples:
 				return flag.ErrHelp
 			}
 
-			schedule, scheduleProvided, err := normalizeAppEventTerritorySchedule(*start, *end, *publishStart, *territories)
+			schedule, scheduleProvided, err := normalizeAppEventTerritorySchedule(*start, *end, *publishStart, territories.String())
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err.Error())
 				return flag.ErrHelp
@@ -319,7 +390,7 @@ func AppEventsUpdateCommand() *ffcli.Command {
 	start := fs.String("start", "", "Event start time (RFC3339)")
 	end := fs.String("end", "", "Event end time (RFC3339)")
 	publishStart := fs.String("publish-start", "", "Publish start time (RFC3339)")
-	territories := fs.String("territories", "", "Territory codes (comma-separated)")
+	territories := shared.BindOnceCSVFlag(fs, "territories", "Territory codes (comma-separated)")
 	deepLink := fs.String("deep-link", "", "Deep link URL")
 	purchaseRequirement := fs.String("purchase-requirement", "", "Purchase requirement (currently supported: "+supportedAppEventPurchaseRequirementValues()+")")
 	primaryLocale := fs.String("primary-locale", "", "Primary locale (e.g., en-US)")
@@ -343,7 +414,7 @@ Examples:
 			id := strings.TrimSpace(*eventID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --event-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--event-id")
 			}
 
 			var (
@@ -358,7 +429,7 @@ Examples:
 			}
 
 			if strings.TrimSpace(*eventType) != "" {
-				normalized, err := normalizeAppEventBadge(*eventType, false)
+				normalized, err := normalizeAppEventBadge(*eventType)
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "Error:", err.Error())
 					return flag.ErrHelp
@@ -420,7 +491,7 @@ Examples:
 				}
 			}
 
-			schedule, scheduleProvided, err := normalizeAppEventTerritorySchedule(*start, *end, *publishStart, *territories)
+			schedule, scheduleProvided, err := normalizeAppEventTerritorySchedule(*start, *end, *publishStart, territories.String())
 			if err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err.Error())
 				return flag.ErrHelp
@@ -432,7 +503,7 @@ Examples:
 
 			if !hasUpdate {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			client, err := appEventsClientFactory()
@@ -475,11 +546,11 @@ Examples:
 			id := strings.TrimSpace(*eventID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --event-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--event-id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := appEventsClientFactory()

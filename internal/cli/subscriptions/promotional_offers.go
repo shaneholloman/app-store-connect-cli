@@ -25,7 +25,7 @@ func SubscriptionsPromotionalOffersCommand() *ffcli.Command {
 
 Examples:
   asc subscriptions promotional-offers list --subscription-id "SUB_ID"
-  asc subscriptions promotional-offers create --subscription-id "SUB_ID" --offer-code "SPRING" --name "Spring" --offer-duration ONE_MONTH --offer-mode FREE_TRIAL --number-of-periods 1 --prices "PRICE_ID"`,
+  asc subscriptions promotional-offers create --subscription-id "SUB_ID" --offer-code "SPRING" --name "Spring" --offer-duration ONE_MONTH --offer-mode FREE_TRIAL --number-of-periods 1 --prices "US"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -83,7 +83,7 @@ Examples:
 			id := strings.TrimSpace(*subscriptionID)
 			if id == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --subscription-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--subscription-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -164,7 +164,7 @@ Examples:
 			id := strings.TrimSpace(*offerID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -200,7 +200,7 @@ func SubscriptionsPromotionalOffersCreateCommand() *ffcli.Command {
 	offerDuration := fs.String("offer-duration", "", "Offer duration: "+strings.Join(subscriptionOfferDurationValues, ", "))
 	offerMode := fs.String("offer-mode", "", "Offer mode: "+strings.Join(subscriptionOfferModeValues, ", "))
 	numberOfPeriods := fs.Int("number-of-periods", 0, "Number of periods (required)")
-	prices := fs.String("prices", "", "Promotional offer price ID(s), comma-separated")
+	prices := shared.BindOnceCSVFlag(fs, "prices", "Promotional offer prices (required): existing PRICE_ID entries, inline TERRITORY entries, or inline TERRITORY:PRICE_POINT_ID entries; territory accepts alpha-2, alpha-3, or exact English country name")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -210,26 +210,28 @@ func SubscriptionsPromotionalOffersCreateCommand() *ffcli.Command {
 		LongHelp: `Create a promotional offer.
 
 Examples:
-  asc subscriptions promotional-offers create --subscription-id "SUB_ID" --offer-code "SPRING" --name "Spring" --offer-duration ONE_MONTH --offer-mode FREE_TRIAL --number-of-periods 1 --prices "PRICE_ID"`,
+  asc subscriptions promotional-offers create --subscription-id "SUB_ID" --offer-code "SPRING" --name "Spring" --offer-duration ONE_MONTH --offer-mode FREE_TRIAL --number-of-periods 1 --prices "US"
+  asc subscriptions promotional-offers create --subscription-id "SUB_ID" --offer-code "SPRING" --name "Spring" --offer-duration ONE_MONTH --offer-mode PAY_AS_YOU_GO --number-of-periods 1 --prices "US:PRICE_POINT_ID"
+  asc subscriptions promotional-offers create --subscription-id "SUB_ID" --offer-code "SPRING" --name "Spring" --offer-duration ONE_MONTH --offer-mode PAY_UP_FRONT --number-of-periods 1 --prices "EXISTING_PROMOTIONAL_OFFER_PRICE_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			id := strings.TrimSpace(*subscriptionID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --subscription-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--subscription-id")
 			}
 
 			offerCodeValue := strings.TrimSpace(*offerCode)
 			if offerCodeValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --offer-code is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--offer-code")
 			}
 
 			nameValue := strings.TrimSpace(*name)
 			if nameValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--name")
 			}
 
 			duration, err := normalizeSubscriptionOfferDuration(*offerDuration)
@@ -246,13 +248,17 @@ Examples:
 
 			if *numberOfPeriods <= 0 {
 				fmt.Fprintln(os.Stderr, "Error: --number-of-periods is required")
-				return shared.MissingRequiredUsageError()
+				return requiredPositiveIntegerUsageError(fs, "number-of-periods")
 			}
 
-			priceIDs := shared.SplitCSV(*prices)
-			if len(priceIDs) == 0 {
+			priceEntries, err := parseSubscriptionPromotionalOfferPrices(prices.String())
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error:", err.Error())
+				return flag.ErrHelp
+			}
+			if len(priceEntries) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --prices is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--prices")
 			}
 
 			client, err := shared.GetASCClient()
@@ -276,7 +282,7 @@ Examples:
 				OfferMode:       mode,
 			}
 
-			resp, err := client.CreateSubscriptionPromotionalOffer(requestCtx, id, attrs, priceIDs)
+			resp, err := client.CreateSubscriptionPromotionalOffer(requestCtx, id, attrs, priceEntries)
 			if err != nil {
 				return fmt.Errorf("subscriptions promotional-offers create: failed to create: %w", err)
 			}
@@ -291,7 +297,7 @@ func SubscriptionsPromotionalOffersUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("promotional-offers update", flag.ExitOnError)
 
 	offerID := fs.String("id", "", "Promotional offer ID")
-	prices := fs.String("prices", "", "Promotional offer price ID(s), comma-separated")
+	prices := shared.BindOnceCSVFlag(fs, "prices", "Promotional offer price ID(s), comma-separated")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -308,13 +314,13 @@ Examples:
 			id := strings.TrimSpace(*offerID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
-			priceIDs := shared.SplitCSV(*prices)
+			priceIDs := shared.SplitCSV(prices.String())
 			if len(priceIDs) == 0 {
 				fmt.Fprintln(os.Stderr, "Error: --prices is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--prices")
 			}
 
 			client, err := shared.GetASCClient()
@@ -357,11 +363,11 @@ Examples:
 			id := strings.TrimSpace(*offerID)
 			if id == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -422,7 +428,7 @@ Examples:
 			id := strings.TrimSpace(*offerID)
 			if id == "" && strings.TrimSpace(*next) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--id")
 			}
 
 			client, err := shared.GetASCClient()

@@ -10,11 +10,12 @@ import (
 	"hash"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/urlsanitize"
 )
 
 const (
@@ -42,19 +43,6 @@ type UploadOption func(*UploadOptions)
 type uploadTask struct {
 	index int
 	op    UploadOperation
-}
-
-type sanitizedUploadError struct {
-	message string
-	err     error
-}
-
-func (e *sanitizedUploadError) Error() string {
-	return e.message
-}
-
-func (e *sanitizedUploadError) Unwrap() error {
-	return e.err
 }
 
 // WithUploadConcurrency sets the number of concurrent upload workers.
@@ -91,8 +79,27 @@ func newUploadClient() *http.Client {
 
 // ExecuteUploadOperations performs the file uploads for the provided operations.
 func ExecuteUploadOperations(ctx context.Context, filePath string, operations []UploadOperation, opts ...UploadOption) error {
+	if len(operations) == 0 {
+		return errors.New("no upload operations provided")
+	}
+
+	file, err := openUploadSourceFile(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	return ExecuteUploadOperationsFromFile(ctx, file, operations, opts...)
+}
+
+// ExecuteUploadOperationsFromFile performs upload operations against an
+// already-opened source file. The caller retains ownership of file.
+func ExecuteUploadOperationsFromFile(ctx context.Context, file *os.File, operations []UploadOperation, opts ...UploadOption) error {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if file == nil {
+		return errors.New("upload source file is required")
 	}
 	if len(operations) == 0 {
 		return errors.New("no upload operations provided")
@@ -112,22 +119,17 @@ func ExecuteUploadOperations(ctx context.Context, filePath string, operations []
 	if uploadOpts.Client == nil {
 		uploadOpts.Client = newUploadClient()
 	}
+	uploadOpts.Client = clientWithoutRedirects(uploadOpts.Client)
 	if uploadOpts.Concurrency > len(operations) {
 		uploadOpts.Concurrency = len(operations)
 	}
-
-	file, err := openUploadSourceFile(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
 		return fmt.Errorf("stat file: %w", err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("path %q is a directory", filePath)
+		return fmt.Errorf("path %q is a directory", file.Name())
 	}
 	size := info.Size()
 
@@ -271,7 +273,7 @@ func executeUploadOperation(ctx context.Context, file *os.File, task uploadTask,
 		if replaySafe && isRetryableHTTPStatus(resp.StatusCode) {
 			retryAfter := parseRetryAfterHeader(resp.Header.Get("Retry-After"))
 			return struct{}{}, &RetryableError{
-				Err:        buildRetryableError(resp.StatusCode, retryAfter, nil),
+				Err:        buildRetryableErrorWithSource(resp.StatusCode, retryAfter, nil, "upload server"),
 				RetryAfter: retryAfter,
 			}
 		}
@@ -287,25 +289,29 @@ func executeUploadOperation(ctx context.Context, file *os.File, task uploadTask,
 	return nil
 }
 
+// newSanitizedUploadError is the single upload-error boundary: presigned upload
+// URLs carry their capability in userinfo, query, and fragment, and net/http
+// renders the whole URL in its own error text.
 func newSanitizedUploadError(operation, rawURL string, err error) error {
-	safeURL := sanitizeURLForLog(rawURL)
-	parsedURL, parseErr := url.Parse(safeURL)
-	if parseErr != nil {
-		safeURL = "[REDACTED]"
-	} else {
-		parsedURL.RawQuery = ""
-		parsedURL.ForceQuery = false
-		parsedURL.Fragment = ""
-		safeURL = parsedURL.String()
-	}
-	return &sanitizedUploadError{
-		message: fmt.Sprintf("%s failed for %s", operation, safeURL),
-		err:     err,
-	}
+	return urlsanitize.NewTransportError(operation, urlsanitize.RedactURLForError(rawURL), err)
 }
 
 // VerifySourceFileChecksums computes and compares checksums provided by the API.
 func VerifySourceFileChecksums(filePath string, expected *Checksums) (*Checksums, error) {
+	if expected == nil {
+		return nil, nil
+	}
+	file, err := openUploadSourceFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("open file for checksum: %w", err)
+	}
+	defer file.Close()
+	return VerifySourceFileChecksumsFromFile(file, expected)
+}
+
+// VerifySourceFileChecksumsFromFile computes and compares API-provided
+// checksums against an already-opened source file.
+func VerifySourceFileChecksumsFromFile(file *os.File, expected *Checksums) (*Checksums, error) {
 	if expected == nil {
 		return nil, nil
 	}
@@ -316,7 +322,7 @@ func VerifySourceFileChecksums(filePath string, expected *Checksums) (*Checksums
 		if expectedHash == "" {
 			return nil, errors.New("file checksum hash is missing")
 		}
-		sum, err := ComputeFileChecksum(filePath, expected.File.Algorithm)
+		sum, err := ComputeFileChecksumFromFile(file, expected.File.Algorithm)
 		if err != nil {
 			return nil, err
 		}
@@ -330,7 +336,7 @@ func VerifySourceFileChecksums(filePath string, expected *Checksums) (*Checksums
 		if expectedHash == "" {
 			return nil, errors.New("composite checksum hash is missing")
 		}
-		sum, err := ComputeFileChecksum(filePath, expected.Composite.Algorithm)
+		sum, err := ComputeFileChecksumFromFile(file, expected.Composite.Algorithm)
 		if err != nil {
 			return nil, err
 		}
@@ -353,7 +359,15 @@ func ComputeFileChecksum(filePath string, algorithm ChecksumAlgorithm) (*Checksu
 		return nil, fmt.Errorf("open file for checksum: %w", err)
 	}
 	defer file.Close()
+	return ComputeFileChecksumFromFile(file, algorithm)
+}
 
+// ComputeFileChecksumFromFile computes a checksum from an already-opened file
+// without changing its current offset.
+func ComputeFileChecksumFromFile(file *os.File, algorithm ChecksumAlgorithm) (*Checksum, error) {
+	if file == nil {
+		return nil, errors.New("checksum source file is required")
+	}
 	var hash hash.Hash
 	switch algorithm {
 	case ChecksumAlgorithmMD5:
@@ -364,7 +378,12 @@ func ComputeFileChecksum(filePath string, algorithm ChecksumAlgorithm) (*Checksu
 		return nil, fmt.Errorf("unsupported checksum algorithm: %s", algorithm)
 	}
 
-	if _, err := io.Copy(hash, file); err != nil {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat file for checksum: %w", err)
+	}
+	reader := io.NewSectionReader(file, 0, fileInfo.Size())
+	if _, err := io.Copy(hash, reader); err != nil {
 		return nil, fmt.Errorf("compute checksum: %w", err)
 	}
 

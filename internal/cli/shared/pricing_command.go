@@ -53,7 +53,7 @@ func NewPricingSetCommand(config PricingSetCommandConfig) *ffcli.Command {
 			resolvedAppID := resolveAppID(*appID)
 			if resolvedAppID == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app is required (or set ASC_APP_ID)")
-				return MissingRequiredUsageError()
+				return MissingRequiredUsageError("--app")
 			}
 			pricePointValue := strings.TrimSpace(*pricePointID)
 			tierValue := *tier
@@ -62,23 +62,23 @@ func NewPricingSetCommand(config PricingSetCommandConfig) *ffcli.Command {
 
 			if err := ValidatePriceSelectionFlags(pricePointValue, tierValue, priceValue, freeValue); err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
-				return flag.ErrHelp
+				return reportedUsageErrHelp(err)
 			}
 			if err := ValidateFinitePriceFlag("--price", priceValue); err != nil {
 				fmt.Fprintln(os.Stderr, "Error:", err)
-				return flag.ErrHelp
+				return WithDiagnostic(flag.ErrHelp, DiagnosticInvalidInput, "--price")
 			}
 
 			baseTerritoryInput := strings.TrimSpace(*baseTerritory)
 			if requiresExplicitBaseTerritory(config, baseTerritoryInput, tierValue, priceValue, freeValue) {
 				fmt.Fprintln(os.Stderr, "Error: --base-territory is required")
-				return MissingRequiredUsageError()
+				return MissingRequiredUsageError("--base-territory")
 			}
 			baseTerritoryValue := baseTerritoryInput
 			if baseTerritoryInput != "" {
 				normalizedBaseTerritory, normalizeErr := ascterritory.Normalize(baseTerritoryInput)
 				if normalizeErr != nil {
-					return UsageError(normalizeErr.Error())
+					return WithDiagnostic(UsageError(normalizeErr.Error()), DiagnosticInvalidInput, "--base-territory")
 				}
 				baseTerritoryValue = normalizedBaseTerritory
 			}
@@ -89,13 +89,17 @@ func NewPricingSetCommand(config PricingSetCommandConfig) *ffcli.Command {
 					startDateValue = time.Now().Format("2006-01-02")
 				} else {
 					fmt.Fprintln(os.Stderr, "Error: --start-date is required")
-					return MissingRequiredUsageError()
+					return MissingRequiredUsageError("--start-date")
 				}
 			}
 
 			normalizedStartDate, err := normalizePricingStartDate(startDateValue)
 			if err != nil {
-				return fmt.Errorf("%s: %w", config.ErrorPrefix, err)
+				return WithDiagnostic(
+					fmt.Errorf("%s: %w", config.ErrorPrefix, err),
+					DiagnosticInvalidInput,
+					"--start-date",
+				)
 			}
 
 			client, err := getASCClient()

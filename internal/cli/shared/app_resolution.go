@@ -21,7 +21,10 @@ func ResolveAppStoreVersionIDAndState(ctx context.Context, client *asc.Client, a
 		return "", "", err
 	}
 	if resp == nil || len(resp.Data) == 0 {
-		return "", "", fmt.Errorf("app store version not found for version %q and platform %q", version, platform)
+		return "", "", NewErrorWithCause(
+			fmt.Errorf("app store version not found for version %q and platform %q", version, platform),
+			asc.ErrNotFound,
+		)
 	}
 	if len(resp.Data) > 1 {
 		return "", "", fmt.Errorf("multiple app store versions found for version %q and platform %q (use --version-id)", version, platform)
@@ -82,6 +85,31 @@ func ResolveAppInfoID(ctx context.Context, client *asc.Client, appID, appInfoID 
 		return selected, nil
 	}
 	return resp.Data[0].ID, nil
+}
+
+// ResolveOwnedAppInfoID resolves the app info ID and verifies that an explicit
+// override belongs to the requested app.
+func ResolveOwnedAppInfoID(ctx context.Context, client *asc.Client, appID, appInfoID string) (string, error) {
+	resolvedAppInfoID, err := ResolveAppInfoID(ctx, client, appID, appInfoID)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(appInfoID) == "" {
+		return resolvedAppInfoID, nil
+	}
+
+	resp, err := client.GetAppInfo(ctx, resolvedAppInfoID, asc.WithAppInfoInclude([]string{"app"}))
+	if err != nil {
+		return "", err
+	}
+	ownerAppID, err := asc.AppInfoAppID(resp)
+	if err != nil {
+		return "", err
+	}
+	if !strings.EqualFold(strings.TrimSpace(ownerAppID), strings.TrimSpace(appID)) {
+		return "", fmt.Errorf("app info %q belongs to app %q, not %q", resolvedAppInfoID, ownerAppID, strings.TrimSpace(appID))
+	}
+	return resolvedAppInfoID, nil
 }
 
 func autoSelectEditableAppInfoID(appInfos *asc.AppInfosResponse) (string, string) {

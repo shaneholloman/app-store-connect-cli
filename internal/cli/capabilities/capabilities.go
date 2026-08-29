@@ -274,10 +274,11 @@ func capabilityRows() []Capability {
 		{
 			Area:         "app-management",
 			Capability:   "Initial app availability bootstrap",
-			Status:       statusCLISupported,
-			Commands:     []string{"asc pricing availability create"},
+			Status:       statusPartial,
+			Commands:     []string{"asc pricing availability create", "asc web apps availability create"},
 			APIResources: []string{"POST /v2/appAvailabilities", "territoryAvailabilities"},
-			Notes:        []string{"The CLI creates the initial appAvailabilityV2 record with inline territory availability resources."},
+			Notes:        []string{"The public command sends Apple's documented inline territory payload, but Apple can reject the bootstrap request. The web command requires an authenticated Apple web session."},
+			NextAction:   "If public bootstrap is rejected, run asc web auth login --apple-id EMAIL and use asc web apps availability create, or configure Pricing and Availability in App Store Connect.",
 		},
 		{
 			Area:       "app-management",
@@ -290,7 +291,7 @@ func capabilityRows() []Capability {
 				"appPriceSchedules",
 				"appPricePoints",
 			},
-			Notes: []string{"Availability records can be created and edited through the public App Store Connect API."},
+			Notes: []string{"Existing availability records can be viewed and edited through the public App Store Connect API; initial bootstrap can require an authenticated web session or App Store Connect."},
 		},
 		{
 			Area:       "metadata",
@@ -425,6 +426,15 @@ func capabilityRows() []Capability {
 				"profiles",
 				"devices",
 			},
+		},
+		{
+			Area:         "signing",
+			Capability:   "Developer Portal-only Bundle ID capabilities",
+			Status:       statusWebSession,
+			Commands:     []string{"asc web bundle-ids capabilities enable"},
+			APIResources: []string{"PRIVATE_CLOUD_COMPUTE"},
+			Notes:        []string{"Supports explicitly modeled Developer Portal capabilities that are absent from Apple's public App Store Connect capability enum; currently PRIVATE_CLOUD_COMPUTE."},
+			NextAction:   "Use asc web bundle-ids capabilities enable with a Developer Portal Bundle ID resource ID and --confirm.",
 		},
 		{
 			Area:       "automation",

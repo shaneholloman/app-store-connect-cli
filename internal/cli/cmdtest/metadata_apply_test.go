@@ -17,18 +17,21 @@ import (
 
 	rootcmd "github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
 	metadatacli "github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/metadata"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
 func TestMetadataApplyValidationErrors(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    []string
-		wantErr string
+		name        string
+		args        []string
+		wantErr     string
+		wantConcise bool
 	}{
 		{
-			name:    "metadata apply missing dir",
-			args:    []string{"metadata", "apply", "--app", "123456789", "--version", "1.2.3"},
-			wantErr: "--dir is required",
+			name:        "metadata apply missing dir",
+			args:        []string{"metadata", "apply", "--app", "123456789", "--version", "1.2.3"},
+			wantErr:     "--dir is required",
+			wantConcise: true,
 		},
 		{
 			name:    "metadata apply positional args rejected",
@@ -47,7 +50,15 @@ func TestMetadataApplyValidationErrors(t *testing.T) {
 					t.Fatalf("parse error: %v", err)
 				}
 				err := root.Run(context.Background())
-				if !errors.Is(err, flag.ErrHelp) {
+				if test.wantConcise {
+					if errors.Is(err, flag.ErrHelp) || !shared.IsReportedUsageError(err) {
+						t.Fatalf("expected reported usage error without ErrHelp, got %v", err)
+					}
+					diagnostic, ok := shared.DiagnosticFromError(err)
+					if !ok || diagnostic.Code != shared.DiagnosticRequiredInputMissing || diagnostic.Parameter != "--dir" {
+						t.Fatalf("diagnostic = %+v, found=%t", diagnostic, ok)
+					}
+				} else if !errors.Is(err, flag.ErrHelp) {
 					t.Fatalf("expected ErrHelp, got %v", err)
 				}
 			})
@@ -57,6 +68,9 @@ func TestMetadataApplyValidationErrors(t *testing.T) {
 			}
 			if !strings.Contains(stderr, test.wantErr) {
 				t.Fatalf("expected error %q, got %q", test.wantErr, stderr)
+			}
+			if test.wantConcise && stderr != "Error: "+test.wantErr+"\n" {
+				t.Fatalf("stderr = %q, want %q", stderr, "Error: "+test.wantErr+"\n")
 			}
 		})
 	}
@@ -735,6 +749,9 @@ func TestMetadataApplyFailsOnPartialMutation(t *testing.T) {
 
 	if _, ok := errors.AsType[ReportedError](runErr); !ok {
 		t.Fatalf("expected reported partial failure, got %T: %v", runErr, runErr)
+	}
+	if got := rootcmd.ExitCodeFromError(runErr); got != rootcmd.ExitHTTPInternalServer {
+		t.Fatalf("expected partial server failure exit %d, got %d", rootcmd.ExitHTTPInternalServer, got)
 	}
 	if patchCount != 3 {
 		t.Fatalf("expected all three patch attempts despite the middle failure, got %d", patchCount)
@@ -1644,10 +1661,10 @@ func (r *cancelOnEOFReadCloser) Close() error {
 	return nil
 }
 
-func TestMetadataApplyPartialBatchExitCode(t *testing.T) {
+func TestMetadataApplyPartialBatchPreservesTypedExitCode(t *testing.T) {
 	run := runFailedMetadataApply(t, "json", true, false)
-	if run.code != rootcmd.ExitError {
-		t.Fatalf("expected partial exit %d, got %d; stderr=%q", rootcmd.ExitError, run.code, run.stderr)
+	if run.code != rootcmd.ExitHTTPUnprocessable {
+		t.Fatalf("expected partial exit %d, got %d; stderr=%q", rootcmd.ExitHTTPUnprocessable, run.code, run.stderr)
 	}
 	if run.stderr != "" {
 		t.Fatalf("expected reported error to avoid duplicate stderr, got %q", run.stderr)

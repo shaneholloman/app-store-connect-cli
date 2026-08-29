@@ -34,6 +34,23 @@ var appStoreVersionRelationshipKinds = map[string]relationshipKind{
 	"gameCenterAppVersion":           relationshipSingle,
 }
 
+func paginationConflictParameter(limit int, next string, paginate bool) string {
+	parameters := make([]string, 0, 3)
+	if limit != 0 {
+		parameters = append(parameters, "--limit")
+	}
+	if strings.TrimSpace(next) != "" {
+		parameters = append(parameters, "--next")
+	}
+	if paginate {
+		parameters = append(parameters, "--paginate")
+	}
+	if len(parameters) == 1 {
+		return parameters[0]
+	}
+	return ""
+}
+
 // VersionsRelationshipsCommand returns the links subcommand.
 func VersionsRelationshipsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("versions links", flag.ExitOnError)
@@ -58,34 +75,46 @@ Examples:
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			if *limit != 0 && (*limit < 1 || *limit > 200) {
-				return fmt.Errorf("versions links: --limit must be between 1 and 200")
+				return shared.WithDiagnostic(
+					fmt.Errorf("versions links: --limit must be between 1 and 200"),
+					shared.DiagnosticInvalidInput,
+					"--limit",
+				)
 			}
 			if err := shared.ValidateNextURL(*next); err != nil {
-				return fmt.Errorf("versions links: %w", err)
+				return shared.WithDiagnostic(
+					fmt.Errorf("versions links: %w", err),
+					shared.DiagnosticInvalidInput,
+					"--next",
+				)
 			}
 
 			relationshipType := strings.TrimSpace(*relType)
 			if relationshipType == "" {
 				fmt.Fprintln(os.Stderr, "Error: --type is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--type")
 			}
 
 			kind, ok := appStoreVersionRelationshipKinds[relationshipType]
 			if !ok {
 				fmt.Fprintf(os.Stderr, "Error: --type must be one of: %s\n", strings.Join(appStoreVersionRelationshipList(), ", "))
-				return flag.ErrHelp
+				return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "--type")
 			}
 
 			trimmedID := strings.TrimSpace(*versionID)
 			trimmedNext := strings.TrimSpace(*next)
 			if trimmedID == "" && trimmedNext == "" {
 				fmt.Fprintln(os.Stderr, "Error: --version-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--version-id")
 			}
 
 			if kind == relationshipSingle && (trimmedNext != "" || *paginate || *limit != 0) {
 				fmt.Fprintln(os.Stderr, "Error: --limit, --next, and --paginate are only valid for to-many relationships")
-				return flag.ErrHelp
+				return shared.WithDiagnostic(
+					flag.ErrHelp,
+					shared.DiagnosticConflictingInput,
+					paginationConflictParameter(*limit, trimmedNext, *paginate),
+				)
 			}
 
 			client, err := shared.GetASCClient()

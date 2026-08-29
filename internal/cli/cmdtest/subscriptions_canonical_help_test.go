@@ -3,9 +3,74 @@ package cmdtest
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/peterbourgon/ff/v3/ffcli"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/subscriptions"
 )
+
+func TestSubscriptionsAvailabilityHelpMatchesRegisteredPath(t *testing.T) {
+	root := RootCommand("1.2.3")
+	source := subscriptions.SubscriptionsAvailabilityCommand()
+
+	tests := []struct {
+		name          string
+		sourceCommand *ffcli.Command
+		rootPath      []string
+		usagePrefix   string
+	}{
+		{
+			name:          "group",
+			sourceCommand: source,
+			rootPath:      []string{"subscriptions", "pricing", "availability"},
+			usagePrefix:   "asc subscriptions pricing availability ",
+		},
+		{
+			name:          "view",
+			sourceCommand: findSubcommand(source, "view"),
+			rootPath:      []string{"subscriptions", "pricing", "availability", "view"},
+			usagePrefix:   "asc subscriptions pricing availability view ",
+		},
+		{
+			name:          "available-territories",
+			sourceCommand: findSubcommand(source, "available-territories"),
+			rootPath:      []string{"subscriptions", "pricing", "availability", "available-territories"},
+			usagePrefix:   "asc subscriptions pricing availability available-territories ",
+		},
+		{
+			name:          "edit",
+			sourceCommand: findSubcommand(source, "edit"),
+			rootPath:      []string{"subscriptions", "pricing", "availability", "edit"},
+			usagePrefix:   "asc subscriptions pricing availability edit ",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.sourceCommand == nil {
+				t.Fatal("expected source command")
+			}
+			if registered := findSubcommand(root, test.rootPath...); registered == nil {
+				t.Fatalf("expected registered command %q", strings.Join(test.rootPath, " "))
+			}
+			if !strings.HasPrefix(test.sourceCommand.ShortUsage, test.usagePrefix) {
+				t.Fatalf("expected source usage to match registered path %q, got %q", strings.Join(test.rootPath, " "), test.sourceCommand.ShortUsage)
+			}
+			if strings.Contains(test.sourceCommand.LongHelp, "asc subscriptions availability") {
+				t.Fatalf("expected examples to use registered pricing path, got %q", test.sourceCommand.LongHelp)
+			}
+		})
+	}
+
+	availableTerritories := findSubcommand(source, "available-territories")
+	if !strings.Contains(availableTerritories.LongHelp, "Use --next instead of either selector") {
+		t.Fatalf("expected available-territories help to explain cursor continuation, got %q", availableTerritories.LongHelp)
+	}
+}
 
 func TestSubscriptionsHelpShowsCanonicalCommerceSubcommands(t *testing.T) {
 	root := RootCommand("1.2.3")
@@ -133,6 +198,35 @@ func TestSubscriptionsHelpShowsCanonicalCommerceSubcommands(t *testing.T) {
 		}
 	}
 
+	introductoryViewCmd := findSubcommand(root, "subscriptions", "offers", "introductory", "view")
+	if introductoryViewCmd == nil {
+		t.Fatal("expected subscriptions offers introductory view command")
+		return
+	}
+	introductoryViewUsage := introductoryViewCmd.UsageFunc(introductoryViewCmd)
+	if !strings.Contains(introductoryViewUsage, `asc subscriptions offers introductory view --subscription-id "SUB_ID" --id "OFFER_ID"`) {
+		t.Fatalf("expected introductory offer view help to require the parent subscription, got %q", introductoryViewUsage)
+	}
+	if !strings.Contains(introductoryViewUsage, "--app") {
+		t.Fatalf("expected introductory offer view help to document subscription resolution, got %q", introductoryViewUsage)
+	}
+	if strings.Contains(introductoryViewUsage, `asc subscriptions offers introductory view --id "OFFER_ID"`) {
+		t.Fatalf("expected introductory offer view help to drop the unsupported id-only invocation, got %q", introductoryViewUsage)
+	}
+
+	introductoryCreateCmd := findSubcommand(root, "subscriptions", "offers", "introductory", "create")
+	if introductoryCreateCmd == nil {
+		t.Fatal("expected subscriptions offers introductory create command")
+		return
+	}
+	introductoryCreateUsage := introductoryCreateCmd.UsageFunc(introductoryCreateCmd)
+	if !strings.Contains(introductoryCreateUsage, `(--territory "USA" | --all-territories)`) {
+		t.Fatalf("expected introductory offer create help to require one territory selector, got %q", introductoryCreateUsage)
+	}
+	if strings.Contains(introductoryCreateUsage, `--territory ALL`) {
+		t.Fatalf("expected introductory offer create help to omit the deprecated ALL alias, got %q", introductoryCreateUsage)
+	}
+
 	offerCodesCmd := findSubcommand(root, "subscriptions", "offers", "offer-codes")
 	if offerCodesCmd == nil {
 		t.Fatal("expected subscriptions offers offer-codes command")
@@ -153,6 +247,31 @@ func TestSubscriptionsHelpShowsCanonicalCommerceSubcommands(t *testing.T) {
 	}
 	if strings.Contains(offerCodesUsage, `--prices "PRICE_ID"`) {
 		t.Fatalf("expected subscriptions offers offer-codes help to drop stale price example, got %q", offerCodesUsage)
+	}
+
+	promotionalCmd := findSubcommand(root, "subscriptions", "offers", "promotional")
+	if promotionalCmd == nil {
+		t.Fatal("expected subscriptions offers promotional command")
+		return
+	}
+	promotionalUsage := promotionalCmd.UsageFunc(promotionalCmd)
+	if !strings.Contains(promotionalUsage, `--prices "US"`) {
+		t.Fatalf("expected promotional offer help to show FREE_TRIAL territory prices, got %q", promotionalUsage)
+	}
+	if strings.Contains(promotionalUsage, `--prices "PRICE_ID"`) {
+		t.Fatalf("expected promotional offer help to drop pre-existing price IDs, got %q", promotionalUsage)
+	}
+	promotionalCreateCmd := findSubcommand(root, "subscriptions", "offers", "promotional", "create")
+	if promotionalCreateCmd == nil {
+		t.Fatal("expected subscriptions offers promotional create command")
+		return
+	}
+	promotionalCreateUsage := promotionalCreateCmd.UsageFunc(promotionalCreateCmd)
+	if !strings.Contains(promotionalCreateUsage, `--prices "US:PRICE_POINT_ID"`) {
+		t.Fatalf("expected promotional offer create help to show paid territory prices, got %q", promotionalCreateUsage)
+	}
+	if strings.Contains(promotionalCreateUsage, `--prices "PRICE_ID"`) {
+		t.Fatalf("expected promotional offer create help to drop pre-existing price IDs, got %q", promotionalCreateUsage)
 	}
 
 	reviewCmd := findSubcommand(root, "subscriptions", "review")
@@ -292,6 +411,23 @@ func TestCanonicalWrapperErrorsUseCanonicalPaths(t *testing.T) {
 				t.Fatalf("expected empty stderr, got %q", stderr)
 			}
 		})
+	}
+}
+
+func TestSubscriptionsDocsOnlyMentionDeprecatedIntroductoryOfferAliasInMigrationNote(t *testing.T) {
+	docsPath := filepath.Join("..", "..", "..", "commands", "subscriptions.mdx")
+	docs, err := os.ReadFile(docsPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", docsPath, err)
+	}
+
+	content := string(docs)
+	const deprecatedAlias = "--territory ALL"
+	if got := strings.Count(content, deprecatedAlias); got != 1 {
+		t.Fatalf("expected subscriptions docs to mention deprecated alias once in the migration note, got %d occurrences", got)
+	}
+	if !strings.Contains(content, "`--territory ALL` remains accepted as a deprecated compatibility spelling") {
+		t.Fatal("expected subscriptions docs to retain the deprecated alias migration note")
 	}
 }
 

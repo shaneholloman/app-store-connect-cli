@@ -80,7 +80,7 @@ Examples:
 			appClipValue := strings.TrimSpace(*appClipID)
 			if appClipValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app-clip-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app-clip-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -153,7 +153,7 @@ Examples:
 			idValue := strings.TrimSpace(*experienceID)
 			if idValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --experience-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--experience-id")
 			}
 
 			includeValue, err := normalizeAppClipDefaultExperienceInclude(*include)
@@ -186,6 +186,7 @@ func AppClipDefaultExperiencesCreateCommand() *ffcli.Command {
 	appClipID := fs.String("app-clip-id", "", "App Clip ID")
 	action := fs.String("action", "", "Action (OPEN, VIEW, PLAY)")
 	releaseVersionID := fs.String("release-version-id", "", "Release with App Store version ID")
+	templateID := fs.String("template-id", "", "Existing default experience ID to use as a template")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -194,16 +195,30 @@ func AppClipDefaultExperiencesCreateCommand() *ffcli.Command {
 		ShortHelp:  "Create a default experience.",
 		LongHelp: `Create a default experience.
 
+Use --template-id to clone an existing default experience. Apple copies the
+template's metadata (header image and localizations) onto the new experience,
+so they do not have to be re-uploaded or recreated.
+
 Examples:
   asc app-clips default-experiences create --app-clip-id "CLIP_ID" --action OPEN
-  asc app-clips default-experiences create --app-clip-id "CLIP_ID" --release-version-id "VERSION_ID"`,
+  asc app-clips default-experiences create --app-clip-id "CLIP_ID" --release-version-id "VERSION_ID"
+  asc app-clips default-experiences create --app-clip-id "CLIP_ID" --release-version-id "VERSION_ID" --template-id "CURRENT_EXPERIENCE_ID"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
 			appClipValue := strings.TrimSpace(*appClipID)
 			if appClipValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --app-clip-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--app-clip-id")
+			}
+
+			templateValue := strings.TrimSpace(*templateID)
+			templateProvided := false
+			fs.Visit(func(f *flag.Flag) {
+				templateProvided = templateProvided || f.Name == "template-id"
+			})
+			if templateProvided && templateValue == "" {
+				return fmt.Errorf("app-clips default-experiences create: --template-id must not be empty")
 			}
 
 			var attrs *asc.AppClipDefaultExperienceCreateAttributes
@@ -217,7 +232,7 @@ Examples:
 				}
 			}
 
-			client, err := shared.GetASCClient()
+			client, err := appClipsClientFactory()
 			if err != nil {
 				return fmt.Errorf("app-clips default-experiences create: %w", err)
 			}
@@ -225,7 +240,7 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			resp, err := client.CreateAppClipDefaultExperience(requestCtx, appClipValue, attrs, *releaseVersionID, "")
+			resp, err := client.CreateAppClipDefaultExperience(requestCtx, appClipValue, attrs, *releaseVersionID, templateValue)
 			if err != nil {
 				return fmt.Errorf("app-clips default-experiences create: failed to create: %w", err)
 			}
@@ -259,7 +274,7 @@ Examples:
 			experienceValue := strings.TrimSpace(*experienceID)
 			if experienceValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --experience-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--experience-id")
 			}
 
 			visited := map[string]bool{}
@@ -269,7 +284,7 @@ Examples:
 
 			if !visited["action"] && !visited["release-version-id"] {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("")
 			}
 
 			var attrs *asc.AppClipDefaultExperienceUpdateAttributes
@@ -323,11 +338,11 @@ Examples:
 			experienceValue := strings.TrimSpace(*experienceID)
 			if experienceValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --experience-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--experience-id")
 			}
 			if !*confirm {
 				fmt.Fprintln(os.Stderr, "Error: --confirm is required to delete")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--confirm")
 			}
 
 			client, err := shared.GetASCClient()
@@ -373,7 +388,7 @@ Examples:
 			experienceValue := strings.TrimSpace(*experienceID)
 			if experienceValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --experience-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--experience-id")
 			}
 
 			client, err := shared.GetASCClient()
@@ -415,7 +430,7 @@ Examples:
 			experienceValue := strings.TrimSpace(*experienceID)
 			if experienceValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: --experience-id is required")
-				return shared.MissingRequiredUsageError()
+				return shared.MissingRequiredUsageError("--experience-id")
 			}
 
 			client, err := shared.GetASCClient()

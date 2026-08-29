@@ -5,7 +5,11 @@ Thanks for your interest in contributing to asc cli!
 ## Development Setup
 
 Requirements:
-- Go 1.26+
+- Git
+- The Go version declared by `go.mod`; the Go toolchain can download it automatically when needed
+
+Released `asc` binaries are self-contained and do not require Go. Go is only
+required when building or testing from source.
 
 Clone and build:
 ```bash
@@ -67,7 +71,7 @@ Do not commit secrets.
 
 ## Local Validation
 
-Run this checklist before opening a PR:
+Run this checklist before opening a PR that changes CLI behavior, shared code, or release surfaces:
 
 ```bash
 make tools               # Install gofumpt + golangci-lint
@@ -79,9 +83,12 @@ make build               # Build binary
 ./asc --help             # Smoke-test the binary
 ```
 
+For a narrowly scoped documentation or skill change, run `make check-docs`; it includes the repository and skill validators. For a Wall-only PR, run `make check-wall-of-apps` on the exact head. Use broader checks when the changed surface or repository policy requires them.
+
 ## Pull Request Guidelines
 
 - Keep PRs small and focused.
+- Preserve additive commit history on shared PRs. Maintainers use regular merge commits by default and squash only when explicitly requested.
 - Add or update tests for new behavior.
 - When pruning repetitive tests, prefer grouped/table-driven suites, but keep representative high-signal assertions for response decoding and user-facing output formatting.
 - Update `README.md` if behavior or scope changes.
