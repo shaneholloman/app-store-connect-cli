@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,15 @@ var (
 	}
 	getWebAPIKeyFn = func(ctx context.Context, client *webcore.Client, keyID string) (*webcore.APIKey, error) {
 		return client.GetAPIKey(ctx, keyID)
+	}
+	listWebAPIKeysFn = func(ctx context.Context, client *webcore.Client) ([]webcore.APIKeyListItem, error) {
+		return client.ListAPIKeys(ctx)
+	}
+	listWebAPIKeysByKindFn = func(ctx context.Context, client *webcore.Client, kind string) ([]webcore.APIKeyListItem, error) {
+		return client.ListAPIKeysByKind(ctx, kind)
+	}
+	revokeWebAPIKeyFn = func(ctx context.Context, client *webcore.Client, keyID, kind string) error {
+		return client.RevokeAPIKey(ctx, keyID, kind)
 	}
 	waitWebAPIKeyRetryFn = waitForWebAPIKeyRetry
 )
@@ -59,15 +69,375 @@ func WebAPIKeysCommand() *ffcli.Command {
 
 Manage App Store Connect API keys using a cached Apple Account web session.
 
+Examples:
+  asc web api-keys list --output json
+  asc web api-keys view --key-id KEY_ID
+  asc web api-keys create --name "Release automation"
+  asc web api-keys create-individual --user-id USER_UUID --output-dir ~/.asc/keys --confirm
+  asc web api-keys revoke --key-id KEY_ID --type team --confirm
+
 `,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
+			WebAPIKeysListCommand(),
+			WebAPIKeysViewCommand(),
 			WebAPIKeysCreateCommand(),
+			WebAPIKeysCreateIndividualCommand(),
+			WebAPIKeysRevokeCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
 		},
+	}
+}
+
+// WebAPIKeysListCommand lists team and individual API keys visible to the web session.
+func WebAPIKeysListCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("web api-keys list", flag.ExitOnError)
+
+	authFlags := bindWebSessionFlags(fs)
+	output := shared.BindOutputFlags(fs)
+
+	return &ffcli.Command{
+		Name:       "list",
+		ShortUsage: "asc web api-keys list [flags]",
+		ShortHelp:  "List App Store Connect API keys via a web session.",
+		LongHelp: `WEB SESSION WORKFLOWS
+
+List team and individual App Store Connect API keys visible to the cached Apple
+Account web session. Output includes key ID, name, kind, roles, and active
+state. Creation date is omitted because the existing key-list readers do not
+expose it. Key material is never printed. Individual keys may have empty roles
+on this list; use "asc web auth capabilities --key-id" to resolve actor-backed
+roles for one key.
+
+The underlying readers already follow every pagination link, so this command
+always returns the complete visible set and does not accept --paginate.
+
+Examples:
+  asc web api-keys list
+  asc web api-keys list --output json
+
+`,
+		FlagSet:   fs,
+		UsageFunc: shared.DefaultUsageFunc,
+		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return shared.UsageError("web api-keys list does not accept positional arguments")
+			}
+			if _, err := shared.ValidateOutputFormat(*output.Output, *output.Pretty); err != nil {
+				return shared.UsageError(err.Error())
+			}
+
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
+			defer cancel()
+			if err != nil {
+				return err
+			}
+			client := newWebAPIKeyClientFn(session)
+
+			var keys []webcore.APIKeyListItem
+			err = withWebSpinner("Loading App Store Connect API keys", func() error {
+				var listErr error
+				keys, listErr = listWebAPIKeysFn(requestCtx, client)
+				return listErr
+			})
+			if err != nil {
+				return withWebAuthHint(err, "web api-keys list")
+			}
+			if keys == nil {
+				keys = []webcore.APIKeyListItem{}
+			}
+
+			result := &asc.WebAPIKeysListResult{Keys: make([]asc.WebAPIKeyListItem, 0, len(keys))}
+			for _, key := range keys {
+				result.Keys = append(result.Keys, webAPIKeyListItemFromClient(key))
+			}
+			return shared.PrintOutput(result, *output.Output, *output.Pretty)
+		},
+	}
+}
+
+// WebAPIKeysViewCommand inspects one team API key by ID.
+func WebAPIKeysViewCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("web api-keys view", flag.ExitOnError)
+
+	keyID := fs.String("key-id", "", "API key ID")
+	authFlags := bindWebSessionFlags(fs)
+	output := shared.BindOutputFlags(fs)
+
+	return &ffcli.Command{
+		Name:       "view",
+		ShortUsage: "asc web api-keys view --key-id KEY_ID [flags]",
+		ShortHelp:  "View one App Store Connect API key via a web session.",
+		LongHelp: `WEB SESSION WORKFLOWS
+
+Inspect one team API key by ID using the iris v1 key resource. Output includes
+key ID, name, issuer ID, roles, and active state. Creation date is omitted
+because the existing GetAPIKey reader does not expose it. Key material is never
+printed.
+
+Individual keys appear in "asc web api-keys list" but are not loaded by this
+command.
+
+Examples:
+  asc web api-keys view --key-id KEY_ID
+  asc web api-keys view --key-id KEY_ID --output json
+
+`,
+		FlagSet:   fs,
+		UsageFunc: shared.DefaultUsageFunc,
+		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return shared.UsageError("web api-keys view does not accept positional arguments")
+			}
+			if _, err := shared.ValidateOutputFormat(*output.Output, *output.Pretty); err != nil {
+				return shared.UsageError(err.Error())
+			}
+			keyIDValue := strings.TrimSpace(*keyID)
+			if keyIDValue == "" {
+				return shared.UsageError("--key-id is required")
+			}
+
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
+			defer cancel()
+			if err != nil {
+				return err
+			}
+			client := newWebAPIKeyClientFn(session)
+
+			var details *webcore.APIKey
+			err = withWebSpinner("Loading App Store Connect API key", func() error {
+				var getErr error
+				details, getErr = getWebAPIKeyFn(requestCtx, client, keyIDValue)
+				return getErr
+			})
+			if err != nil {
+				return withWebAuthHint(err, "web api-keys view")
+			}
+			if details == nil {
+				return fmt.Errorf("web api-keys view failed: response did not include a key")
+			}
+
+			result := webAPIKeyGetResultFromClient(details)
+			return shared.PrintOutput(result, *output.Output, *output.Pretty)
+		},
+	}
+}
+
+const (
+	webAPIKeyRevokeStatusRevoked         = "revoked"
+	webAPIKeyRevokeStatusAlreadyInactive = "already_inactive"
+)
+
+// WebAPIKeysRevokeCommand revokes one team or individual API key.
+func WebAPIKeysRevokeCommand() *ffcli.Command {
+	fs := flag.NewFlagSet("web api-keys revoke", flag.ExitOnError)
+
+	keyID := fs.String("key-id", "", "API key ID")
+	kind := fs.String("type", "", "API key type: team or individual")
+	confirm := fs.Bool("confirm", false, "Confirm revoking this API key")
+	authFlags := bindWebSessionFlags(fs)
+	output := shared.BindOutputFlags(fs)
+
+	return &ffcli.Command{
+		Name:       "revoke",
+		ShortUsage: "asc web api-keys revoke --key-id KEY_ID --type team|individual --confirm [flags]",
+		ShortHelp:  "Revoke a team or individual App Store Connect API key via a web session.",
+		LongHelp: `WEB SESSION WORKFLOWS
+
+Revoke one visible App Store Connect API key using the cached Apple Account web
+session. The command first loads only the requested key type and fails closed
+unless exactly one matching key is present. An already inactive key is a
+verified no-op. An active key is revoked with one type-specific web request and
+the same key list is reloaded to verify that it is inactive.
+
+The operation requires --confirm. Key material is never printed. Use the
+opaque ID returned by "asc web api-keys list" and pass --type team or
+--type individual explicitly because the two key families use different web
+hosts.
+
+Examples:
+  asc web api-keys revoke --key-id KEY_ID --type team --confirm
+  asc web api-keys revoke --key-id KEY_ID --type individual --confirm --output json
+
+`,
+		FlagSet:   fs,
+		UsageFunc: shared.DefaultUsageFunc,
+		Exec: func(ctx context.Context, args []string) error {
+			if len(args) > 0 {
+				return shared.UsageError("web api-keys revoke does not accept positional arguments")
+			}
+			if _, err := shared.ValidateOutputFormat(*output.Output, *output.Pretty); err != nil {
+				return shared.UsageError(err.Error())
+			}
+
+			resolvedKeyID := strings.TrimSpace(*keyID)
+			if resolvedKeyID == "" {
+				return shared.UsageError("--key-id is required")
+			}
+			resolvedKind, err := normalizeWebAPIKeyKind(*kind)
+			if err != nil {
+				return shared.UsageError(err.Error())
+			}
+			if !*confirm {
+				return shared.UsageError("--confirm is required")
+			}
+
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
+			defer cancel()
+			if err != nil {
+				return err
+			}
+			client := newWebAPIKeyClientFn(session)
+
+			var before []webcore.APIKeyListItem
+			err = withWebSpinner("Loading API key before revocation", func() error {
+				var listErr error
+				before, listErr = listWebAPIKeysByKindFn(requestCtx, client, resolvedKind)
+				return listErr
+			})
+			if err != nil {
+				return withWebAuthHint(err, "web api-keys revoke")
+			}
+			selected, err := findWebAPIKeyForRevoke(before, resolvedKeyID, resolvedKind)
+			if err != nil {
+				return err
+			}
+			if !selected.Active {
+				return shared.PrintOutput(&asc.WebAPIKeyRevokeResult{
+					KeyID:   resolvedKeyID,
+					Kind:    resolvedKind,
+					Changed: false,
+					Active:  false,
+					Status:  webAPIKeyRevokeStatusAlreadyInactive,
+				}, *output.Output, *output.Pretty)
+			}
+
+			err = withWebSpinner("Revoking App Store Connect API key", func() error {
+				return revokeWebAPIKeyFn(requestCtx, client, resolvedKeyID, resolvedKind)
+			})
+			if err != nil {
+				if isUnknownWebAPIKeyRevokeError(err) {
+					return unknownWebAPIKeyRevokeError(err, "the revoke request")
+				}
+				return withWebAuthHint(err, "web api-keys revoke")
+			}
+
+			var after []webcore.APIKeyListItem
+			err = withWebSpinner("Verifying API key revocation", func() error {
+				var listErr error
+				after, listErr = listWebAPIKeysByKindFn(requestCtx, client, resolvedKind)
+				return listErr
+			})
+			if err != nil {
+				return unknownWebAPIKeyRevokeError(err, "post-state verification")
+			}
+			verified, err := findWebAPIKeyForRevoke(after, resolvedKeyID, resolvedKind)
+			if err != nil {
+				return unknownWebAPIKeyRevokeError(err, "post-state verification")
+			}
+			if verified.Active {
+				return unknownWebAPIKeyRevokeError(
+					fmt.Errorf("key %q remains active", resolvedKeyID),
+					"post-state verification",
+				)
+			}
+
+			return shared.PrintOutput(&asc.WebAPIKeyRevokeResult{
+				KeyID:   resolvedKeyID,
+				Kind:    resolvedKind,
+				Changed: true,
+				Active:  false,
+				Status:  webAPIKeyRevokeStatusRevoked,
+			}, *output.Output, *output.Pretty)
+		},
+	}
+}
+
+func isUnknownWebAPIKeyRevokeError(err error) bool {
+	var apiErr *webcore.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status >= http.StatusInternalServerError
+	}
+	return true
+}
+
+func unknownWebAPIKeyRevokeError(err error, phase string) error {
+	return fmt.Errorf(
+		"web api-keys revoke outcome is unknown after %s; no automatic retry was sent: %w",
+		phase,
+		withWebAuthHint(err, "web api-keys revoke"),
+	)
+}
+
+func normalizeWebAPIKeyKind(value string) (string, error) {
+	kind := strings.ToLower(strings.TrimSpace(value))
+	switch kind {
+	case webcore.APIKeyKindTeam, webcore.APIKeyKindIndividual:
+		return kind, nil
+	default:
+		return "", fmt.Errorf("--type must be team or individual")
+	}
+}
+
+func findWebAPIKeyForRevoke(keys []webcore.APIKeyListItem, keyID, kind string) (webcore.APIKeyListItem, error) {
+	var selected webcore.APIKeyListItem
+	found := false
+	for _, key := range keys {
+		if strings.TrimSpace(key.KeyID) != keyID {
+			continue
+		}
+		if strings.TrimSpace(key.Kind) != kind {
+			return webcore.APIKeyListItem{}, fmt.Errorf("web api-keys revoke failed: key %q was listed as type %q, not %q", keyID, key.Kind, kind)
+		}
+		if found {
+			return webcore.APIKeyListItem{}, fmt.Errorf("web api-keys revoke failed: key %q appeared more than once in the %s key list", keyID, kind)
+		}
+		selected = key
+		found = true
+	}
+	if !found {
+		return webcore.APIKeyListItem{}, fmt.Errorf("web api-keys revoke failed: key %q of type %q was not found", keyID, kind)
+	}
+	return selected, nil
+}
+
+func webAPIKeyListItemFromClient(key webcore.APIKeyListItem) asc.WebAPIKeyListItem {
+	item := asc.WebAPIKeyListItem{
+		KeyID:    key.KeyID,
+		Name:     key.Name,
+		Kind:     key.Kind,
+		Roles:    append([]string(nil), key.Roles...),
+		Active:   key.Active,
+		KeyType:  key.KeyType,
+		LastUsed: key.LastUsed,
+	}
+	if key.GeneratedBy != nil {
+		item.GeneratedBy = &asc.WebAPIKeyActor{ID: key.GeneratedBy.ID, Name: key.GeneratedBy.Name}
+	}
+	if key.RevokedBy != nil {
+		item.RevokedBy = &asc.WebAPIKeyActor{ID: key.RevokedBy.ID, Name: key.RevokedBy.Name}
+	}
+	return item
+}
+
+func webAPIKeyGetResultFromClient(key *webcore.APIKey) *asc.WebAPIKeyGetResult {
+	if key == nil {
+		return &asc.WebAPIKeyGetResult{}
+	}
+	return &asc.WebAPIKeyGetResult{
+		KeyID:          key.KeyID,
+		Name:           key.Name,
+		IssuerID:       key.IssuerID,
+		Roles:          append([]string(nil), key.Roles...),
+		Active:         key.Active,
+		AllAppsVisible: key.AllAppsVisible,
+		CanDownload:    key.CanDownload,
+		KeyType:        key.KeyType,
+		LastUsed:       key.LastUsed,
+		RevokingDate:   key.RevokingDate,
 	}
 }
 
@@ -91,8 +461,12 @@ Create an all-apps App Store Connect team API key using a cached Apple Account
 web session. The one-time P8 is saved as AuthKey_<KEY_ID>.p8 with mode 0600.
 The P8 contents are never written to command output.
 
-Account Holder or Admin access is required. The role defaults to ADMIN and must
-be one of Apple's selectable team-key roles.
+Account Holder or Admin access is required. The role defaults to ADMIN and is a
+role identifier such as ADMIN or APP_MANAGER. Matching is case-insensitive:
+lowercase input such as app_manager is sent to App Store Connect as
+APP_MANAGER. Documented roles that cannot be selected for a team API key are
+rejected. Roles missing from the bundled snapshot are sent to App Store Connect
+with a warning instead of being rejected client-side.
 
 Examples:
   asc web api-keys create --name "Release automation"
@@ -129,9 +503,8 @@ Examples:
 				return fmt.Errorf("prepare API key output directory: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
 			defer cancel()
-			session, err := resolveWebSessionForCommand(requestCtx, authFlags)
 			if err != nil {
 				return err
 			}
@@ -178,7 +551,7 @@ Examples:
 					created.KeyID,
 					withWebAuthHint(err, "web api-keys create"),
 				)
-				if removeErr := os.Remove(p8Path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				if removeErr := removeReservedWebAPIKeyP8(outputRoot, fileName); removeErr != nil {
 					return errors.Join(
 						downloadFailure,
 						fmt.Errorf("remove empty reserved P8 file %q: %w", p8Path, removeErr),
@@ -248,16 +621,64 @@ func normalizeWebAPIKeyRole(value string) (string, error) {
 	if role == "" {
 		return "", fmt.Errorf("--role is required")
 	}
-	reference, err := webref.Load()
-	if err != nil {
-		return "", fmt.Errorf("load API key role reference: %w", err)
+	if !isWebAPIKeyRoleIdentifier(role) {
+		return "", fmt.Errorf("--role must be a role identifier such as ADMIN or APP_MANAGER (letters, digits, and underscores; case-insensitive)")
 	}
-	for _, selectable := range reference.APIKeyNotes.Team.SelectableRoles {
+	if err := classifyWebAPIKeyRole(role); err != nil {
+		return "", err
+	}
+	return role, nil
+}
+
+func isWebAPIKeyRoleIdentifier(role string) bool {
+	if role == "" {
+		return false
+	}
+	for i := 0; i < len(role); i++ {
+		c := role[i]
+		if c >= 'A' && c <= 'Z' {
+			continue
+		}
+		if i > 0 && (c == '_' || (c >= '0' && c <= '9')) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func classifyWebAPIKeyRole(role string) error {
+	view, err := webref.Resolve("team", []string{role})
+	if err != nil {
+		return fmt.Errorf("load team API key role reference: %w", err)
+	}
+	if view == nil || view.KeyNotes == nil {
+		return fmt.Errorf("load team API key role reference: missing team key notes")
+	}
+	for _, selectable := range view.KeyNotes.SelectableRoles {
 		if role == selectable {
-			return role, nil
+			return nil
 		}
 	}
-	return "", fmt.Errorf("--role must be one of %s", strings.Join(reference.APIKeyNotes.Team.SelectableRoles, ", "))
+	for _, unknown := range view.UnknownRoles {
+		if unknown == role {
+			fmt.Fprintf(os.Stderr, "Warning: --role %s is not a documented selectable team API key role; continuing so App Store Connect can accept or reject it.\n", role)
+			return nil
+		}
+	}
+	return fmt.Errorf("--role %s is not a selectable team API key role", role)
+}
+
+func removeReservedWebAPIKeyP8(root rootfs.Root, fileName string) error {
+	opened, err := root.OpenRoot()
+	if err != nil {
+		return err
+	}
+	defer opened.Close()
+	if err := opened.Remove(fileName); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func downloadWebAPIKeyWithRetry(ctx context.Context, client *webcore.Client, keyID string) ([]byte, error) {

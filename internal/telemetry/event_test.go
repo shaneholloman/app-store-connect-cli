@@ -301,7 +301,7 @@ func TestBuildEventWithContextAllowsKnownFailureParameters(t *testing.T) {
 	clearContextEnv(t)
 	setTelemetryTestHome(t)
 
-	for _, parameter := range []string{"--id", "--app", "--app-id", "--apple-id", "--key-type", "--export-xcodebuild-flag", "--active", "--availability-id", "--base-price", "--batch-id", "--bg-color", "--config", "--copy-metadata-from", "--copyright", "--country", "--custom-app-name", "--demo-account-password", "--detail-fields", "--end-date", "--external-testing", "--fields", "--group", "--iap-version-fields", "--include", "--input", "--item-fields", "--keywords", "--local", "--multiplier", "--name", "--number-of-periods", "--offer-code", "--offer-code-id", "--older-than", "--path", "--pattern", "--pkg", "--price-id", "--price-point-id", "--prices", "--private-key", "--product-id", "--provider", "--reference-name", "--removed", "--resolved", "--response-fields", "--response-state", "--screenshot-id", "--skip-validation", "--sku", "--source-subscription-id", "--stars", "--state", "--subtitle", "--subtitle-color", "--subscription-group-version-fields", "--subscription-version-fields", "--target-subscription-id", "--term", "--territories", "--territory", "--territory-fields", "--territory-limit", "--tester", "--test-notes", "--tier", "--title-color", "--treatment-id", "--type", "--upload", "--uses-non-exempt-encryption", "--uses-third-party-content", "--visible-in-app-store", "--watch", "--watch-debounce", "--watch-raw-dir", "--watch-review-dir", "--whats-new", "--workers"} {
+	for _, parameter := range []string{"--id", "--app", "--app-id", "--apple-id", "--key-type", "--export-xcodebuild-flag", "--active", "--availability-id", "--base-price", "--batch-id", "--bg-color", "--config", "--copy-metadata-from", "--copyright", "--country", "--custom-app-name", "--demo-account-password", "--detail-fields", "--end-date", "--fields", "--group", "--iap-version-fields", "--include", "--input", "--item-fields", "--keywords", "--local", "--multiplier", "--name", "--number-of-periods", "--offer-code", "--offer-code-id", "--older-than", "--path", "--pattern", "--pkg", "--price-id", "--price-point-id", "--prices", "--private-key", "--product-id", "--provider", "--reference-name", "--removed", "--resolved", "--response-fields", "--response-state", "--screenshot-id", "--skip-validation", "--sku", "--source-subscription-id", "--stars", "--state", "--subtitle", "--subtitle-color", "--subscription-group-version-fields", "--subscription-version-fields", "--target-subscription-id", "--term", "--territories", "--territory", "--territory-fields", "--territory-limit", "--tester", "--test-notes", "--tier", "--title-color", "--treatment-id", "--type", "--upload", "--uses-non-exempt-encryption", "--uses-third-party-content", "--visible-in-app-store", "--watch", "--watch-debounce", "--watch-raw-dir", "--watch-review-dir", "--whats-new", "--workers"} {
 		t.Run(parameter, func(t *testing.T) {
 			ev, ok := BuildEventWithContext(
 				"asc apps view",
@@ -353,6 +353,47 @@ func TestBuildEventWithContextStripsKnownFailureParameterValue(t *testing.T) {
 	}
 	if strings.Contains(string(data), "individual") {
 		t.Fatalf("payload leaked failure parameter value: %s", data)
+	}
+}
+
+func TestBuildEventWithContextStripsToolchainSelectorValues(t *testing.T) {
+	clearContextEnv(t)
+	setTelemetryTestHome(t)
+
+	for _, test := range []struct {
+		parameter string
+		want      string
+	}{
+		{parameter: "--developer-dir=/Users/example/PrivateXcode.app", want: "--developer-dir"},
+		{parameter: "--sdk=iphonesimulator", want: "--sdk"},
+	} {
+		t.Run(test.want, func(t *testing.T) {
+			ev, ok := BuildEventWithContext(
+				"asc xcode doctor",
+				"1.2.3",
+				0,
+				1,
+				EventContext{
+					InvocationShape:  InvocationShapeLeaf,
+					ErrorKind:        ErrorKindOther,
+					FailureStage:     FailureStageExecution,
+					FailureParameter: test.parameter,
+				},
+			)
+			if !ok {
+				t.Fatal("expected event")
+			}
+			if ev.FailureParameter == nil || *ev.FailureParameter != test.want {
+				t.Fatalf("FailureParameter = %v, want %q", ev.FailureParameter, test.want)
+			}
+			data, err := json.Marshal(ev)
+			if err != nil {
+				t.Fatalf("json.Marshal() error: %v", err)
+			}
+			if strings.Contains(string(data), strings.SplitN(test.parameter, "=", 2)[1]) {
+				t.Fatalf("payload leaked selector value: %s", data)
+			}
+		})
 	}
 }
 

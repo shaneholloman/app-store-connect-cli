@@ -2,6 +2,14 @@
 
 Quirks and tips for specific App Store Connect API endpoints.
 
+## Web App Privacy Data Usage Updates
+
+- Live canary on 2026-09-04 using a disposable app and a redacted web session verified the private `PATCH /iris/v1/appDataUsages/{usageID}` contract for a same-category, same-purpose `DATA_LINKED_TO_YOU` to `DATA_NOT_LINKED_TO_YOU` identity flip. The request uses the existing `appDataUsages` JSON:API resource and its `dataProtection` relationship; Apple returned `200`, and a fresh GET showed the same usage ID with the new protection.
+- A second live canary on 2026-09-05 using the same disposable app verified the reverse `DATA_NOT_LINKED_TO_YOU` to `DATA_LINKED_TO_YOU` transition. The temporary `EMAIL_ADDRESS`/`APP_FUNCTIONALITY` tuple returned `200`, and a fresh GET retained the same usage ID with the new protection. The exact pre-canary `DATA_NOT_COLLECTED` baseline was restored and matched on a fresh GET.
+- The canary seeded the tuple with `POST` (`201`), confirmed it by GET, then restored the semantic baseline by deleting it (`204`) and creating the `DATA_NOT_COLLECTED` declaration (`201`). Direct restore attempts via `POST` or `PATCH` to `DATA_NOT_COLLECTED` returned `409 STATE_ERROR`.
+- The direct mutations advanced the remote `lastPublished` value while `published` remained `true`, despite no publish endpoint being called. Treat this path as a published-state mutation; do not describe the canary or `asc web privacy apply` as unpublished-only.
+- For these verified transitions, the planner must pair only a same-category, same-purpose identity flip in either direction into a PATCH update. Tracking, `DATA_NOT_COLLECTED`, and scope changes remain delete/create operations.
+
 ## Apple Ads Profile Context Isolation
 
 - Apple Ads named profiles use only the context stored on that profile: they do not inherit `ads.org_id` or `ads.ad_account_id` from root config or another profile. This prevents a selected profile from silently sending a request to the wrong organization or ad account. Profile-less access-token and environment authentication can still use matching root context.
@@ -36,23 +44,214 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 
 **Important:**
 - `FINANCE_DETAIL` reports require region code `Z1` (the only valid region for detailed reports)
-- Transaction Tax reports are NOT available via API; download manually from App Store Connect
+- Transaction Tax reports are not available through the public App Store Connect API; use the experimental `asc web finance transaction-tax download` web-session workflow or App Store Connect.
 - Region codes reference: https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/
 - Use `asc finance regions` to see all available region codes
 
+## Tax Categories and Transaction Tax Reports
+
+Verified against the App Store Connect OpenAPI snapshot in `docs/openapi/` and
+the App Store Connect web-client source captured for issue #2299:
+
+- The public API still has no tax-category resource or tax-category attribute
+  on `apps`, `appInfos`, or `inAppPurchases`.
+- App Information tax categories are available through the
+  web-session commands `asc web apps tax-category list`,
+  `asc web apps tax-category view --app APP_ID`, and
+  `asc web apps tax-category set --app APP_ID --category CATEGORY_ID
+  [--condition CONDITION_ID ...] --confirm`. The catalog read is
+  `GET /iris/v1/taxCategories?filter[productType]=APPLICATION&include=subcategories,conditions&limit[subcategories]=100&limit[conditions]=100`.
+  The app read is `GET /iris/v1/appTaxCategories/{appId}?include=category,enabledConditions&limit[enabledConditions]=100`.
+- A missing app tax resource is an unconfigured selection; the captured App
+  Store Connect UI default is App Store Software. `set` validates category and
+  condition IDs against the catalog, sends a complete desired condition set,
+  and re-reads the result. Omitting `--condition` sends
+  `enabledConditions.data=[]` to clear stale conditions. The command requires
+  `--confirm` and does not automatically retry an ambiguous write.
+- The request and response shapes are source-backed. A disposable-app canary
+  verified explicit application tax configuration and readback. PATCH,
+  condition changes, and account-specific errors remain unverified; selecting
+  the legally correct classification remains the operator's responsibility.
+- In-App Purchase tax categories are available through the experimental
+  web-session commands `asc web iap tax-category list`,
+  `asc web iap tax-category view --iap IAP_ID`,
+  `asc web iap tax-category set --iap IAP_ID --category CATEGORY_ID
+  [--condition CONDITION_ID ...] --confirm`, and
+  `asc web iap tax-category reset --iap IAP_ID --confirm`. The IAP catalog is
+  distinct from the application catalog: it uses
+  `GET /iris/v1/taxCategories?filter[productType]=ADDON&include=subcategories,conditions&limit[subcategories]=100&limit[conditions]=100`,
+  while App Information uses `filter[productType]=APPLICATION`. `list` keeps
+  the raw JSON:API catalog envelope, including `data`, `included`, `links`,
+  `meta`, and unknown top-level members, for JSON output.
+- `view` first reads
+  `GET /iris/v2/inAppPurchases/{iapId}?include=inAppPurchaseTaxCategoryInfo`.
+  An explicit `inAppPurchaseTaxCategoryInfo.data: null` means that the IAP
+  inherits the parent app's selection; the CLI does not guess the inherited
+  category. Inherited JSON output preserves this raw `inAppPurchases` discovery
+  envelope. For a configured relationship, the CLI follows the returned
+  opaque tax-info ID and reads
+  `GET /iris/v1/inAppPurchaseTaxCategoryInfos/{taxInfoId}?include=category,enabledConditions,inAppPurchaseV2&limit[enabledConditions]=100`;
+  configured JSON output preserves that raw `inAppPurchaseTaxCategoryInfos`
+  detail envelope. The selected IAP is checked against the tax-info owner
+  before the result is accepted.
+- `set` validates the category and every condition against the ADDON catalog,
+  then sends the complete desired category and condition set. Omitting
+  `--condition` sends `enabledConditions.data=[]` and clears stale conditions.
+  It creates the tax-info resource when the IAP is inherited or patches the
+  discovered opaque tax-info ID when configured, performs at most one write and
+  one post-read verification, and does not automatically retry an ambiguous
+  outcome. If the requested state already matches, it reports a verified
+  no-op.
+- `reset` deletes only the discovered
+  `inAppPurchaseTaxCategoryInfos` override and verifies a fresh explicit-null
+  relationship; it never deletes the IAP. When the IAP is already inherited,
+  it skips DELETE and reports a verified no-op. These private endpoints and
+  their request shapes are absent from the public OpenAPI snapshot.
+- A browser canary on 2026-09-06 against disposable app `6759231657` and IAP
+  `6760268101` verified ADDON catalog discovery, create, update, explicit
+  condition clearing, and delete/readback; the disposable IAP was restored and
+  no resources were left behind. This is browser evidence only: final CLI live
+  execution remains unverified.
+- `GET /v1/financeReports` accepts only `FINANCIAL` and `FINANCE_DETAIL` in
+  `filter[reportType]`, and `GET /v1/salesReports` has no tax report type, so
+  Transaction Tax reports cannot be generated or downloaded through the public
+  API. The captured finance workflow is available through the experimental
+  `asc web finance transaction-tax download` command; provider and period
+  eligibility remain account-specific.
+- `asc capabilities --area monetization` reports App Information and
+  In-App Purchase tax-category paths as web-session coverage; Transaction Tax
+  reports remain a separate web-session capability.
+
 ## Sandbox Testers
 
-- Required fields: email, first/last name, password + confirm, secret question/answer, birth date, territory
+- `asc web sandbox create` requires `--first-name`, `--last-name`, `--email`, `--password`, and `--territory`
 - Password must include uppercase, lowercase, and a number (8+ chars)
+- Historical public v1 create also required password confirmation, a secret question/answer, and a birth date; that removed v1 contract does not establish that those fields are accepted by the current private web flow
 - Sandbox territory inputs accept alpha-2, alpha-3, and exact English country names, but the CLI sends canonical 3-letter App Store territory codes (for example, `US`, `USA`, and `United States` all resolve to `USA`)
 - This normalization is limited to verified ASC alpha-3 territory surfaces, including customer-review filters; public storefront and finance region flags keep their existing namespaces
-- List/get use the v2 API; create/delete use v1 endpoints (may be unavailable on some accounts)
-- Update/clear-history use the v2 API
+- List, view, update, and clear-history use the v2 API through `asc sandbox`
+- The current App Store Connect web bundle's New Tester form exposes first name, last name, email, password, confirm password, and country. Its two `POST /sandbox/v2/account/validateFields` requests project the first three fields, then add `acAccountPassword`; `POST /sandbox/v2/account/create` sends exactly `firstName`, `lastName`, `acAccountName`, `acAccountPassword`, and `storeFront`. `confirmPassword` is UI-only, and the bundle contains no `secretQuestion`, `secretAnswer`, or `birthDate` fields. This is a source-backed request shape; it does not prove a successful live create or acceptance of extra portal fields. See issue #2294.
+- The same bundle lists testers with `GET /sandbox/v2/provider/account/list?limit=50`; the only live list response captured was the empty `{"totalAccounts":0,"totalInactiveAccounts":0,"accounts":[]}` response. No continuation or pagination contract was captured. Account rows include `id` and `isInFamily`; the UI excludes family members from deletion.
+- The captured delete request is `POST /sandbox/v2/account/delete` with a JSON body of `{"ids":[...]}`. `asc web sandbox delete` therefore requires `--confirm`, refuses family members and incomplete list snapshots, sends one delete request, and verifies a fresh list. Delete status/body, post-delete disappearance, and account-wide mutation acceptance remain unverified because no sandbox tester rows were available; do not infer them from the legacy public v1 surface.
+
+## App Store Regulations & Permits declarations
+
+- The public App Store Connect API has no declaration surface. `appInfos` in `docs/openapi/latest.json` exposes no `isRegulatedMedicalDevice`, `isPersonalService`, trader, or DSA attribute, and a case-insensitive scan of the whole snapshot finds no `medical`, `personalService`, `trader`, or `digitalServicesAct` field anywhere. The only trader-adjacent values are read-only `TerritoryAvailability.contentStatuses` reasons (`TRADER_STATUS_NOT_PROVIDED`, `TRADER_STATUS_VERIFICATION_FAILED`, `TRADER_STATUS_VERIFICATION_STATUS_MISSING`), which report a consequence rather than let anything be declared.
+- Declarations therefore live on the web-session `ppm/complianceform/v1` service, which is neither JSON:API nor `/ci/api` plain JSON; requests need the App Store Connect UI headers (`X-Csrf-Itc: itc`, `Origin`, and a `/apps/{id}/distribution/info` `Referer`).
+- `GET /ppm/complianceform/v1/accounts/{accountId}/requirements?contentId={appId}` lists every declaration Apple tracks for the app. Each row carries `id`, `name`, `ref`, `status`, `dateSigned`, `formId`, and `isRequired`. `requirementData` is keyed by `contentId`; prefer the entry whose `contentId` matches the app and fall back to the entry with an empty `contentId`. `asc web apps declarations list` reads exactly this.
+- `GET /ppm/complianceform/v1/accounts/{accountId}/requirements/{requirementId}/forms?contentId={appId}` returns the stored answer alongside `constraints`, an object of JSONPath keys to `{attributeName, options[{value, listValues}]}` validation metadata. The constraint keys are rooted at `$[*]`, so the stored answer is returned as an array; readers accept the answer at the top level, under a `data` object, or as the first element of a `data` array. `asc web apps medical-device view` reads `medicalDeviceData.declaration` (`no`, `yes`, or absent while outstanding) from it.
+- `POST /ppm/complianceform/v1/accounts/{accountId}/contents/{appId}/requirements/{requirementId}/forms` saves an answer when the stored `medicalDeviceData.declaration` is absent. The captured body preserves stored answer fields from `form.data` or the documented top-level form shape outside `medicalDeviceData`, then sends `{countriesOrRegions, medicalDeviceData:{...existing,declaration}}`. The new affirmative app-level region picker is limited to `EEA`, `GBR`, and `USA` and defaults to all three; the shipped false path instead derives its regions from the fetched form constraints. `asc web apps medical-device set --declared false` retains its existing no-confirm invocation and sends this only when the stored declaration is not already `no` with the requirement at `COLLECTED`; otherwise it reports `changed: false` without writing. Apple's captured No path preserves any existing regional rows while verifying the app-level No and `COLLECTED` status.
+- When a declaration already exists, the captured web bundle uses `PUT` on the same path. For an affirmative answer it preserves matching `registrationInfo` rows for `EEA`, `GBR`, and `USA`, overwrites each row's `countriesOrRegions` and declaration according to the selected subset, and preserves the other form fields. For a No answer it preserves the existing regional rows. The CLI exposes this app-level affirmative path as `asc web apps medical-device set --declared true [--countries-or-regions EEA,GBR,USA] --confirm`; it verifies the stored declaration and persisted regional declarations before reporting success, and skips a matching affirmative answer without writing.
+- `asc web apps medical-device region set --app APP_ID --region REGION --input PATH --confirm` sends the captured detailed regional form contract through `PUT /ppm/complianceform/v1/accounts/{accountId}/contents/{appId}/requirements/{requirementId}/forms`. The rootfs-anchored input has `declaration`, explicit localized `supportInfo` rows, and a `registrationNumber` for USA or EEA. The app-level declaration must already be `yes`; the command preserves the complete form, contacts, and opaque regional fields, performs one PUT, then verifies exact readback. Region availability comes only from the captured top-level `$[*].countriesOrRegions` constraint; nested contact or registration selectors cannot authorize or expand it. Legacy forms missing identity metadata use the same account/app/requirement fallbacks as the existing app-level setter; adding those comparison defaults alone does not trigger a write. Readback identity metadata is compared where available, explicit mismatches still fail, and missing optional metadata alone does not invalidate a persisted change. `declaration: false` preserves the existing regional details. This is a web-session surface; the public API has no equivalent.
+- Affirmative contact preflight follows the captured UI predicates: a selected contact must carry a legal entity, cover the requested region, and have non-empty phone, email, and address object values. It also fails before PUT when the form constraints materialize a selected-region legal-entity candidate that is absent from the stored contacts; the CLI does not synthesize that UI-managed contact. The command does not embed the disposable form's additional address-subfield constraints or Apple's locale catalog, and it never accepts or prints contact values. Missing or incomplete target-region coverage fails before PUT; arbitrary affirmative legal/contact values remain provider-dependent.
+- A sanitized live CLI canary on 2026-09-05 used disposable app `6759231657` and a locally built candidate CLI. The `overall-yes`, `regional-gbr-false`, and `overall-no` CLI steps all exited 0 with exact readbacks; the regional `GBR` No path was exercised while the overall declaration was Yes. One exact raw-form restore PUT returned 200 and its readback matched the saved form. The final baseline, session identity, temporary-file cleanup, and no-uncertain-retry checks all passed. This verifies the current CLI's negative regional path and restoration on that disposable app; it does not prove arbitrary affirmative legal/contact values.
+- The personal-service declaration is not implemented. The captured Business frontend identifies `personalServiceDeclaration`, `personalServiceApps`, and `nonPersonalServiceApps` in dynamic DAC7/MRDP/ITA/SERR compliance forms. The current account has no qualifying live requirement/form fixture to verify the applicable form identity, constraints, and write postcondition. `asc web apps declarations list` exposes returned app requirements; source fields alone do not establish an accepted live request.
+- EU DSA trader status is account-level rather than app-level: it is read from `GET /ppm/v1/accounts/{id}/sellerInfo` and filed by `POST /ppm/v1/legalEntities/{id}/sellerInfo`, whose body carries contact details, an `isAppTraderOverride` flag, base64 identity documents, and a `jwtToken` minted by a separate `authenticationDetail` call and validated interactively against `id.apple.com`. Every `ppm/v1` record also carries an `optimisticLock`. A legal filing behind an interactive identity check is out of scope for an unattended CLI write.
+
+## Web-session API keys
+
+- `asc web api-keys list` reuses the iris v1 team-key list (`GET /iris/v1/apiKeys?include=createdBy,revokedBy,provider&sort=-isActive,-revokingDate&limit=2000`) and the iris v2 individual-key list (`GET /iris/v2/apiKeys?include=visibleApps,createdByActor,revokedByActor&limit[visibleApps]=3&limit=2000`) already used by `asc web auth capabilities`. Both readers follow `links.next` internally, so the command has no `--paginate` flag. Individual keys sometimes carry an empty `roles` array on that list payload; list does not issue per-key actor lookups. Use `asc web auth capabilities --key-id` to resolve actor-backed roles for one key.
+- `asc web api-keys view --key-id` uses the existing iris v1 team-key resource (`GET /iris/v1/apiKeys/{id}?include=provider`). Individual keys appear in `list` but are not loaded by `view`. The issue proposed `get`; current CLI taxonomy uses `view` for this leaf.
+- Those payloads expose key ID, nickname, roles, `isActive`, key type, and last-used. They do not include a creation date, so list/view omit that column rather than inventing one. Private key material is never copied into command output.
+- The captured App Store Connect individual-keys frontend bundle confirms the actor-filtered v2 list (`GET /iris/v2/apiKeys?include=createdByActor,revokedByActor&filter[createdByActor]=USER:{actorID}`), the empty `POST /iris/v2/apiKeys` create request, browser P-256 key generation with PKCS#8 private and SPKI public export, public-key registration by v2 `PATCH`, and v2 inactive-state revocation. Before the detail/generation flow it checks `GET /iris/v1/apiAccesses` for an `APPROVED` access resource and obtains the actor ID from initialized page state. This current capture contains no `/iris/v1/users/` or `AuthSession.UserEmail` request. The CLI's explicit `GET /iris/v1/users/{userUUID}` and case-insensitive session-email match are additional fail-closed preflight checks for a caller-supplied user ID, not claims about the Apple frontend sequence.
+- `asc web api-keys create-individual --user-id USER_UUID --output-dir DIR --confirm` first generates an ECDSA P-256 keypair locally and persists the PKCS#8 private PEM in a random `0600` staging file under the selected output root. It then sends exactly `POST /iris/v2/apiKeys` with `{data:{type:"apiKeys"}}`; the POST body is not used to identify the resource. The command re-reads the same actor-filtered list and requires exactly one newly active key whose ID was absent from the preflight snapshot; a missing or ambiguous result, or a newly returned key that already has a public key, fails closed without a PATCH. After that resolution, the staged file is materialized as `ApiKey_<KEY_ID>.p8` with an atomic no-replace rename, so an existing destination is preserved. The command sends only the SPKI public PEM in exactly one `PATCH /iris/v2/apiKeys/{KEY_ID}` with `{data:{type:"apiKeys",id:KEY_ID,attributes:{publicKey:PUBLIC_PEM}}}` and post-reads the actor-filtered list, requiring the created key id to be active with the generated public key. The flow never uses the team-key `GET /iris/v1/apiKeys/{id}?fields[apiKeys]=privateKey` download path; private key material is generated and retained locally, and is omitted from output and errors. If the POST, list resolution, final rename, PATCH, or post-read state is uncertain, the available local artifact is retained for operator recovery and no automatic remote retry is attempted.
+- This individual-key contract is source-backed, test-covered, and consistent with the captured frontend request shapes. No individual key was created or revoked during capture or validation, so provider acceptance of a newly created individual key remains unverified.
+- The captured frontend uses `PATCH /iris/{v1|v2}/apiKeys/{id}` with a JSON:API body of `{"data":{"id":"<id>","type":"apiKeys","attributes":{"isActive":false}}}` for revocation. Team uses Iris v1 and individual uses Iris v2; the scoped CLI command is `asc web api-keys revoke --key-id KEY_ID --type team|individual --confirm`. It lists only the requested family before the write, skips an already inactive key, sends one PATCH, then re-lists that family and requires the key to be inactive.
+- A sanitized 2026-09-05 live canary created and revoked one newly created temporary team key through an authenticated web session. The pre-existing keys were unchanged, the new key was verified inactive, and temporary files were removed. This verifies the team request path for that account and session; the individual revoke path remains provider-unverified.
+- A 5xx/transport failure from the PATCH or any post-list/verification failure reports the revoke outcome as unknown and sends no automatic retry. Only a verified inactive post-state produces the `revoked` receipt; an already inactive pre-state produces an `already_inactive` no-op receipt. Neither receipt contains key material.
+
+## Web app availability (iris)
+
+- `GET /iris/v1/apps/{id}/appAvailabilityV2` returns `availableInNewTerritories` and a links-only `relationships.territoryAvailabilities`. It does not include `availableTerritories.data`. Adding `?include=availableTerritories&limit[availableTerritories]=200` returns 400 `PARAMETER_ERROR.INVALID`.
+- The readable source is the iris v2 related collection: `GET /iris/v2/appAvailabilities/{id}/territoryAvailabilities?include=territory&limit=200`. Follow `links.next`. `filter[available]=true` is rejected with 400 `PARAMETER_ERROR.ILLEGAL`; filter client-side on `attributes.available`.
+- `asc web apps delete` uses this collection for the "removed from sale in all territories" preflight. The public API counterpart is `/v2/appAvailabilities/{id}/territoryAvailabilities`.
+- `asc web removed-apps restore` uses PATCH `/iris/v1/apps/{id}` with `removed:false`, verifies the app is no longer removed, then POSTs `/iris/v1/userAppPermissions` with `GRANT` (full) or `REVOKE` (limited) for `ALL_SILOABLE_USERS`. Permission writes are skipped when PATCH or verification fails.
+
+## Developer Portal iCloud containers
+
+- `asc web icloud-containers list` reads the modern Developer Portal collection through the cookie-authenticated web session. The logical request is `GET /services-account/v1/cloudContainers?filter[AND][hidden]=false` (or `true` with `--hidden`); Apple's browser transport sends it as `POST` with `X-HTTP-Method-Override: GET`.
+- The request body carries the selected `teamId` and `urlEncodedQueryParams=limit=1000&offset=0&sort=name`. The command uses this bounded first collection and has no `--paginate` flag. Apple response envelopes are preserved for JSON output, including `links` and `meta.paging` when present. A warning on stderr identifies an incomplete collection when Apple supplies a continuation link or a paging total larger than the returned rows; the CLI does not invent or follow a next-page contract.
+- Resource rows expose Apple's observed `identifier`, `hidden`, `prefix`, `canEdit`, `name`, `canDelete`, and `responseId` attributes along with the opaque resource `id` and `type`. No detail or create/rename/delete contract is assumed from this list response.
+
+## Web-session Resolution Center
+
+- Resolution Center has no official App Store Connect API surface; the OpenAPI snapshot contains no `resolutionCenter*` or `reviewRejection*` path. Every reader below is a web-session (`/iris/v1`) call and needs Apple ID auth, not an API key.
+- Threads have two scopes and they are not interchangeable. `asc web review show` resolves the submission scope (`GET /iris/v1/resolutionCenterThreads?filter[reviewSubmission]={id}&include=reviewSubmission`), which only returns threads Apple attached to that review submission. `asc web review threads --app` reads the app scope (`GET /iris/v1/apps/{appId}/resolutionCenterThreads?include=appStoreVersions,app,appMessageThreadDetail,build,betaBackgroundAssetReviewSubmission&limit[appStoreVersions]=2000&filter[threadType]=REJECTION_BINARY,REJECTION_METADATA,REJECTION_REVIEW_SUBMISSION,APP_MESSAGE_ARC,APP_MESSAGE_ARB,APP_MESSAGE_COMM,APP_MESSAGE_INFORMATIONAL`), which also returns binary, metadata, and informational threads that no submission owns. `show` reports the app-scoped threads the selected submission does not cover under `appThreads`.
+- The app-scoped relationship is sent with the review center's captured `filter[threadType]` set rather than a narrowed one. Unsupported include or filter shapes on these surfaces answer 400 (for example `include=fromActor,rejections,resolutionCenterThread` on `resolutionCenterMessages`), so the known-good query shapes are sent verbatim.
+- A thread's unsent draft reply lives at `GET /iris/v1/resolutionCenterThreads/{threadId}/resolutionCenterDraftMessage?include=resolutionCenterMessageAttachments,fromActor&limit[resolutionCenterMessageAttachments]=1000`. It is a single-resource document: a thread with no draft answers with a null `data` member, and the relationship can also answer 404. Both mean "no draft" rather than an error. `asc web review threads --drafts` reads it read-only, keeps Apple's raw HTML body, and never returns the attachments' signed download URLs.
+- All of these readers follow `links.next` internally, so the commands have no `--paginate` flag.
+- The draft client contract uses `POST /iris/v1/resolutionCenterDraftMessages`
+  with a `messageBody` and `resolutionCenterThread` relationship, `PATCH` on
+  the draft resource with `messageBody`, and `DELETE` on that resource. Sending
+  is a separate `POST /iris/v1/resolutionCenterMessages` with a
+  `createFromDraftMessage` relationship. These private web-session request
+  shapes may change, and they do not prove that Apple will accept a write for
+  every account.
+- `asc web review reply --thread-id THREAD_ID --message MESSAGE --confirm` is
+  an experimental one-shot path: it creates one draft, sends it, and re-reads
+  the thread to verify the returned message ID. The receipt omits the body and
+  the client never retries an ambiguous send. Attachments are unsupported
+  because their write encoding is not implemented, and the command has no CLI
+  resume, edit, or delete-draft workflow. Inspect App Store Connect before
+  retrying a failed or ambiguous operation.
+- The experimental `asc web review drafts create|update|delete` commands are
+  the unsent draft CRUD path. `create` requires an app ID, thread ID, exactly
+  one `--message` or `--body-file`, and `--confirm`; `update` adds the draft
+  ID, while `delete` takes the app, thread, and draft IDs. Each command first
+  verifies the thread under the selected app and checks the existing draft so
+  create cannot replace one and update/delete cannot target another thread's
+  draft. `--body-file` is limited to a regular local file and preserves the
+  body byte-for-byte after rejecting blank input. These commands never send or
+  upload attachments and never retry an uncertain mutation or post-read
+  verification. No disposable live thread/draft fixture was available, so
+  Apple provider acceptance of these writes remains unverified.
+
+## Web-session app distribution method
+
+- The public App Store Connect API has no distribution-method surface: `App` and `AppUpdateRequest` in `docs/openapi/latest.json` expose only `contentRightsDeclaration`, `streamlinedPurchasingEnabled`, subscription status URLs, and identity fields, and `AppAvailabilityV2` only carries `availableInNewTerritories`. The setting is web-session only.
+- `asc web apps distribution view --app APP_ID` reads the internal app resource (`GET /iris/v1/apps/{id}`) and reports the `distributionType` and `educationDiscountType` attributes verbatim, alongside `name` and `bundleId`. No sparse fieldset or include is requested, because those attributes are returned on the plain resource read and an unknown `fields[apps]` value would fail the request outright.
+- Observed values are `APP_STORE` (public App Store distribution) and `CUSTOM` (private distribution through Apple Business Manager or Apple School Manager). Apple omits the attribute for accounts or apps that never carried it; the command reports `unknown` in table output and omits the field in JSON rather than defaulting it to `APP_STORE`.
+- `asc web apps distribution set --app APP_ID --method public|private --confirm` implements the captured app-level write. The CLI maps `public` to `APP_STORE` and `private` to `CUSTOM`; public accepts `--education-discount discounted|not-discounted`, while private sends `NOT_APPLICABLE`. When public education is omitted, the setter preserves a current `DISCOUNTED` or `NOT_DISCOUNTED` value returned by the preflight read. A current `DIRECT_URL` or unknown method is rejected before any PATCH.
+- The current Apple frontend's pricing action supplies an inner `apps` resource to its request action. The shared Iris transport serializer (`module 60285`, helper `Oe`) converts that resource to `JSON.stringify({data: resource})` before `fetch` (`it`), so the wire request is JSON:API. The inner attributes always contain `educationDiscountType`; `distributionType` is included only when the staged method differs from the saved method:
+  `PATCH /iris/v1/apps/{id}` with `{ "data": { "id": "{id}", "type": "apps", "attributes": { "educationDiscountType": "DISCOUNTED|NOT_DISCOUNTED|NOT_APPLICABLE", "distributionType": "APP_STORE|CUSTOM" } } }` when the method changes, or with the `distributionType` member omitted when it does not.
+- Distribution reads require resource type `apps` and the selected app ID before using any returned attributes; missing or contradictory identity fails preflight or leaves a post-write result unverified.
+- The setter performs a preflight read, skips an already matching pair, sends one PATCH with the paired education attribute and the conditional distribution attribute, and verifies both values with one follow-up read within the command context. It never sends custom organization/user POST or DELETE requests, so existing custom rows are preserved. There are no automatic retries. A PATCH transport failure, HTTP 408, or 5xx is read back once when the context remains usable and returns a non-zero error with `status: "uncertain"`; if the command context expires or is canceled, verification stops without extending the declared timeout and the same uncertain receipt tells the operator to inspect state before retrying. A successful PATCH whose read-back fails or mismatches uses the same receipt status.
+- These writes are based on the captured frontend constructor and local HTTP tests; no live Apple mutation or live eligibility/success proof was performed. Apple-side role and eligibility restrictions can still reject a validly serialized request.
+- Unlisted App Store distribution is a request form reviewed by Apple, not an attribute value on this resource. There is no captured endpoint for it, so no flag is offered.
+
+## App transfer status (web session)
+
+- The captured App Information frontend includes `appTransferRequest` and models its `id` and `state`. The narrowed read is `GET /iris/v1/apps/{appId}?include=appTransferRequest`, with no body. This relationship is absent from the embedded public OpenAPI app schema.
+- On 2026-09-06, an authenticated read of disposable app `6759231657` returned HTTP 200, the expected `apps` resource ID, `relationships.appTransferRequest.data: null`, and an empty `included` array. The related URL `/iris/v1/apps/{appId}/appTransferRequest` returned HTTP 409 with `ENTITY_ERROR.RELATIONSHIP.INVALID` for that fixture. The CLI uses the successful app read and does not follow the related link.
+- `asc web apps transfer status --app APP_ID` preserves the original JSON envelope. Human output distinguishes explicit null (`none`), a resource reference (`present`), and omitted linkage (`unknown`). It matches an included transfer resource by both type and ID, preserves state strings, and leaves missing state unknown. App identity must match before any output. It does not normalize states into eligibility, success, or failure; no pending-transfer response was observed live.
+- The legacy navigation URL `/WebObjects/iTunesConnect.woa/wa/LCAppPage/transferApp?adamId={appId}` leads to a prerequisite page. It is not a captured initiate API. No recipient list, initiate, accept, cancel, or decline action contract has been captured. Those operations are deferred to maintainer-run transfers and subsequent request/response captures.
+
+## Last-compatible version settings (`downloadable`)
+
+- App Store Connect's Last-Compatible Version Settings screen has no dedicated resource and no `lastCompatibleVersion` attribute. The feature is carried by the boolean `downloadable` attribute on the existing `appStoreVersions` resource; `lastCompatibleVersion` is only a client-side label App Store Connect puts on the `appStoreVersions` collection it reads back.
+- The public API covers both directions. `docs/openapi/latest.json` documents `downloadable` on `AppStoreVersion` and as a nullable attribute on `AppStoreVersionUpdateRequest`. `asc versions list/view --output json` preserves the attribute when Apple returns it, and `asc versions update --downloadable true|false` writes it. The default versions table does not include the field.
+- `--downloadable` is tri-state: unset sends no `downloadable` attribute at all, so an unrelated `asc versions update` never changes download availability. `--downloadable false` makes a previously released version unavailable for download on older operating systems and devices, is not reversible from every state, and therefore requires `--confirm`.
+- Apple omits `downloadable` on versions that never carried the setting. Reads report the attribute as absent rather than defaulting it to `true`, so a missing key means "Apple did not say", not "downloadable".
+- `appStoreState` and `appVersionState` are both returned inconsistently across versions. App Store Connect's web client populates `appStoreState` from `appVersionState` and applies legacy remapping (`READY_FOR_DISTRIBUTION` to `READY_FOR_SALE`) purely client-side. The CLI does not reproduce that remapping.
+- A web-session read (`asc web apps last-compatible-version view`) briefly existed for this screen and was retired before it reached a release. It mirrored App Store Connect's own iris request (`GET /iris/v1/apps/{id}?include=appStoreVersions&fields[appStoreVersions]=...,downloadable,...&limit[appStoreVersions]=2000`), which required a web session and offered no write. The public API path supersedes it in both directions, so no web-session command is needed here.
+
+## Web-session app status history
+
+- The public App Store Connect API has no status-history endpoint. fastlane's only status-history path is the retired legacy tunes API (`GET ra/apps/{id}/stateHistory?platform=...`), which has no app-level iris counterpart.
+- The modern equivalent is version-scoped: `GET /iris/v1/appStoreVersions/{appStoreVersionId}/appStoreVersionStateChanges`, whose resources carry `appStoreState`, `date`, and `initiator`. `initiator` is the actor App Store Connect shows for the change.
+- There is no app-level history endpoint, so `asc web apps history --app APP_ID` lists the app's versions with `GET /iris/v1/apps/{id}/appStoreVersions` and then fans out one state-change request per version. `--version-id` scopes the read to a single version and skips the fan-out after verifying that version's app relationship matches `--app`.
+- Both readers follow `links.next` internally, so the command has no `--paginate` flag, matching `asc web api-keys list`.
+- The fan-out is serial and shares one request timeout, so an app with a long release history can exceed the 30s default. Scope the read with `--version-id`, or raise `ASC_TIMEOUT`. Requests are not parallelized, to avoid hammering a web session with concurrent internal-API calls.
+- `AppStatusHistory` is a role capability in App Store Connect, so accounts without it can get an authorization error on the state-change read even when the app list succeeds.
+
+## Web-session review submissions (iris)
+
+- `GET /iris/v1/reviewSubmissions/{id}/items` rejects `include=appStoreVersionExperimentV2` with HTTP 400 `PARAMETER_ERROR.INVALID` even though the public OpenAPI snapshot lists that relationship. Verified live 2026-09-03. `asc web review show` omits it from the items include and keeps the iris-accepted names, including `inAppPurchaseVersion`, `subscriptionVersion`, and `subscriptionGroupVersion`.
 
 ## TestFlight Distribution
 
-- `asc testflight distribution edit --external-testing` shipped in 0.35.3 but App Store Connect does not allow `externalBuildState` in the build beta detail PATCH request. The flag remains parseable during its deprecation window and fails before HTTP instead of sending an unsupported update.
-- Migrate `--external-testing=true` to `asc builds add-groups --build-id "BUILD_ID" --group "GROUP_ID" --submit --confirm`. Migrate `--external-testing=false` to `asc builds remove-groups --build-id "BUILD_ID" --group "GROUP_ID" --confirm`; the old boolean cannot identify which group assignments to remove.
+- `asc testflight distribution edit --external-testing` shipped in 0.35.3 but App Store Connect does not allow `externalBuildState` in the build beta detail PATCH request. The flag was deprecated (parseable but failing before HTTP) and removed in 5.0.0; it is now an unknown flag.
+- External distribution is managed through group assignment: `asc builds add-groups --build-id "BUILD_ID" --group "GROUP_ID" --submit --confirm` to enable, and `asc builds remove-groups --build-id "BUILD_ID" --group "GROUP_ID" --confirm` to remove group assignments.
 - App Store Connect can briefly return a build-specific 404 from `POST /v1/builds/{id}/relationships/betaGroups` after an uploaded build is already readable and valid. `asc publish testflight` confirms the uploaded build with `GET /v1/builds/{id}` and retries only that post-upload propagation error with bounded backoff, reporting retry attempts on stderr. A confirmation in processing state `FAILED` or `INVALID` stops immediately without retrying distribution. A later post-upload failure emits a partial publish result with the recoverable `buildId`, terminal processing or notification outcome, and completed stages before exiting non-zero; notification follow-up failures use `failureStage=notification` after beta-group distribution succeeds.
 
 ## Game Center
@@ -65,8 +264,8 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 - The relationship endpoint is replace-only (PATCH); GET relationship requests are rejected with "does not allow 'GET_RELATIONSHIP'... Allowed operation is: REPLACE".
 - Setting `challengesMinimumPlatformVersions` requires a live App Store version; non-live versions fail with `ENTITY_ERROR.RELATIONSHIP.INVALID.MIN_CHALLENGES_VERSION_MUST_BE_LIVE` ("must be live to be set as a minimum challenges version.").
 - App Store Connect has no direct GET for a leaderboard-set member localization. `asc game-center leaderboard-sets member-localizations view --id` resolves the localization's leaderboard and leaderboard set through their to-one endpoints, then finds the exact ID in the doubly filtered collection across all pages.
-- App Store Connect exposes a group's challenge relationships as read-only. `asc game-center groups challenges set` remains registered during a deprecation window and returns migration guidance without making an HTTP request; create a group-owned challenge with `asc game-center challenges create --group-id` instead.
-- `asc game-center details list` is backed by the app's single Game Center detail. Its legacy `--limit`, `--next`, and `--paginate` flags remain registered during a deprecation window but return precise guidance to omit the unsupported flag.
+- App Store Connect exposes a group's challenge relationships as read-only, so there is no `asc game-center groups challenges set` command; create a group-owned challenge with `asc game-center challenges create --group-id` instead.
+- `asc game-center details list` is backed by the app's single Game Center detail, so it does not accept `--limit`, `--next`, or `--paginate`.
 
 ## Apple Ads Platform API v1
 
@@ -105,6 +304,18 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 - `GET /v1/apps/{id}/builds` has no documented default order and rejects `sort` with 400 `PARAMETER_ERROR.ILLEGAL`; with `limit=1` it can return a weeks-stale build that reads as "latest". Use the top-level collection instead: `GET /v1/builds?filter[app]={id}&sort=-uploadedDate&limit=1`.
 - General shape of the trap: a relationship endpoint (`/v1/{parent}/{id}/{children}`) and its top-level collection (`/v1/{children}?filter[{parent}]=`) accept different query parameters, so a `sort` or `filter` that works on one can 400 on the other.
 
+## Xcode Cloud workflows
+
+- Private SCM reads use `GET /ci/api/teams/{teamID}/scm-providers-v2` (plain array) and `GET /ci/api/teams/{teamID}/scm-providers/{providerID}/connection-v2` (object with nonempty `status` and optional opaque `error`). Both requests have no query or body; the team comes from the selected web session's public provider ID, and the provider ID comes from the private list. `asc web xcode-cloud scm providers list` and `connection-status --scm-provider-id PROVIDER_ID` preserve the complete Apple JSON response and unknown fields. The list has no pagination mode. Human output renders absent connection booleans as unknown and status strings as returned; `connection_issue`, `auth_issue`, and future nonempty values are successful reads, not CLI failures. Registration/linking, repository assignment, disconnect, and product onboarding remain outside this read surface. An authenticated browser on 2026-09-06 returned HTTP 200 for both requests (six providers and one `{"status":"success"}` response) with zero mutations. This establishes the provider contract, not final CLI live execution. These private endpoints are absent from the public OpenAPI snapshot.
+
+- The persistent next build number is available only through the private, web-session-backed CI API. `asc web xcode-cloud settings next-build-number show` sends `GET /ci/api/teams/{publicProviderID}/products/{productID}/next-build-number`; `set --value N --confirm` first reads the current value, requires `N` to be greater, sends a bodyless `PUT` to the same path with `next_build_number=N` as a query parameter, and verifies the value with a fresh GET. The team ID comes from the selected web session and the product is selected with `--product-id`. Apple's response can include a TestFlight URL; the CLI deliberately omits it from output because it may contain sensitive query parameters. This private endpoint is not in the public OpenAPI specification and may change without notice.
+- Custom Xcode Cloud version aliases are private web-session resources. `asc web xcode-cloud settings version-aliases list` reads the captured `GET /ci/api/teams/{publicProviderID}/products/{productID}/configuration-options/version-aliases-v3?limit=100` contract. The current UI's list response is an `items` envelope and its item fields include `id`, `name`, `type`, `locked`, `build`, `build_name`, `related_workflow_summaries`, and `build_supported`; the CLI list renderer emits only safe scalar fields and omits nested build and workflow payloads. The detail contract captured from the current UI is `GET /ci/api/teams/{publicProviderID}/products/{productID}/configuration-options/version-aliases-v3/{versionAliasID}` (the client path is relative to its `/ci/api` base) with those fields plus the raw nested values. `asc web xcode-cloud settings version-aliases view` preserves that raw detail object for JSON output and uses the safe scalar fields for table and markdown output. The UI saves with `PUT` to the same detail path and the exact JSON body `{name,type,build,locked}`, using only `macos_version` or `xcode_version`. The create form initializes name and build as empty, but the captured save control is disabled until the trimmed name is nonempty, the raw JavaScript name length is at most 40 UTF-16 code units, and build is nonempty; the CLI enforces those checks, trims the name sent on the wire, and leaves product build-support validation to Apple. Creation uses a new UUID and `locked:false` by default. `asc web xcode-cloud settings version-aliases create`, `update`, and `delete` require `--confirm`; update reads first to preserve omitted fields, requires the effective build to be a nonempty JSON string before PUT, rejects unsupported stored object/number shapes without `--build`, and lets an explicit nonempty `--build` replace them. Mutations compare the requested values exactly after a fresh read; the CLI does not infer an identifier from an object build value. HTTP 408 and 5xx responses to alias writes are uncertain outcomes: create/update re-read the same alias ID and compare the requested fields, while delete requires a follow-up 404. The mutation is never retried; failed reconciliation reports that the write may have succeeded. Other 4xx rejections retain their normal error path. Delete treats a verified detail `404` as the success postcondition. The endpoint accepts a continuation offset, but its continuation response contract has not been captured, so the CLI reports at most 100 aliases and does not expose `--paginate`. The request and response details are source-captured from the current frontend; no alias mutation was performed against Apple's service during implementation. These endpoints are absent from the public OpenAPI specification and may change without notice.
+- `GET /v1/ciWorkflows/{id}` returns relationships with links only by default: `repository` and `buildRuns` come back without a `data` linkage, and `product`, `xcodeVersion`, and `macOsVersion` are absent from the response entirely. `POST /v1/ciWorkflows` requires all four linkages, so any read-then-recreate flow must request `?include=product,repository,xcodeVersion,macOsVersion`, which populates them.
+- `GET /v1/ciWorkflows/{id}` also emits JSON `null` for optional action and start-condition properties (`destination`, `testConfiguration`, `filesAndFoldersRule`) that `CiWorkflowCreateRequest` does not mark nullable. `workflows duplicate` omits those nulls so the create body stays schema-clean; unused nullable start conditions are omitted rather than sent as `null`.
+- `CiAction` has no post-actions: the public workflow schema covers `BUILD`, `ANALYZE`, `TEST`, and `ARCHIVE` actions plus `buildDistributionAudience`, but TestFlight post-actions (beta group and tester assignment) exist only in the private `/ci/api/` workflow payload. A workflow recreated through the public API therefore loses its TestFlight post-actions.
+- A live read on 2026-09-04 confirmed that private `workflows-v15` payloads expose TestFlight post-actions under `post_actions[].deployment_config.testflight_deployment_ids`. Two distinct `beta_group_ids` observed across two post-actions matched the same app's authenticated IRIS `betaGroups` IDs and the public command output from `asc testflight groups list --app APP_ID --paginate --output json` (three groups returned). Use `asc xcode-cloud products app --id PRODUCT_ID` to resolve a product to its app, then the public TestFlight group and tester commands when preparing a workflow edit; no duplicate web lookup command is needed. The scan covered 14 products/workflows; all observed `beta_tester_ids` arrays were empty, so tester-ID equivalence remains unverified.
+- Workflow-scoped environment variables and secrets are also absent from `CiWorkflowCreateRequest`; they live on the private `/ci/api/` workflow payload. `workflows duplicate` cannot copy them. Use `asc web xcode-cloud env-vars` after creating the copy.
+
 ## Devices
 
 - No DELETE endpoint; devices can only be enabled/disabled via PATCH.
@@ -126,10 +337,197 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 - App Store Connect API 4.4.1 adds `/v1/subscriptionPricePoints/{id}/adjustedEqualizations`. Although OpenAPI models `filter[planType]` as an unconstrained string array, the live endpoint rejects `UPFRONT` and reports `MONTHLY` as the only supported value.
 - Monthly commitment remains unavailable in the United States and Singapore; the CLI removes `USA` and `SGP` from requested monthly-commitment territories before writing plan availability.
 
+## Subscription Plan Availability
+
+- Reading: `GET /v1/subscriptions/{id}/planAvailabilities` accepts `include=availableTerritories`, but `limit[availableTerritories]` is capped at 50 while a plan can be available in every storefront. The complete set comes from `GET /v1/subscriptionPlanAvailabilities/{id}/relationships/availableTerritories`, whose `limit` maximum is 200 with cursor pagination. `asc subscriptions pricing plan-availability show` prints Apple's include envelope unmodified and warns on stderr when paging metadata shows the include was truncated.
+- Writing: `PATCH /v1/subscriptionPlanAvailabilities/{id}` replaces the `availableTerritories` linkage array wholesale, so the request body must carry the complete desired territory set, not a delta. `SubscriptionPlanAvailabilityUpdateRequest` accepts only `availableInNewTerritories` as a mutable attribute; `planType` is create-only through `POST /v1/subscriptionPlanAvailabilities`. After a write, `set` verifies territories through the paginated relationship endpoint and `availableInNewTerritories` through a fresh `GET /v1/subscriptionPlanAvailabilities/{id}` rather than the mutation response.
+- Apple's internal web (iris) API uses the same resource, path shape, and PATCH body; `asc web subscriptions availability remove-from-sale` uses it only because emptying `availableTerritories` removes an approved subscription from sale, which Apple restricts to the Account Holder. Everything else about plan availability is available through the public API, so `asc subscriptions pricing plan-availability show|set` uses the public endpoints.
+- `availableInNewTerritories` is not supported for `MONTHLY` plan availability.
+
+## Developer Portal session (web session)
+
+- Bundle IDs, Services IDs, Website Push IDs, App Groups, and agreements share one Developer Portal session helper: `POST /services-account/QH65B2/account/listTeams.action` bootstraps CSRF and the team list, then later portal requests carry the selected `teamId` through each endpoint's captured body or session context. Same-origin redirects are enforced; cookies and CSRF tokens are never written to stdout, stderr, or debug logs.
+- `--developer-team` (ID, or exact team name) is accepted only on Developer Portal-backed commands (`web bundle-ids list`, `web bundle-ids view`, `web bundle-ids capabilities enable`, `web bundle-ids capabilities disable`, every `web website-push-ids`, `web service-ids` and `web app-groups` subcommand, and `web agreements`). It is not a global web-session flag. There is no `ASC_DEVELOPER_TEAM` env fallback; `--apple-id` / `--provider-id` likewise have none.
+- Team resolution: an explicit `--developer-team` wins (case-insensitive ID, then exact name) and fails closed with the available IDs and names if nothing matches. Without a selector, a previously persisted team ID is reused when it is still in the list; otherwise the selected App Store Connect provider is matched by public provider ID, then exact name, then a name-prefix heuristic only when exactly one team matches. A single remaining team is used. Multiple unmatched teams fail closed and ask for `--developer-team`. The resolved team ID is stored in the web session cache next to the provider selection; a new `--developer-team` value overrides and re-persists. `asc web auth status` reports it as additive `developerTeamId`.
+- App Groups mutations still refresh CSRF from `listApplicationGroups.action` in that endpoint's scope after the shared bootstrap. Bundle ID capability and App Group assign/set/unassign paths still read the complete relationship graph, skip already-satisfied writes, and abort rather than rewrite from incomplete data. `asc web bundle-ids capabilities disable` sends one exact-resource `PATCH` with the preserved capability payload, then performs one verification read using the original command context. The read must contain a complete included capability graph, the same Bundle ID, and every pre-existing unrelated capability resource; success requires either the same target resource IDs with `enabled:false` for every target or complete removal of all target resources by Apple. Conflicting included representations and capabilities outside an explicitly supplied relationship are rejected before writing; the captured omitted-relationship form still uses the complete included graph. HTTP 408, 5xx, and transport failures get at most one settling read under the original deadline. A proven disabled state returns the normal receipt; an unverified state returns an error. No PATCH is retried.
+
+## [experimental] Developer Portal Bundle ID reads (web session)
+
+- `[experimental] asc web bundle-ids list` uses the captured cookie-authenticated JSON:API
+  proxy `POST /services-account/v1/bundleIds` with
+  `X-HTTP-Method-Override: GET`. Its JSON body carries the selected `teamId`
+  and `urlEncodedQueryParams`; the first slice sends
+  `limit=1000`, `sort=name`, and `filter[platform]=IOS,MACOS`. The response is
+  a JSON:API collection with `data`, optional `included`, `links`, and `meta`.
+  Bundle ID resources preserve their `type`, opaque `id`, attributes,
+  relationships, and resource links. Portal-only attributes observed in the
+  captured collection include `identifier`, `dateModified`,
+  `entitlementGroupName`, `bundleType`, `platform`, `wildcard`, `dateCreated`,
+  `bundleIdCapabilitiesSettingOption`, `seedId`, `name`, `platformName`,
+  `deploymentDataNotice`, and `responseId`.
+- `[experimental] asc web bundle-ids view --bundle-id ID` uses the captured detail form
+  `POST /services-account/v1/bundleIds/{id}` with the fields/include query in
+  the URL, `X-HTTP-Method-Override: GET`, and a JSON body containing only the
+  selected `teamId`.
+  The requested `fields[bundleIds]` are `name,identifier,platform,seedId,wildcard,~permissions.delete,~permissions.edit`.
+  The requested include graph covers `bundleIdCapabilities`, its
+  `capability`, `associatedBundleIds`, `appGroups`, `merchantIds`,
+  `cloudContainers`, `certificates`, `appConsentBundleId`, `macBundleId`,
+  `relatedAppConsentBundleIds`, `parentBundleId`, and
+  `mediaSharingProtocolIds`. The response is a single JSON:API `data` resource
+  plus any included capability resources. Table/Markdown output shows the
+  primary resource fields only and emits a diagnostic when included resources
+  are present; use `--output json` to inspect the complete capability graph.
+- Both read commands bootstrap the shared Developer Portal team session, carry
+  no credentials or CSRF values in output, and do not mutate Bundle IDs or
+  invalidate provisioning profiles. This first slice intentionally does not
+  follow `links.next` or claim pagination; a returned continuation remains
+  available in JSON for a later resource-family slice, and table/Markdown
+  output emits the standard more-pages warning when it is present.
+
+## [experimental] Developer Portal Services IDs (web session)
+
+- `[experimental] asc web service-ids list` uses the private logical `GET
+  /services-account/v1/bundleIds` contract with `limit=1000`, `sort=name`, and
+  `filter[platform]=SERVICES`. As with the captured native Bundle ID
+  collection, the cookie-authenticated transport sends an actual `POST` to
+  `/services-account/v1/bundleIds` with
+  `X-HTTP-Method-Override: GET` and a JSON body containing
+  `urlEncodedQueryParams` and `teamId`; a live list capture returned HTTP 200.
+  The command validates that every returned resource is a `bundleIds` resource
+  whose platform is exactly `SERVICES` and preserves the original JSON:API
+  envelope for JSON output.
+- `[experimental] asc web service-ids view --service-id ID` uses the private
+  logical `GET /services-account/v1/bundleIds/{id}` detail contract with
+  `include=bundleIdCapabilities,bundleIdCapabilities.capability,bundleIdCapabilities.appConsentBundleId`.
+  The actual transport is `POST` plus `X-HTTP-Method-Override: GET`, with a
+  JSON body containing only the selected `teamId`. The returned resource ID and
+  `attributes.platform=SERVICES` are checked before a mutation can use it.
+- `[experimental] asc web service-ids create --identifier IDENTIFIER --name
+  NAME --confirm` uses logical `POST /services-account/v1/bundleIds` with a
+  JSON:API `data.type=bundleIds` resource whose attributes are
+  `identifier`, `name`, `platform=SERVICES`, `seedId`, and `teamId`, plus an
+  empty `bundleIdCapabilities.data` array. The create request must omit a
+  root-level `teamId`: the captured frontend helper removes its injected team
+  field when no method override is used, and Apple's live endpoint rejects that
+  root member as an invalid JSON:API document. The selected team remains in
+  `data.attributes.teamId`. The CLI does not invent capability, Sign in with
+  Apple domain, or app-consent settings; it reads the created resource back
+  before returning a receipt.
+- `[experimental] asc web service-ids rename --service-id ID --name NAME
+  --confirm` reads and validates the current Services ID, then sends logical
+  `PATCH /services-account/v1/bundleIds/{id}`. The PATCH preserves the complete
+  current relationship map, including `bundleIdCapabilities`, and changes only
+  the name plus the private team attribute required by the endpoint. A
+  post-write detail read must match the requested name and identifier.
+- `[experimental] asc web service-ids delete --service-id ID --confirm` sends
+  logical `DELETE /services-account/v1/bundleIds/{id}` as the captured actual
+  `POST` plus `X-HTTP-Method-Override: DELETE` and a JSON body containing the
+  selected root-level `teamId`. The captured frontend helper retains its
+  injected team field for method-override requests; Apple's live endpoint
+  returns HTTP 204 when it is present and HTTP 403 (`Please select a team.`)
+  when it is omitted. The preflight rejects native iOS/Mac or otherwise
+  non-`SERVICES` resources. The command reports success only after the detail
+  read returns HTTP 404. A 408 or 5xx response, transport failure, malformed success body, or
+  failed post-read is an unverified outcome; no Services ID mutation is
+  retried automatically.
+- Services ID lifecycle support is private-only because the public OpenAPI
+  `BundleIdPlatform` enum does not include `SERVICES`. Capability graph
+  mutation and Sign in with Apple domain configuration remain uncaptured.
+  Website Push ID lifecycle and iCloud container reads use the separate
+  captured workflows documented below.
+
+## [experimental] Developer Portal Website Push IDs (web session)
+
+- `[experimental] asc web website-push-ids list` reads the current Developer
+  Portal identifier page at `https://developer.apple.com/account/resources/identifiers/list`.
+  Its captured request is `POST /services-account/QH65B2/account/ios/identifiers/listWebsitePushIds.action`
+  with an `application/x-www-form-urlencoded` body containing
+  `onlyCountLists=true`, `pageSize=1000`, `pageNumber=1`, `sort=name=asc`, and
+  the selected `teamId`. The request has no `sidx` field. The shared web
+  session helper supplies the team and CSRF context.
+- The live read returned HTTP 200 with `resultCode=0`, `pageNumber=1`,
+  `pageSize=1000`, and an empty root-level `websitePushIdList` in the captured
+  account state. JSON output preserves Apple's complete root response,
+  including unknown provider fields; the list is not nested under `data`.
+  Table and Markdown output use only a small scalar projection of each entry.
+- The captured frontend (`captures/apple-developer-main.js`) maps each legacy
+  item to `id=item.websitePushId` for this resource (offset 849,700), while its generic identifier table
+  reads `name` and `identifier` (offset 866,718); the topic picker also reads
+  `websitePushId`/`id` and `identifier` (offsets 1,806,200–1,808,480).
+  These source-backed fields justify the formatted projection, but the live
+  empty collection means the remaining row schema stays open-ended.
+- Pagination is not exposed because no continuation contract was captured for
+  this legacy response. The command reads only the first fixed page and does
+  not claim a complete account-wide collection.
+- Website Push mutation preflight and legacy-list verification require page number 1 and a positive returned page size. A collection filling that returned page is incomplete for mutation purposes, even if Apple reduces the requested page size; no continuation contract is assumed.
+- `[experimental] asc web website-push-ids view` reads one modern
+  `websitepushIds` resource with a physical `POST
+  /services-account/v1/websitepushIds/{id}?include=websitepushIdCapabilities`,
+  `X-HTTP-Method-Override: GET`, and a JSON body containing only the selected
+  `teamId`. JSON output preserves Apple's complete JSON:API envelope.
+- `[experimental] asc web website-push-ids create` sends the captured modern
+  JSON:API `POST /services-account/v1/websitepushIds` body with
+  `data.type=websitepushIds`, `name`, `identifier`, `teamId`, and an explicitly
+  empty `websitepushIdCapabilities` relationship. The CLI requires the legacy
+  list preflight to show no matching identifier and the capability catalog to
+  be empty. It expects HTTP 201 and verifies the created resource by detail
+  read; an empty or malformed create response is settled from the legacy list
+  without retrying the POST.
+- `[experimental] asc web website-push-ids delete` preflights the modern detail
+  resource and requires `canDelete=true` plus an explicitly empty capability
+  relationship. It sends physical `POST
+  /services-account/v1/websitepushIds/{id}` with
+  `X-HTTP-Method-Override: DELETE` and a body containing only `teamId`, expects
+  HTTP 204, then verifies canonical detail absence and legacy-list absence.
+  Unknown outcomes are reported without an automatic retry.
+  Both mutation commands retain the selected team on an unverified write,
+  and the error always explains that the write may have succeeded and must
+  be inspected before retrying.
+- Rename remains unavailable: the captured Website Push UI exposes no rename
+  or Save control. Capability configuration and non-empty capability graphs
+  remain fail-closed because no writable capability contract is exposed by
+  this slice. The live disposable canary used for this contract was deleted
+  and the final legacy list returned empty.
+- A final built-CLI canary using binary SHA-256
+  `fd940938b7477aa27b0f5c793618af0c5c1e30d050f85b6bacf1738378ce31f9`
+  exercised the complete happy path for one uniquely generated owned
+  disposable identifier: baseline `list`, `create`, `view`, `delete`, and
+  final `list` all exited successfully. The create and delete receipts and
+  detail readback matched the canary identity, the capability relationship and
+  included graph were empty, the baseline list remained unchanged, and final
+  absence plus temporary-evidence cleanup were verified. The CLI view exposed
+  no certificate fields; `certificateAbsenceIndependentlyVerified` is false
+  because this command slice has no certificate endpoint, so the canary does
+  not claim independent certificate absence.
+
+- Empty capability data is accepted only when available paging metadata also proves emptiness: a non-empty next link, malformed total, or nonzero total blocks the operation. This applies to the create capability catalog and the detail relationship checked for create verification and delete preflight.
+- HTTP 408 is an ambiguous Website Push write outcome, like a 5xx response. Create and delete use read-only settlement without replaying the mutation; an unproven result retains the inspection-before-retry warning.
+
+## Developer Portal Agreements (web session)
+
+- The public API has no agreements endpoint. `asc web agreements` uses the cookie-authenticated Developer Portal account services: `POST /services-account/QH65B2/account/getAgreementHistory` and `POST /services-account/QH65B2/account/acceptAgreements`, both with a JSON body carrying `teamId` (accept also carries an `agreementIds` array, so several agreements can be accepted in one request). They answer HTTP 200 even on failure; `resultCode` carries the outcome (`0` success).
+- Each history record includes `agreementDownloadUrl`, observed as a root-relative Developer Portal path such as `/services-account/agreement/{agreementId}/content/pdf`. `asc web agreements download` resolves it against the Developer Portal origin and only follows HTTPS, same-origin targets and redirects, and rejects empty or HTML responses. The URL is treated as potentially signed: the `download` receipt and its error text never include it. `asc web agreements status` and the verified `accept` receipt still expose it as `downloadUrl` in JSON, so treat those outputs accordingly.
+- `acceptAgreements` returns the updated history, but the CLI re-reads `getAgreementHistory` after the write and reports the re-read state (`dateAccepted >= dateEffective`) instead of trusting the mutation response.
+
+## Transaction Tax reports (web session)
+
+- The public App Store Connect API and OpenAPI snapshot do not expose Transaction Tax report generation. The experimental `asc web finance transaction-tax download` command uses the authenticated finance web session instead.
+- The captured finance page reads the selected month from `/WebObjects/iTunesConnect.woa/ra/paymentConsolidation/providers/{providerId}/sapVendorNumbers/{sapVendorNumber}?year={YYYY}&month={M}` and requires `hasVendorTaxReport=true` before generation. It derives the complete vendor-tax region-currency list from the transformed `reportSummaries[].proceedsByRegion[]` model, then issues exactly one GET to `/WebObjects/iTunesConnect.woa/ra/paymentConsolidation/providers/{providerId}/sapVendorNumbers/{sapVendorNumber}/reports?year={YYYY}&month={M}&regionCurrencyIds={ids}&reportTypes=&isVendorTaxReportReq=true`.
+- The generated UUID is retained only in memory for bounded GET polling at `/reports/{uuid}/status`; readiness requires the captured literal `readyForDownload` status and a download URL. The command fetches the ready artifact once, accepts only an HTTPS same-origin URL and redirects, checks the ZIP signature, and publishes a complete `0600` file without replacing an existing destination.
+- Receipts and errors omit generated job IDs, signed URLs, provider/vendor identifiers, and finance values. Generation, polling, and download failures do not trigger an automatic regeneration or retry. No report-history or caller-supplied report-ID contract was observed.
+
 ## Pass Type IDs
 
 - Live API rejects `include=passTypeId` and `fields[passTypeIds]` on `/v1/passTypeIds/{id}/certificates` despite the OpenAPI spec allowing them.
 - The CLI does not expose those parameters for `pass-type-ids certificates list` to avoid API errors.
+
+## Sparse Fieldsets Combined with Includes
+
+Observed 2026-09-02 against a live App Store Connect team. The CLI does not add included relationship names to the primary fieldset for these list commands.
+
+- `GET /v1/profiles` with `fields[profiles]=name&include=devices` returns HTTP 200 and still puts related devices in `included`. Apple omits `relationships` on each profile unless `devices` is also listed in `fields[profiles]`. `fields[devices]=name,udid` still sparse-filters those included devices.
+- `GET /v1/certificates` with `fields[certificates]=displayName&include=passTypeId` returns HTTP 200. This team has no `PASS_TYPE_ID` certificates, so `included` was absent both with that sparse fieldset and with `include=passTypeId` alone. Non-pass certificates expose `relationships.passTypeId.data=null` only when the relationship is in the fieldset (or when no certificate fieldset is sent).
 
 ## App Store Connect API 4.4.1
 
@@ -157,6 +555,14 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 - The 33 exported `internal/asc.Client` methods that target these legacy resources remain callable and are marked with Go `Deprecated:` documentation naming their version-scoped or review-item replacement.
 - Nullable v2 localization updates distinguish omitted, value, and JSON `null`; use the corresponding `--clear-*` flag for explicit clears.
 
+## Developer Portal App Groups (web session)
+
+- App Group resources and their Bundle ID associations are not exposed by the public App Store Connect API. `asc web app-groups` uses the Developer Portal legacy form endpoints under `/services-account/QH65B2/account/ios/identifiers/` (`listApplicationGroups.action`, `addApplicationGroup.action`, `deleteApplicationGroup.action`) plus the cookie-authenticated JSON:API proxy under `/services-account/v1`.
+- Legacy form endpoints are `POST` with `application/x-www-form-urlencoded` bodies that always carry `teamId`, return a `resultCode` envelope (`0` is success; `userString`/`resultString` carry Apple's message), and require the `csrf`/`csrf_ts` headers captured from a preceding `listApplicationGroups.action` response in the same endpoint scope.
+- `deleteApplicationGroup.action` takes `teamId` and `applicationGroup` (the opaque App Group resource ID shown in `asc web app-groups list`) and returns the bare `resultCode` envelope. This contract is inferred from the sibling list/create actions and the long-standing third-party portal client contract; it was not live-verified when added because no Developer Portal web session was available. The CLI verifies every delete by re-reading the team's App Group list with pagination and fails if the group is still listed; on that strict read a success envelope whose `applicationGroupList` or `totalRecords` is absent or null, whose `totalRecords` is smaller than the records returned, whose `pageNumber` does not match the requested page, whose pages stop before `totalRecords` is reached, or that repeats an App Group across pages is treated as unverified rather than as a short list. A 2xx delete response whose body cannot be parsed or that carries no `resultCode` is likewise reported as an accepted but unverified delete, because the group may already be gone; an explicit non-zero `resultCode` is a refused delete.
+- Bundle ID association submits the complete group set: the CLI reads the Bundle ID with its `bundleIdCapabilities` graph, rewrites only the `APP_GROUPS` capability's `appGroups` relationship together with its `enabled` attribute, and `PATCH`es `/services-account/v1/bundleIds/{id}`. `assign`, `unassign`, and `set` share this path with different computed sets, and all three abort before any write when the Bundle ID read returns a different resource ID than requested, omits the `bundleIdCapabilities` relationship, returns it with a null `data` collection or with a reference whose type is not `bundleIdCapabilities` or whose ID is empty, or repeats an included capability ID with conflicting representations, or carries an `APP_GROUPS` capability without a readable `appGroups` collection or without a boolean `enabled` attribute, because the PATCH would otherwise rewrite the graph from incomplete data. When the portal accepts a write but the verification read fails or disagrees, the client returns a `DeveloperAppGroupUnverifiedError` and the CLI warns that the change should be assumed applied. A write that fails without a verdict (transport error, dropped connection, or context deadline after the request was handed off) is settled by the same re-read: the requested state means it applied and the command succeeds, the prior state means it did not and the transport error is returned as a retry-safe failure, and anything else is reported as unverified. Explicit HTTP error statuses are refusals and are never re-read. `delete` settles its own form POST the same way against the App Group list. The portal can return a disabled `APP_GROUPS` capability that still lists groups in its relationship data; those groups count as referenced for delete preflight, so `unassign` and `set` operate on the raw relationship list rather than only the enabled set (`assign`/`set` enable the capability, `unassign` keeps a disabled capability disabled and disables it when the last group is removed). `assign`, `set`, and `unassign` re-read the Bundle ID afterwards and fail when the raw group list or `enabled` state differs from what was written.
+- Before deleting, the CLI lists every Bundle ID in the team through the proxied `POST /services-account/v1/bundleIds` read (`X-HTTP-Method-Override: GET`, `include=bundleIdCapabilities,bundleIdCapabilities.capability,bundleIdCapabilities.appGroups`, `limit=200`, following `links.next`) and refuses when any `APP_GROUPS` capability references the group. A Bundle ID whose capability graph is missing from `included`, a list entry that is not a `bundleIds` resource, a Bundle ID repeated across pages, a `meta.paging.total` that disagrees with the records returned, a final full page of 200 without a `links.next` cursor or paging total, two conflicting `included` representations of the same capability ID, a capability reference with the wrong type or an empty ID, an `APP_GROUPS` capability without a readable `appGroups` collection, or a response whose `data` collection is absent or `null`, is treated as an error, never as unassigned. This list read is also inferred from the single-resource read contract and not yet live-verified.
+
 ## Apple Ads Platform API v1 in 4.4.0
 
 - Release 4.4.0 makes Platform API v1 the direct `asc ads` resource surface. Its host, request payloads, response envelopes, pagination, and ad-account context differ from Campaign Management API v5. The intermediate nested prototype is intentionally removed before release.
@@ -165,3 +571,5 @@ Finance reports use Apple fiscal months (`YYYY-MM`), not calendar months.
 - `/v1/ad-accounts` is method-dependent: `POST /v1/ad-accounts` creates an account without `X-AP-Context`; `GET /v1/ad-accounts/{id}` and `PUT /v1/ad-accounts/{id}` require `X-AP-Context: adAccountId=<id>;`, and the header account must match the path ID.
 - Authentication validation and discovery use Platform API v1. `asc ads auth login --network` and `asc ads auth status --validate` exchange an OAuth client-credentials token when needed and call `GET /v1/me` without an ad-account context. `asc ads auth discover` calls Platform API v1 `GET /v1/me` and `GET /v1/acls` without an ad-account context. A supplied `ASC_ADS_ACCESS_TOKEN` skips token exchange.
 - The deprecated `asc ads v5 reports preset` warning follows `--level`: campaigns, ad groups, ads, keywords, and search terms point to their matching `asc ads reports apps` command; the two ad-group-specific keyword levels point to v1's consolidated `keywords` or `search-terms` report.
+
+Transaction Tax archive streaming uses a bounded workflow context instead of inheriting the web client's shorter per-request timeout. Lower-level callers without a context deadline retain the configured client timeout. Caller cancellation still bounds the download, and the shared client timeout remains unchanged.

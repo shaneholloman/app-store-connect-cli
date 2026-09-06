@@ -249,7 +249,6 @@ func TestSigningSyncIdentityPushPullPublicRoundTrip(t *testing.T) {
 	}
 	setupAuth(t)
 	t.Setenv("ASC_SIGNING_SYNC_PASSWORD", "")
-	t.Setenv("ASC_MATCH_PASSWORD", "")
 	t.Setenv("GIT_AUTHOR_NAME", "ASC Test")
 	t.Setenv("GIT_AUTHOR_EMAIL", "asc-test@example.invalid")
 	t.Setenv("GIT_COMMITTER_NAME", "ASC Test")
@@ -457,6 +456,7 @@ func signingSyncIdentityFixture(t *testing.T) (*ecdsa.PrivateKey, *x509.Certific
 	profilePlist, err := plist.Marshal(map[string]any{
 		"UUID":           "01234567-89ab-cdef-0123-456789abcdef",
 		"TeamIdentifier": []string{"TEAM123"}, "ApplicationIdentifierPrefix": []string{"SEED456"},
+		"Platform":       []string{"iOS"},
 		"ExpirationDate": now.Add(12 * time.Hour), "DeveloperCertificates": [][]byte{certificate.Raw},
 		"ProvisionedDevices": []string{"DEVICE1"},
 		"Entitlements":       map[string]any{"application-identifier": "SEED456.com.example.app", "get-task-allow": false},

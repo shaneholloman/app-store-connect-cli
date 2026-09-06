@@ -104,6 +104,16 @@ asc auth login \
   --network
 ```
 
+Individual API keys have no issuer ID. Omit `--issuer-id` and pass `--key-type individual`:
+
+```bash
+asc auth login \
+  --name "MyIndividualKey" \
+  --key-id "ABC123" \
+  --key-type individual \
+  --private-key /path/to/AuthKey.p8
+```
+
 Generate API keys at:
 https://appstoreconnect.apple.com/access/integrations/api
 
@@ -311,6 +321,23 @@ asc validate --app "123456789" --version "1.2.3" --output json
 asc validate --app "123456789" --version "1.2.3" --strict
 ```
 
+Add the experimental `--deep` mode when a release needs checks that Apple
+exposes only through its signed-in web app:
+
+```bash
+asc web auth login --apple-id "user@example.com"
+asc validate --app "123456789" --version "1.2.3" --deep
+```
+
+Deep validation reuses the file-backed cache without opening a login, Keychain,
+password, or 2FA prompt. It checks App Privacy publication, relevant agreements,
+and the first auto-renewable subscription attachment; availability and required
+App Review fields still come from the public API. Paid-agreement relevance also
+uses the app's current public price so an upfront-paid app isn't mistaken for a
+free one. The private Apple endpoints can change without notice, so an
+unavailable or changed response is `unverified`, not a false blocker. Add
+`--strict` if CI must fail when a requested deep check can't be verified.
+
 This lint intentionally does not judge platform names, roadmap language, or
 beta/demo wording because those phrases can be legitimate product copy and
 cannot be classified reliably offline. It also leaves shorter Lorem Ipsum
@@ -360,13 +387,36 @@ asc screenshots upload --version-localization "VERSION_LOCALIZATION_ID" --path "
 `VERSION_LOCALIZATION_ID` is the App Store version localization resource ID
 from `data[].id`, not the locale code from `attributes.locale`.
 
+For local capture coverage across multiple devices, locales, appearances, and
+content fixtures, use an experimental matrix plan. Targets must already be
+booted simulators; the command writes raw artifacts and an offline review
+report, without uploading to App Store Connect:
+
+```bash
+asc screenshots matrix --plan .asc/screenshots-matrix.json --max-concurrency 2 --output json --pretty
+```
+
+See [docs/design/screenshots-matrix.md](docs/design/screenshots-matrix.md) for
+the JSONC schema, isolated output layout, retry behavior, and review contract.
+
 ### Signing and bundle IDs
 
 ```bash
-asc certificates list
-asc profiles list
-asc bundle-ids list
+asc bundle-ids capabilities list --bundle "BUNDLE_ID"
+asc signing fetch --bundle-id com.example.app --profile-type IOS_APP_STORE --output .asc/signing
+asc signing sync pull --repo git@github.com:team/signing.git --password-file ~/.config/asc/signing-sync-password --output-dir .asc/signing/pulled
 ```
+
+`signing fetch` downloads public certificates and provisioning profiles. A
+usable signing identity also needs the matching private key; `signing sync`
+can verify that local identity and share it through an encrypted Git
+repository. For multi-target release testing, `signing reconcile` plans exact
+device/profile changes. `signing run` provides a temporary macOS keychain only
+for single-target archives. Multi-target exports must import the identity into
+a job-scoped keychain and install every reconciled profile for the job-exclusive
+macOS user. See the
+[signing guide](guides/code-signing.mdx) for setup, CI, rotation, security
+boundaries, and troubleshooting.
 
 ### Workflow automation
 
@@ -384,6 +434,10 @@ and `ExportOptions.plist` that use `asc builds next-build-number`,
 `asc publish testflight --group ... --wait`.
 Add `--submit --confirm` when
 distributing to an external TestFlight group that needs beta app review submission.
+
+The experimental `asc xcode test` command provides local unit/UI test execution
+with structured results and preserved `.xcresult` bundles; see the same workflow
+guide for an invocation.
 
 ```bash
 asc workflow validate --output json
@@ -462,7 +516,9 @@ For full command families, flags, and discovery patterns, see:
 ## Documentation
 
 - [docs/CI_CD.md](docs/CI_CD.md) - CI/CD integration guides (GitHub Actions, GitLab, Bitrise, CircleCI)
+- [commands/signing.mdx](commands/signing.mdx) - signing identities, encrypted sync, CI, and release-testing profiles
 - [docs/COMMANDS.md](docs/COMMANDS.md) - Command families and reference navigation
+- [docs/PARITY.md](docs/PARITY.md) - Remaining parity areas and intentional non-goals
 - [docs/WORKFLOWS.md](docs/WORKFLOWS.md) - Reusable workflow patterns, including local Xcode to TestFlight
 - [guides/apple-ads-playbooks.mdx](guides/apple-ads-playbooks.mdx) - Apple Ads operator playbooks
 - [docs/architecture/storekit-retention-messaging.md](docs/architecture/storekit-retention-messaging.md) - Retention Messaging setup and sandbox verification

@@ -65,8 +65,8 @@ func TestWebXcodeCloudCommandHierarchy(t *testing.T) {
 	if cmd.Name != "xcode-cloud" {
 		t.Fatalf("expected command name %q, got %q", "xcode-cloud", cmd.Name)
 	}
-	if len(cmd.Subcommands) != 4 {
-		t.Fatalf("expected 4 subcommands (usage, products, workflows, env-vars), got %d", len(cmd.Subcommands))
+	if len(cmd.Subcommands) != 6 {
+		t.Fatalf("expected 6 subcommands (usage, products, workflows, env-vars, settings, scm), got %d", len(cmd.Subcommands))
 	}
 
 	names := map[string]bool{}
@@ -84,6 +84,12 @@ func TestWebXcodeCloudCommandHierarchy(t *testing.T) {
 	}
 	if !names["env-vars"] {
 		t.Fatal("expected 'env-vars' subcommand")
+	}
+	if !names["settings"] {
+		t.Fatal("expected 'settings' subcommand")
+	}
+	if !names["scm"] {
+		t.Fatal("expected 'scm' subcommand")
 	}
 }
 
@@ -108,7 +114,7 @@ func TestWebXcodeCloudUsageSubcommands(t *testing.T) {
 	}
 }
 
-func TestWebXcodeCloudSubcommandsResolveSessionWithinTimeoutContext(t *testing.T) {
+func TestWebXcodeCloudSubcommandsResolveSessionBeforeTimeoutContext(t *testing.T) {
 	origResolveSession := resolveSessionFn
 	t.Cleanup(func() {
 		resolveSessionFn = origResolveSession
@@ -191,6 +197,11 @@ func TestWebXcodeCloudSubcommandsResolveSessionWithinTimeoutContext(t *testing.T
 			args:  []string{"--apple-id", "user@example.com"},
 		},
 		{
+			name:  "workflows list",
+			build: webXcodeCloudWorkflowListCommand,
+			args:  []string{"--apple-id", "user@example.com", "--product-id", "prod-123"},
+		},
+		{
 			name:  "workflows describe",
 			build: webXcodeCloudWorkflowDescribeCommand,
 			args:  []string{"--apple-id", "user@example.com", "--product-id", "prod-123", "--workflow-id", "wf-123"},
@@ -227,8 +238,8 @@ func TestWebXcodeCloudSubcommandsResolveSessionWithinTimeoutContext(t *testing.T
 			if !errors.Is(err, resolveErr) {
 				t.Fatalf("expected resolveSession error %v, got %v", resolveErr, err)
 			}
-			if !hadDeadline {
-				t.Fatal("expected resolveSession to receive a timeout context")
+			if hadDeadline {
+				t.Fatal("expected resolveSession to run before the request timeout context is created")
 			}
 		})
 	}

@@ -43,12 +43,20 @@ Examples:
   asc web xcode-cloud usage months --product-ids "UUID" --apple-id "user@example.com" --output table
   asc web xcode-cloud usage days --product-ids "UUID" --apple-id "user@example.com"
   asc web xcode-cloud usage workflows --product-id "UUID" --apple-id "user@example.com" --output table
+  asc web xcode-cloud workflows list --product-id "UUID" --apple-id "user@example.com"
   asc web xcode-cloud workflows create --product-id "UUID" --file ./workflow.json --apple-id "user@example.com"
   asc web xcode-cloud workflows describe --product-id "UUID" --workflow-id "WF-UUID" --apple-id "user@example.com"
   asc web xcode-cloud workflows options product-config --product-id "UUID" --apple-id "user@example.com"
   asc web xcode-cloud workflows edit --product-id "UUID" --workflow-id "WF-UUID" --patch-file ./workflow.patch.json --apple-id "user@example.com"
   asc web xcode-cloud env-vars shared list --product-id "UUID" --apple-id "user@example.com"
-  asc web xcode-cloud env-vars shared set --product-id "UUID" --name MY_VAR --value hello --apple-id "user@example.com"`,
+  asc web xcode-cloud env-vars shared set --product-id "UUID" --name MY_VAR --value hello --apple-id "user@example.com"
+  asc web xcode-cloud settings next-build-number show --product-id "UUID" --apple-id "user@example.com"
+  asc web xcode-cloud settings next-build-number set --product-id "UUID" --value 102 --confirm --apple-id "user@example.com"
+  asc web xcode-cloud settings version-aliases list --product-id "UUID" --apple-id "user@example.com"
+  asc web xcode-cloud settings version-aliases view --product-id "UUID" --id "ALIAS_UUID" --apple-id "user@example.com"
+  asc web xcode-cloud settings version-aliases create --product-id "UUID" --type xcode_version --name "Stable" --build "latest:stable" --confirm --apple-id "user@example.com"
+  asc web xcode-cloud settings version-aliases update --product-id "UUID" --id "ALIAS_UUID" --name "Stable" --confirm --apple-id "user@example.com"
+  asc web xcode-cloud settings version-aliases delete --product-id "UUID" --id "ALIAS_UUID" --confirm --apple-id "user@example.com"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Subcommands: []*ffcli.Command{
@@ -56,6 +64,8 @@ Examples:
 			webXcodeCloudProductsCommand(),
 			webXcodeCloudWorkflowsCommand(),
 			webXcodeCloudEnvVarsCommand(),
+			webXcodeCloudNextBuildNumberCommand(),
+			webXcodeCloudScmCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
 			return flag.ErrHelp
@@ -111,10 +121,8 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, sessionFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, sessionFlags)
 			if err != nil {
 				return err
 			}
@@ -191,10 +199,8 @@ Examples:
 				return flag.ErrHelp
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, sessionFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, sessionFlags)
 			if err != nil {
 				return err
 			}
@@ -289,10 +295,8 @@ Examples:
 				return flag.ErrHelp
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, sessionFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, sessionFlags)
 			if err != nil {
 				return err
 			}
@@ -412,10 +416,8 @@ Examples:
 				return flag.ErrHelp
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, sessionFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, sessionFlags)
 			if err != nil {
 				return err
 			}
@@ -641,10 +643,8 @@ Examples:
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, sessionFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, sessionFlags)
 			if err != nil {
 				return err
 			}

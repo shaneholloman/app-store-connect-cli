@@ -44,7 +44,7 @@ asc <subcommand> [flags]
 
 ### Web Session Commands
 
-- `web` - Apple web-session workflows.
+- `web` - Apple web-session workflows, including finance report downloads.
 
 ### Analytics and Finance
 
@@ -63,7 +63,7 @@ asc <subcommand> [flags]
 - `versions` - Manage App Store versions.
 - `localizations` - Manage App Store localization metadata.
 - `metadata` - Manage app metadata with deterministic workflows and keyword tooling.
-- `screenshots` - Upload and manage App Store screenshots; local capture/frame workflow is [experimental].
+- `screenshots` - Upload and manage App Store screenshots; local capture/frame/matrix workflow is [experimental].
 - `video-previews` - Manage App Store app preview videos.
 - `background-assets` - Manage background assets.
 - `product-pages` - Manage custom product pages and product page experiments.
@@ -89,7 +89,7 @@ asc <subcommand> [flags]
 - `builds` - Manage builds in App Store Connect.
 - `build-bundles` - Manage build bundles and App Clip data.
 - `build-localizations` - Manage build release notes localizations.
-- `xcode` - Local Xcode build/archive/export helpers (macOS only).
+- `xcode` - Local Xcode build/archive/export and [experimental] signing-settings helpers.
 - `distribute` - Plan, execute, inspect, and publish iOS distribution artifacts. [experimental]
 - `sandbox` - Manage sandbox testers in App Store Connect.
 
@@ -177,6 +177,19 @@ asc builds upload --app "123456789" --ipa "/path/to/MyApp.ipa"
 # Generate local Xcode metadata before archiving
 asc xcode inject --manifest .asc/deployment.json --set version=1.2.3 --set build_number=42 --dry-run --output json
 
+# Inspect the selected local Xcode toolchain without changing host state
+asc xcode doctor --output json
+
+# Install and verify one signed IPA on an exact connected device
+asc xcode install --ipa .asc/artifacts/App.ipa --device-id COREDEVICE_IDENTIFIER --timeout 5m --output json
+
+# Staple and validate a notarized macOS artifact locally
+ASC_BYPASS_KEYCHAIN=1 asc notarization staple --file ./MyApp.dmg --confirm --output json
+ASC_BYPASS_KEYCHAIN=1 asc notarization validate --file ./MyApp.dmg --output json
+
+# Run local Xcode tests with structured results
+asc xcode test --project App.xcodeproj --scheme App --destination 'platform=iOS Simulator,name=iPhone 17 Pro' --output json
+
 # Plan, confirm, resume, check status, and live-verify a private ad hoc distribution run
 asc distribute plan --archive-path ./App.xcarchive --config .asc/distribution.json --plan .asc/distribution/plan.json --state-dir .asc/distribution/runs --output json
 asc distribute apply --plan .asc/distribution/plan.json --confirm PLAN_HASH --output json
@@ -194,6 +207,7 @@ asc status --app "123456789"
 
 # Canonical readiness and lower-level submission lifecycle flow
 asc validate --app "123456789" --version "1.2.3"
+asc validate --app "123456789" --version "1.2.3" --check-urls
 asc submit status --version-id "VERSION_ID"
 asc submit cancel --version-id "VERSION_ID" --confirm
 

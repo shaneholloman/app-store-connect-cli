@@ -17,12 +17,15 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
-const deviceWithoutCreateMissingDeprecationWarning = "Warning: --device without --create-missing is deprecated and ignored because device IDs are only applied when creating a profile. Add --create-missing so they can be applied if a profile must be created. This combination will be rejected in 5.0.0."
+const deviceWithoutCreateMissingError = "--device requires --create-missing because device IDs are only applied to profiles this command creates"
 
-func warnDeviceWithoutCreateMissing(deviceIDs string, createMissing bool) {
+// rejectDeviceWithoutCreateMissing fails before any App Store Connect call when
+// device IDs were supplied but could never be applied.
+func rejectDeviceWithoutCreateMissing(deviceIDs string, createMissing bool) error {
 	if !createMissing && strings.TrimSpace(deviceIDs) != "" {
-		fmt.Fprintln(os.Stderr, deviceWithoutCreateMissingDeprecationWarning)
+		return shared.UsageError(deviceWithoutCreateMissingError)
 	}
+	return nil
 }
 
 // SigningFetchCommand returns the signing fetch subcommand.
@@ -32,7 +35,7 @@ func SigningFetchCommand() *ffcli.Command {
 	appID := fs.String("app", "", "App Store Connect app ID (optional, or ASC_APP_ID env)")
 	bundleID := fs.String("bundle-id", "", "Bundle identifier (e.g., com.example.app) - required")
 	profileType := fs.String("profile-type", "", "Profile type: IOS_APP_STORE, IOS_APP_DEVELOPMENT, MAC_APP_STORE, etc. (required)")
-	deviceIDs := fs.String("device", "", "Device ID(s), comma-separated (required with --create-missing for development profiles; deprecated and ignored without it until 5.0.0)")
+	deviceIDs := fs.String("device", "", "Device ID(s), comma-separated (requires --create-missing; required for development profiles)")
 	certType := fs.String("certificate-type", "", "Certificate type filter (optional)")
 	outputPath := fs.String("output", "./signing", "Output directory for signing files")
 	createMissing := fs.Bool("create-missing", false, "Create missing profiles")
@@ -49,8 +52,7 @@ and writes them to the output directory.
 
 With --create-missing, it will create a new profile if none exist for the
 specified configuration. Devices are only applied to profiles this command
-creates. In 4.x, passing --device without --create-missing prints a deprecation
-warning and ignores the device IDs; 5.0.0 will reject that combination.
+creates, so --device without --create-missing is rejected with a usage error.
 
 Examples:
   asc signing fetch --bundle-id com.example.app --profile-type IOS_APP_STORE --output ./signing
@@ -71,7 +73,9 @@ Examples:
 				return shared.MissingRequiredUsageError("--profile-type")
 			}
 			profType = strings.ToUpper(profType)
-			warnDeviceWithoutCreateMissing(*deviceIDs, *createMissing)
+			if err := rejectDeviceWithoutCreateMissing(*deviceIDs, *createMissing); err != nil {
+				return err
+			}
 			if *createMissing && isDevelopmentProfile(profType) && strings.TrimSpace(*deviceIDs) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --device is required for development profiles")
 				return shared.MissingRequiredUsageError("--device")
@@ -247,12 +251,16 @@ type signingAssetsOptions struct {
 	BundleIDResourceID string
 	BundleIdentifier   string
 	ProfileType        string
-	CertificateType    string
-	DeviceIDs          []string
-	CreateMissing      bool
-	BeforeCreate       func(profileCreatePlan) error
-	CreateContext      func() (context.Context, context.CancelFunc)
-	CertificateFilter  func(asc.Resource[asc.CertificateAttributes]) bool
+	// ProfileName overrides the default name for a profile created by this
+	// resolution. Batch callers use a deterministic target-scoped name while
+	// single-target callers retain the historical profile type/date name.
+	ProfileName       string
+	CertificateType   string
+	DeviceIDs         []string
+	CreateMissing     bool
+	BeforeCreate      func(profileCreatePlan) error
+	CreateContext     func() (context.Context, context.CancelFunc)
+	CertificateFilter func(asc.Resource[asc.CertificateAttributes]) bool
 }
 
 // profileCreatePlan describes the profile that is about to be created so callers
@@ -263,27 +271,6 @@ type profileCreatePlan struct {
 }
 
 var errNoMatchingProfileCertificates = errors.New("profile has no matching associated certificates")
-
-var supportedSigningCertificateTypes = map[string]struct{}{
-	"APPLE_PAY":                   {},
-	"APPLE_PAY_MERCHANT_IDENTITY": {},
-	"APPLE_PAY_PSP_IDENTITY":      {},
-	"APPLE_PAY_RSA":               {},
-	"DEVELOPER_ID_KEXT":           {},
-	"DEVELOPER_ID_KEXT_G2":        {},
-	"DEVELOPER_ID_APPLICATION":    {},
-	"DEVELOPER_ID_APPLICATION_G2": {},
-	"DEVELOPMENT":                 {},
-	"DISTRIBUTION":                {},
-	"IDENTITY_ACCESS":             {},
-	"IOS_DEVELOPMENT":             {},
-	"IOS_DISTRIBUTION":            {},
-	"MAC_APP_DISTRIBUTION":        {},
-	"MAC_INSTALLER_DISTRIBUTION":  {},
-	"MAC_APP_DEVELOPMENT":         {},
-	"PASS_TYPE_ID":                {},
-	"PASS_TYPE_ID_WITH_NFC":       {},
-}
 
 func resolveSigningAssets(ctx context.Context, client *asc.Client, options signingAssetsOptions) (*asc.ProfileResponse, *asc.CertificatesResponse, bool, error) {
 	certificateType, err := resolveSigningCertificateTypes(options.ProfileType, options.CertificateType)
@@ -340,7 +327,10 @@ func resolveSigningAssets(ctx context.Context, client *asc.Client, options signi
 			options.ProfileType,
 		)
 	}
-	profileName := profileCreateName(options.ProfileType, time.Now())
+	profileName := strings.TrimSpace(options.ProfileName)
+	if profileName == "" {
+		profileName = profileCreateName(options.ProfileType, time.Now())
+	}
 	if options.BeforeCreate != nil {
 		plan := profileCreatePlan{ProfileName: profileName, Certificates: certificates.Data}
 		if err := options.BeforeCreate(plan); err != nil {
@@ -449,10 +439,12 @@ func resolveSigningCertificateTypes(profileType, raw string) (string, error) {
 		certificateTypes = shared.SplitCSVUpper(inferred)
 	}
 
-	for _, certificateType := range certificateTypes {
-		if _, ok := supportedSigningCertificateTypes[certificateType]; !ok {
+	for index, certificateType := range certificateTypes {
+		canonical, ok := shared.CanonicalCertificateType(certificateType)
+		if !ok {
 			return "", fmt.Errorf("unsupported certificate type %s", certificateType)
 		}
+		certificateTypes[index] = canonical
 	}
 	return strings.Join(certificateTypes, ","), nil
 }
@@ -587,6 +579,15 @@ func profileCreateName(profileType string, now time.Time) string {
 	return fmt.Sprintf("%s-%s", profileType, now.Format("20060102"))
 }
 
+// profileCreateNameForTarget preserves the historical type/date prefix while
+// making names created during one batch unambiguous to App Store Connect.
+// Bundle IDs have already passed the manifest validation boundary, but use the
+// same filename-safe component as repository paths so direct callers cannot
+// introduce separators into the API name either.
+func profileCreateNameForTarget(profileType, bundleIdentifier string, now time.Time) string {
+	return fmt.Sprintf("%s-%s", profileCreateName(profileType, now), safeFileName(bundleIdentifier, "target"))
+}
+
 func isDevelopmentProfile(profileType string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(profileType))
 	return strings.Contains(normalized, "DEVELOPMENT") ||
@@ -615,13 +616,13 @@ func inferCertificateType(profileType string) (string, error) {
 	case strings.Contains(normalized, "MAC_CATALYST_APP_STORE"):
 		return "MAC_APP_DISTRIBUTION,DISTRIBUTION", nil
 	case strings.Contains(normalized, "MAC_CATALYST_APP_DIRECT"):
-		return "DEVELOPER_ID_APPLICATION", nil
+		return "DEVELOPER_ID_APPLICATION,DEVELOPER_ID_APPLICATION_G2", nil
 	case strings.Contains(normalized, "MAC_APP_DEVELOPMENT"):
 		return "MAC_APP_DEVELOPMENT,DEVELOPMENT", nil
 	case strings.Contains(normalized, "MAC_APP_STORE"):
 		return "MAC_APP_DISTRIBUTION,DISTRIBUTION", nil
 	case strings.Contains(normalized, "MAC_APP_DIRECT"):
-		return "DEVELOPER_ID_APPLICATION", nil
+		return "DEVELOPER_ID_APPLICATION,DEVELOPER_ID_APPLICATION_G2", nil
 	default:
 		return "", fmt.Errorf("unable to infer certificate type for profile type %s; use --certificate-type", profileType)
 	}

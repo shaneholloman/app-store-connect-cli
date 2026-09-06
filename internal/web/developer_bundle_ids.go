@@ -1,22 +1,21 @@
 package web
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
 const (
-	developerPortalBaseURL   = "https://developer.apple.com"
-	developerPortalTeamsPath = "/services-account/QH65B2/account/listTeams.action"
-	developerServicesPath    = "/services-account/v1"
-	privateCloudCompute      = "PRIVATE_CLOUD_COMPUTE"
-	developerPortalAuthHint  = "run 'asc web auth logout --apple-id EMAIL', then 'asc web auth login --apple-id EMAIL', and try again"
+	privateCloudCompute = "PRIVATE_CLOUD_COMPUTE"
 )
 
 var supportedDeveloperBundleIDCapabilities = map[string]struct{}{
@@ -56,6 +55,24 @@ type DeveloperBundleIDCapabilityEnableResult struct {
 	Status     string `json:"status"`
 }
 
+// DeveloperBundleIDCapabilityDisableRequest disables one supported Developer
+// Portal-only capability on an existing Bundle ID resource.
+type DeveloperBundleIDCapabilityDisableRequest struct {
+	BundleID   string
+	Capability string
+}
+
+// DeveloperBundleIDCapabilityUnverifiedError is returned when a capability
+// PATCH may have been applied but the requested disabled state could not be
+// proven. Callers should inspect the Bundle ID before retrying.
+type DeveloperBundleIDCapabilityUnverifiedError struct {
+	Err error
+}
+
+func (e *DeveloperBundleIDCapabilityUnverifiedError) Error() string { return e.Err.Error() }
+
+func (e *DeveloperBundleIDCapabilityUnverifiedError) Unwrap() error { return e.Err }
+
 type developerCapabilityMetadataResponse struct {
 	Data []struct {
 		ID         string                                `json:"id"`
@@ -71,24 +88,6 @@ type developerCapabilityMetadataAttributes struct {
 	Editable     bool   `json:"editable"`
 	CanRequest   bool   `json:"canRequestFromPortal"`
 	EnabledByDef bool   `json:"enabledByDefault"`
-}
-
-type developerPortalTeam struct {
-	TeamID string `json:"teamId"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-}
-
-type developerPortalTeamsResponse struct {
-	Teams []developerPortalTeam `json:"teams"`
-	Data  struct {
-		Teams []developerPortalTeam `json:"teams"`
-	} `json:"data"`
-}
-
-type developerPortalProxyReadRequest struct {
-	URLEncodedQueryParams string `json:"urlEncodedQueryParams"`
-	TeamID                string `json:"teamId"`
 }
 
 type developerResource struct {
@@ -204,90 +203,225 @@ func (c *Client) EnableDeveloperBundleIDCapability(ctx context.Context, req Deve
 	}, nil
 }
 
-func (c *Client) ensureDeveloperPortalSession(ctx context.Context) error {
-	// The App Store Connect SRP session becomes usable by Developer Portal only
-	// after its legacy team endpoint establishes Portal team and CSRF context.
-	headers := developerPortalHeaders("")
-	headers.Set("Accept", "application/json, text/javascript, */*; q=0.01")
-	headers.Set("Content-Type", "application/x-www-form-urlencoded")
-	body, response, err := c.doDeveloperPortalHTTP(ctx, http.MethodPost, c.developerPortalOrigin()+developerPortalTeamsPath, nil, headers)
+// DisableDeveloperBundleIDCapability disables a supported Developer
+// Portal-only Bundle ID capability and verifies the resulting graph. The
+// private endpoint does not provide a reliable mutation response body, so a
+// successful PATCH is accepted only after a fresh exact-resource read proves
+// that no matching capability remains enabled.
+func (c *Client) DisableDeveloperBundleIDCapability(ctx context.Context, req DeveloperBundleIDCapabilityDisableRequest) (*asc.DeveloperBundleIDCapabilityDisableResult, error) {
+	normalized, err := normalizeDeveloperBundleIDCapabilityEnableRequest(DeveloperBundleIDCapabilityEnableRequest(req))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	c.captureDeveloperCSRFTokens(response.Header)
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return developerPortalSessionError(response.StatusCode)
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return &APIError{Status: response.StatusCode, AppleRequestID: extractAppleRequestID(response.Header), rawBody: body}
-	}
-	portalURL, parseErr := url.Parse(c.developerPortalOrigin())
-	if parseErr != nil {
-		return fmt.Errorf("invalid Developer Portal base URL: %w", parseErr)
-	}
-	if response.Request != nil && response.Request.URL != nil && !sameURLOrigin(portalURL, response.Request.URL) {
-		return fmt.Errorf("authentication redirected to %s instead of Developer Portal; %s", response.Request.URL.Host, developerPortalAuthHint)
+	req.BundleID = normalized.BundleID
+	req.Capability = normalized.Capability
+	if err := c.ensureDeveloperPortalSession(ctx); err != nil {
+		return nil, err
 	}
 
-	var payload developerPortalTeamsResponse
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return fmt.Errorf("failed to parse Developer Portal teams response: %w", err)
-	}
-	teams := payload.Teams
-	if len(teams) == 0 {
-		teams = payload.Data.Teams
-	}
-	team, err := selectDeveloperPortalTeam(teams, c.publicProviderID, c.providerName)
+	metadata, err := c.loadDeveloperCapabilityMetadata(ctx, req.BundleID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	c.developerSessionMu.Lock()
-	c.developerTeamID = team.TeamID
-	c.developerSessionMu.Unlock()
-	return nil
+	capabilityMetadata, ok := findDeveloperCapability(metadata, req.Capability)
+	if !ok {
+		return nil, fmt.Errorf("capability %q is not available in Developer Portal for this account", req.Capability)
+	}
+	if !capabilityMetadata.Editable {
+		return nil, fmt.Errorf("capability %q is not editable in Developer Portal for this account", req.Capability)
+	}
+
+	current, err := c.loadDeveloperBundleIDExact(ctx, req.BundleID)
+	if err != nil {
+		return nil, err
+	}
+	before, err := developerBundleIDCapabilityDisableState(current, req.Capability)
+	if err != nil {
+		return nil, err
+	}
+	if !before.hasEnabled() {
+		return &asc.DeveloperBundleIDCapabilityDisableResult{
+			BundleID:   req.BundleID,
+			Capability: req.Capability,
+			Enabled:    false,
+			Changed:    false,
+			Status:     "already-disabled",
+		}, nil
+	}
+
+	payload, alreadyDisabled, err := buildDeveloperBundleIDCapabilityPatchRequestForState(current, DeveloperBundleIDCapabilityEnableRequest(req), false, false)
+	if err != nil {
+		return nil, err
+	}
+	if alreadyDisabled {
+		return &asc.DeveloperBundleIDCapabilityDisableResult{
+			BundleID:   req.BundleID,
+			Capability: req.Capability,
+			Enabled:    false,
+			Changed:    false,
+			Status:     "already-disabled",
+		}, nil
+	}
+	teamID := c.developerPortalTeamID()
+	if teamID == "" {
+		return nil, fmt.Errorf("developer portal team is not selected; %s", developerPortalAuthHint)
+	}
+	payload, err = addDeveloperPortalTeamID(payload, teamID)
+	if err != nil {
+		return nil, err
+	}
+	csrf, csrfTS := c.developerCSRFTokens()
+	if csrf == "" || csrfTS == "" {
+		return nil, fmt.Errorf("missing Developer Portal CSRF headers; %s", developerPortalAuthHint)
+	}
+
+	path := "/bundleIds/" + url.PathEscape(req.BundleID)
+	_, writeErr := c.doDeveloperPortalRequest(ctx, http.MethodPatch, path, payload, developerPortalHeaders(req.BundleID), true)
+	if writeErr == nil {
+		verified, verifyErr := c.loadDeveloperBundleIDExact(ctx, req.BundleID)
+		if verifyErr != nil {
+			return nil, newDeveloperBundleIDUnverifiedError("Developer Portal accepted disabling %q but verification failed: %v", req.Capability, verifyErr)
+		}
+		after, stateErr := developerBundleIDCapabilityDisableState(verified, req.Capability)
+		if stateErr != nil {
+			return nil, newDeveloperBundleIDUnverifiedError("Developer Portal accepted disabling %q but verification failed: %v", req.Capability, stateErr)
+		}
+		if !after.isDisabled() || !before.retainsNonTargetResources(after) || (!after.sameTargetIDs(before) && !after.targetsRemoved(before)) {
+			return nil, newDeveloperBundleIDUnverifiedError("Developer Portal accepted disabling %q but verification did not prove the same target resources are disabled or that Apple removed all target resources", req.Capability)
+		}
+		return developerBundleIDCapabilityDisableResult(req), nil
+	}
+
+	if !isAmbiguousDeveloperBundleIDCapabilityWriteFailure(writeErr) {
+		return nil, writeErr
+	}
+	verified, verifyErr := c.loadDeveloperBundleIDExact(ctx, req.BundleID)
+	if verifyErr != nil {
+		return nil, newDeveloperBundleIDUnverifiedError("disabling %q may have been applied but verification also failed: %v", req.Capability, verifyErr)
+	}
+	after, stateErr := developerBundleIDCapabilityDisableState(verified, req.Capability)
+	if stateErr != nil {
+		return nil, newDeveloperBundleIDUnverifiedError("disabling %q may have been applied but verification failed: %v", req.Capability, stateErr)
+	}
+	switch {
+	case after.isDisabled() && before.retainsNonTargetResources(after) && (after.sameTargetIDs(before) || after.targetsRemoved(before)):
+		return developerBundleIDCapabilityDisableResult(req), nil
+	default:
+		return nil, newDeveloperBundleIDUnverifiedError("disabling %q may have been applied but verification did not prove the same target resources are disabled or that Apple removed all target resources (write error: %v)", req.Capability, writeErr)
+	}
 }
 
-func selectDeveloperPortalTeam(teams []developerPortalTeam, publicProviderID, providerName string) (developerPortalTeam, error) {
-	valid := make([]developerPortalTeam, 0, len(teams))
-	for _, team := range teams {
-		team.TeamID = strings.TrimSpace(team.TeamID)
-		team.Name = strings.TrimSpace(team.Name)
-		if team.TeamID != "" {
-			valid = append(valid, team)
+func developerBundleIDCapabilityDisableResult(req DeveloperBundleIDCapabilityDisableRequest) *asc.DeveloperBundleIDCapabilityDisableResult {
+	return &asc.DeveloperBundleIDCapabilityDisableResult{
+		BundleID:   req.BundleID,
+		Capability: req.Capability,
+		Enabled:    false,
+		Changed:    true,
+		Status:     "disabled",
+	}
+}
+
+func (c *Client) loadDeveloperBundleIDExact(ctx context.Context, bundleID string) (developerBundleIDResponse, error) {
+	response, err := c.loadDeveloperBundleID(ctx, bundleID)
+	if err != nil {
+		return developerBundleIDResponse{}, err
+	}
+	if response.Data.ID != bundleID {
+		return developerBundleIDResponse{}, fmt.Errorf("cannot safely update Bundle ID %q: Developer Portal returned resource %q instead", bundleID, response.Data.ID)
+	}
+	return response, nil
+}
+
+type developerBundleIDCapabilityDisableSnapshot struct {
+	EnabledByID map[string]bool
+	ResourceIDs map[string]struct{}
+}
+
+func (s developerBundleIDCapabilityDisableSnapshot) hasEnabled() bool {
+	for _, enabled := range s.EnabledByID {
+		if enabled {
+			return true
 		}
 	}
-	if len(valid) == 0 {
-		return developerPortalTeam{}, fmt.Errorf("apple account has no Developer Portal team; a paid Apple Developer Program membership may be required")
+	return false
+}
+
+func (s developerBundleIDCapabilityDisableSnapshot) isDisabled() bool { return !s.hasEnabled() }
+
+func (s developerBundleIDCapabilityDisableSnapshot) sameTargetIDs(other developerBundleIDCapabilityDisableSnapshot) bool {
+	if len(s.EnabledByID) != len(other.EnabledByID) {
+		return false
 	}
-	publicProviderID = strings.TrimSpace(publicProviderID)
-	if publicProviderID != "" {
-		for _, team := range valid {
-			if strings.EqualFold(publicProviderID, team.TeamID) {
-				return team, nil
-			}
+	for id := range s.EnabledByID {
+		if _, ok := other.EnabledByID[id]; !ok {
+			return false
 		}
 	}
-	providerName = strings.TrimSpace(providerName)
-	if providerName != "" {
-		for _, team := range valid {
-			if strings.EqualFold(providerName, team.Name) {
-				return team, nil
-			}
+	return true
+}
+
+func (s developerBundleIDCapabilityDisableSnapshot) retainsNonTargetResources(other developerBundleIDCapabilityDisableSnapshot) bool {
+	for id := range s.ResourceIDs {
+		if _, target := s.EnabledByID[id]; target {
+			continue
 		}
-		var prefixMatch developerPortalTeam
-		for _, team := range valid {
-			if team.Name != "" && strings.HasPrefix(strings.ToLower(providerName), strings.ToLower(team.Name)) && len(team.Name) > len(prefixMatch.Name) {
-				prefixMatch = team
-			}
-		}
-		if prefixMatch.TeamID != "" {
-			return prefixMatch, nil
+		if _, retained := other.ResourceIDs[id]; !retained {
+			return false
 		}
 	}
-	if len(valid) == 1 {
-		return valid[0], nil
+	return true
+}
+
+func (s developerBundleIDCapabilityDisableSnapshot) targetsRemoved(other developerBundleIDCapabilityDisableSnapshot) bool {
+	return len(s.EnabledByID) == 0 && len(other.EnabledByID) > 0
+}
+
+func developerBundleIDCapabilityDisableState(current developerBundleIDResponse, capabilityID string) (developerBundleIDCapabilityDisableSnapshot, error) {
+	capabilities, err := developerBundleIDCapabilitiesForDisable(current)
+	if err != nil {
+		return developerBundleIDCapabilityDisableSnapshot{}, err
 	}
-	return developerPortalTeam{}, fmt.Errorf("could not match App Store Connect provider %q to one of %d Developer Portal teams", providerName, len(valid))
+	state := developerBundleIDCapabilityDisableSnapshot{
+		EnabledByID: make(map[string]bool),
+		ResourceIDs: make(map[string]struct{}, len(capabilities)),
+	}
+	for _, capability := range capabilities {
+		if strings.TrimSpace(capability.ID) == "" {
+			return developerBundleIDCapabilityDisableSnapshot{}, fmt.Errorf("cannot safely verify Bundle ID capability graph without a resource id")
+		}
+		state.ResourceIDs[capability.ID] = struct{}{}
+		id, err := developerBundleIDCapabilityID(capability)
+		if err != nil {
+			return developerBundleIDCapabilityDisableSnapshot{}, err
+		}
+		if id != capabilityID {
+			continue
+		}
+		if strings.TrimSpace(capability.ID) == "" {
+			return developerBundleIDCapabilityDisableSnapshot{}, fmt.Errorf("cannot safely update Bundle ID capability %q without a resource id", capabilityID)
+		}
+		enabled, present, err := developerBundleIDCapabilityEnabledValue(capability)
+		if err != nil {
+			return developerBundleIDCapabilityDisableSnapshot{}, err
+		}
+		if !present {
+			return developerBundleIDCapabilityDisableSnapshot{}, fmt.Errorf("bundle ID capability %q resource %q is missing an enabled state", capabilityID, capability.ID)
+		}
+		state.EnabledByID[capability.ID] = enabled
+	}
+	return state, nil
+}
+
+func newDeveloperBundleIDUnverifiedError(format string, args ...any) error {
+	return &DeveloperBundleIDCapabilityUnverifiedError{Err: fmt.Errorf(format+"; no automatic retry was sent; inspect the Bundle ID before retrying", args...)}
+}
+
+func isAmbiguousDeveloperBundleIDCapabilityWriteFailure(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status == http.StatusRequestTimeout || apiErr.Status >= http.StatusInternalServerError
+	}
+	return isAmbiguousDeveloperPortalWriteFailure(err) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func (c *Client) loadDeveloperCapabilityMetadata(ctx context.Context, bundleID string) (developerCapabilityMetadataResponse, error) {
@@ -334,6 +468,14 @@ func (c *Client) loadDeveloperBundleID(ctx context.Context, bundleID string) (de
 }
 
 func buildDeveloperBundleIDCapabilityPatchRequest(current developerBundleIDResponse, req DeveloperBundleIDCapabilityEnableRequest) (developerBundleIDPatchRequest, bool, error) {
+	return buildDeveloperBundleIDCapabilityPatchRequestForState(current, req, true, true)
+}
+
+// buildDeveloperBundleIDCapabilityPatchRequestForState builds the shared
+// capability graph patch. The enable path keeps its historical first-target
+// duplicate behavior; disabling updates every matching enabled resource and
+// never synthesizes or drops a disabled resource.
+func buildDeveloperBundleIDCapabilityPatchRequestForState(current developerBundleIDResponse, req DeveloperBundleIDCapabilityEnableRequest, desiredEnabled, addIfMissing bool) (developerBundleIDPatchRequest, bool, error) {
 	capabilities, err := developerBundleIDCapabilities(current)
 	if err != nil {
 		return developerBundleIDPatchRequest{}, false, err
@@ -342,6 +484,8 @@ func buildDeveloperBundleIDCapabilityPatchRequest(current developerBundleIDRespo
 	capabilityIDs := make([]string, len(capabilities))
 	targetIndex := -1
 	targetEnabled := false
+	hasTarget := false
+	hasEnabledTarget := false
 	for index, capability := range capabilities {
 		capabilityID, err := developerBundleIDCapabilityID(capability)
 		if err != nil {
@@ -351,16 +495,35 @@ func buildDeveloperBundleIDCapabilityPatchRequest(current developerBundleIDRespo
 		if capabilityID != req.Capability {
 			continue
 		}
-		enabled, err := developerBundleIDCapabilityEnabled(capability)
-		if err != nil {
-			return developerBundleIDPatchRequest{}, false, err
+		hasTarget = true
+		var enabled bool
+		if desiredEnabled {
+			enabled, err = developerBundleIDCapabilityEnabled(capability)
+			if err != nil {
+				return developerBundleIDPatchRequest{}, false, err
+			}
+		} else {
+			var present bool
+			enabled, present, err = developerBundleIDCapabilityEnabledValue(capability)
+			if err != nil {
+				return developerBundleIDPatchRequest{}, false, err
+			}
+			if !present {
+				return developerBundleIDPatchRequest{}, false, fmt.Errorf("bundle ID capability %q resource %q is missing an enabled state", req.Capability, capability.ID)
+			}
+		}
+		if enabled {
+			hasEnabledTarget = true
 		}
 		if targetIndex == -1 || (enabled && !targetEnabled) {
 			targetIndex = index
 			targetEnabled = enabled
 		}
 	}
-	if targetEnabled {
+	if desiredEnabled && targetEnabled {
+		return developerBundleIDPatchRequest{}, true, nil
+	}
+	if !desiredEnabled && (!hasTarget || !hasEnabledTarget) {
 		return developerBundleIDPatchRequest{}, true, nil
 	}
 
@@ -370,17 +533,34 @@ func buildDeveloperBundleIDCapabilityPatchRequest(current developerBundleIDRespo
 			updated = append(updated, capability)
 			continue
 		}
-		if index != targetIndex {
+		if desiredEnabled {
+			if index != targetIndex {
+				continue
+			}
+			var err error
+			capability.Attributes, err = setDeveloperCapabilityEnabledValue(capability.Attributes, desiredEnabled)
+			if err != nil {
+				return developerBundleIDPatchRequest{}, false, err
+			}
+			updated = append(updated, capability)
 			continue
 		}
-		var err error
-		capability.Attributes, err = setDeveloperCapabilityEnabled(capability.Attributes)
+		enabled, present, err := developerBundleIDCapabilityEnabledValue(capability)
 		if err != nil {
 			return developerBundleIDPatchRequest{}, false, err
 		}
+		if !present {
+			return developerBundleIDPatchRequest{}, false, fmt.Errorf("bundle ID capability %q resource %q is missing an enabled state", req.Capability, capability.ID)
+		}
+		if enabled {
+			capability.Attributes, err = setDeveloperCapabilityEnabledValue(capability.Attributes, desiredEnabled)
+			if err != nil {
+				return developerBundleIDPatchRequest{}, false, err
+			}
+		}
 		updated = append(updated, capability)
 	}
-	if targetIndex == -1 {
+	if targetIndex == -1 && addIfMissing {
 		updated = append(updated, newDeveloperBundleIDCapability(req.Capability))
 	}
 
@@ -514,6 +694,79 @@ func developerBundleIDCapabilities(current developerBundleIDResponse) ([]develop
 	return capabilities, nil
 }
 
+// developerBundleIDCapabilitiesForDisable requires the included capability
+// graph used by the Developer Portal response. The endpoint's selected fields
+// omit data.relationships in live responses, so a present included array is
+// the completeness boundary for disable verification.
+func developerBundleIDCapabilitiesForDisable(current developerBundleIDResponse) ([]developerResource, error) {
+	if current.Included == nil {
+		return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: included data is missing")
+	}
+
+	var relationshipReferences []developerResource
+	rawRelationship, hasRelationship := current.Data.Relationships["bundleIdCapabilities"]
+	if hasRelationship {
+		var relationship struct {
+			Data json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(rawRelationship, &relationship); err != nil {
+			return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: invalid relationship: %w", err)
+		}
+		if value := strings.TrimSpace(string(relationship.Data)); value == "" || value == "null" {
+			return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: relationship data is missing")
+		}
+		if err := json.Unmarshal(relationship.Data, &relationshipReferences); err != nil {
+			return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: invalid relationship data: %w", err)
+		}
+		for _, reference := range relationshipReferences {
+			if reference.Type != "bundleIdCapabilities" || strings.TrimSpace(reference.ID) == "" {
+				return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: relationship contains an invalid resource reference")
+			}
+		}
+	}
+
+	for _, resource := range current.Included {
+		if resource.Type == "bundleIdCapabilities" && strings.TrimSpace(resource.ID) == "" {
+			return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: included resource has no id")
+		}
+	}
+
+	if _, err := indexDeveloperCapabilityResources(current.Included); err != nil {
+		return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: %w", err)
+	}
+	if hasRelationship {
+		referenced := make(map[string]struct{}, len(relationshipReferences))
+		for _, reference := range relationshipReferences {
+			referenced[reference.ID] = struct{}{}
+		}
+		for _, resource := range current.Included {
+			if resource.Type != "bundleIdCapabilities" {
+				continue
+			}
+			if _, ok := referenced[resource.ID]; !ok {
+				return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: included capability %q is not referenced", resource.ID)
+			}
+		}
+	}
+
+	capabilities, err := developerBundleIDCapabilities(current)
+	if err != nil {
+		return nil, err
+	}
+	if len(relationshipReferences) > 0 {
+		resolved := make(map[string]struct{}, len(capabilities))
+		for _, capability := range capabilities {
+			resolved[capability.ID] = struct{}{}
+		}
+		for _, reference := range relationshipReferences {
+			if _, ok := resolved[reference.ID]; !ok {
+				return nil, fmt.Errorf("cannot safely verify Bundle ID capability graph: relationship resource %q is incomplete", reference.ID)
+			}
+		}
+	}
+	return capabilities, nil
+}
+
 func developerBundleIDCapabilityID(resource developerResource) (string, error) {
 	raw, ok := resource.Relationships["capability"]
 	if !ok {
@@ -551,7 +804,29 @@ func developerBundleIDCapabilityEnabled(resource developerResource) (bool, error
 	return enabled, nil
 }
 
-func setDeveloperCapabilityEnabled(raw json.RawMessage) (json.RawMessage, error) {
+func developerBundleIDCapabilityEnabledValue(resource developerResource) (bool, bool, error) {
+	if len(resource.Attributes) == 0 {
+		return false, false, fmt.Errorf("bundle ID capability %q is missing attributes", resource.ID)
+	}
+	var attributes map[string]json.RawMessage
+	if err := json.Unmarshal(resource.Attributes, &attributes); err != nil {
+		return false, false, fmt.Errorf("failed to parse Bundle ID capability %q attributes: %w", resource.ID, err)
+	}
+	raw, ok := attributes["enabled"]
+	if !ok {
+		return false, false, nil
+	}
+	if strings.TrimSpace(string(raw)) == "null" {
+		return false, true, fmt.Errorf("failed to parse Bundle ID capability %q enabled state: value is null", resource.ID)
+	}
+	var enabled bool
+	if err := json.Unmarshal(raw, &enabled); err != nil {
+		return false, true, fmt.Errorf("failed to parse Bundle ID capability %q enabled state: %w", resource.ID, err)
+	}
+	return enabled, true, nil
+}
+
+func setDeveloperCapabilityEnabledValue(raw json.RawMessage, enabled bool) (json.RawMessage, error) {
 	var attributes map[string]json.RawMessage
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &attributes); err != nil {
@@ -561,7 +836,7 @@ func setDeveloperCapabilityEnabled(raw json.RawMessage) (json.RawMessage, error)
 	if attributes == nil {
 		attributes = make(map[string]json.RawMessage)
 	}
-	attributes["enabled"] = json.RawMessage("true")
+	attributes["enabled"] = json.RawMessage(strconv.FormatBool(enabled))
 	if _, ok := attributes["settings"]; !ok {
 		attributes["settings"] = json.RawMessage("[]")
 	}
@@ -594,202 +869,4 @@ func cloneRawMessageMap(source map[string]json.RawMessage) map[string]json.RawMe
 		cloned[key] = append(json.RawMessage(nil), value...)
 	}
 	return cloned
-}
-
-func developerPortalHeaders(bundleID string) http.Header {
-	headers := make(http.Header)
-	headers.Set("Accept", "application/vnd.api+json, application/json")
-	headers.Set("Content-Type", "application/vnd.api+json")
-	headers.Set("Referer", developerPortalBaseURL+"/account/resources/identifiers/list")
-	if strings.TrimSpace(bundleID) != "" {
-		headers.Set("Referer", developerPortalBaseURL+"/account/resources/identifiers/bundleId/edit/"+url.PathEscape(bundleID))
-	}
-	headers.Set("User-Agent", "App-Store-Connect-CLI")
-	headers.Set("X-Requested-With", "XMLHttpRequest")
-	return headers
-}
-
-func (c *Client) developerPortalOrigin() string {
-	if c != nil && strings.TrimSpace(c.developerPortalURL) != "" {
-		return strings.TrimRight(strings.TrimSpace(c.developerPortalURL), "/")
-	}
-	return developerPortalBaseURL
-}
-
-func (c *Client) doDeveloperPortalProxyRead(ctx context.Context, path string, query url.Values, headers http.Header) ([]byte, error) {
-	// Developer Portal's cookie-authenticated v1 API proxies logical GETs as
-	// POSTs carrying the team and encoded query in the request body.
-	teamID := c.developerPortalTeamID()
-	if teamID == "" {
-		return nil, fmt.Errorf("developer portal team is not selected; %s", developerPortalAuthHint)
-	}
-	headers.Set("X-HTTP-Method-Override", http.MethodGet)
-	return c.doDeveloperPortalRequest(ctx, http.MethodPost, path, developerPortalProxyReadRequest{
-		URLEncodedQueryParams: query.Encode(),
-		TeamID:                teamID,
-	}, headers, false)
-}
-
-func (c *Client) doDeveloperPortalRequest(ctx context.Context, method, path string, body any, headers http.Header, requireCSRF bool) ([]byte, error) {
-	csrf, csrfTS := c.developerCSRFTokens()
-	if csrf != "" {
-		headers.Set("csrf", csrf)
-	}
-	if csrfTS != "" {
-		headers.Set("csrf_ts", csrfTS)
-	}
-	if requireCSRF {
-		if csrf == "" || csrfTS == "" {
-			return nil, fmt.Errorf("missing Developer Portal CSRF headers; %s", developerPortalAuthHint)
-		}
-	}
-	responseBody, response, err := c.doDeveloperPortalHTTP(ctx, method, c.developerPortalOrigin()+developerServicesPath+path, body, headers)
-	if err != nil {
-		return nil, err
-	}
-	c.captureDeveloperCSRFTokens(response.Header)
-	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return nil, developerPortalSessionError(response.StatusCode)
-	}
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, &APIError{
-			Status:         response.StatusCode,
-			AppleRequestID: extractAppleRequestID(response.Header),
-			CorrelationKey: strings.TrimSpace(response.Header.Get("X-Apple-Jingle-Correlation-Key")),
-			rawBody:        responseBody,
-		}
-	}
-	return responseBody, nil
-}
-
-func (c *Client) doDeveloperPortalHTTP(ctx context.Context, method, requestURL string, body any, headers http.Header) ([]byte, *http.Response, error) {
-	if c == nil || c.httpClient == nil {
-		return nil, nil, fmt.Errorf("web client is not configured for Developer Portal")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := c.waitForRateLimit(ctx); err != nil {
-		return nil, nil, err
-	}
-
-	var requestBody io.Reader
-	if body != nil {
-		switch typed := body.(type) {
-		case url.Values:
-			requestBody = strings.NewReader(typed.Encode())
-		default:
-			encoded, err := json.Marshal(body)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to marshal Developer Portal request: %w", err)
-			}
-			requestBody = bytes.NewReader(encoded)
-		}
-	}
-	request, err := http.NewRequestWithContext(ctx, method, requestURL, requestBody)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Developer Portal request: %w", err)
-	}
-	request.Header = cloneHeaders(headers)
-	setModifiedCookieHeader(c.httpClient, request)
-
-	httpClient := *c.httpClient
-	previousCheckRedirect := httpClient.CheckRedirect
-	httpClient.CheckRedirect = func(redirect *http.Request, via []*http.Request) error {
-		if !sameURLOrigin(request.URL, redirect.URL) {
-			return fmt.Errorf("authentication redirected to %s instead of Developer Portal; %s", redirect.URL.Host, developerPortalAuthHint)
-		}
-		if previousCheckRedirect != nil {
-			return previousCheckRedirect(redirect, via)
-		}
-		if len(via) >= 10 {
-			return fmt.Errorf("stopped after 10 redirects")
-		}
-		return nil
-	}
-	response, err := httpClient.Do(request)
-	if err != nil {
-		logWebAuthHTTP("developer_portal_request", request, nil, nil, err)
-		return nil, nil, fmt.Errorf("request to Developer Portal failed: %w", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		logWebAuthHTTP("developer_portal_request", request, response, nil, err)
-		return nil, response, fmt.Errorf("failed to read Developer Portal response: %w", err)
-	}
-	logWebAuthHTTP("developer_portal_request", request, response, responseBody, nil)
-	return responseBody, response, nil
-}
-
-func sameURLOrigin(expected, actual *url.URL) bool {
-	if expected == nil || actual == nil || expected.Scheme == "" || actual.Scheme == "" || expected.Hostname() == "" || actual.Hostname() == "" {
-		return false
-	}
-	return strings.EqualFold(expected.Scheme, actual.Scheme) &&
-		strings.EqualFold(expected.Hostname(), actual.Hostname()) &&
-		effectiveURLPort(expected) == effectiveURLPort(actual)
-}
-
-func effectiveURLPort(value *url.URL) string {
-	if port := value.Port(); port != "" {
-		return port
-	}
-	switch strings.ToLower(value.Scheme) {
-	case "http":
-		return "80"
-	case "https":
-		return "443"
-	default:
-		return ""
-	}
-}
-
-func (c *Client) captureDeveloperCSRFTokens(headers http.Header) {
-	csrf := headerValueCaseInsensitive(headers, "csrf")
-	csrfTS := headerValueCaseInsensitive(headers, "csrf_ts")
-	if csrf == "" && csrfTS == "" {
-		return
-	}
-	c.developerSessionMu.Lock()
-	defer c.developerSessionMu.Unlock()
-	if csrf != "" {
-		c.developerCSRF = csrf
-	}
-	if csrfTS != "" {
-		c.developerCSRFTS = csrfTS
-	}
-}
-
-func (c *Client) clearDeveloperCSRFTokens() {
-	c.developerSessionMu.Lock()
-	defer c.developerSessionMu.Unlock()
-	c.developerCSRF = ""
-	c.developerCSRFTS = ""
-}
-
-func headerValueCaseInsensitive(headers http.Header, name string) string {
-	for key, values := range headers {
-		if !strings.EqualFold(key, name) || len(values) == 0 {
-			continue
-		}
-		return strings.TrimSpace(values[0])
-	}
-	return ""
-}
-
-func (c *Client) developerCSRFTokens() (string, string) {
-	c.developerSessionMu.Lock()
-	defer c.developerSessionMu.Unlock()
-	return c.developerCSRF, c.developerCSRFTS
-}
-
-func (c *Client) developerPortalTeamID() string {
-	c.developerSessionMu.Lock()
-	defer c.developerSessionMu.Unlock()
-	return c.developerTeamID
-}
-
-func developerPortalSessionError(status int) error {
-	return fmt.Errorf("web session is unauthorized or expired for Developer Portal (status %d); %s", status, developerPortalAuthHint)
 }

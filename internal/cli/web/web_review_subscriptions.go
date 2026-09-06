@@ -68,11 +68,24 @@ func reviewSubscriptionBool(value bool) string {
 	return strconv.FormatBool(value)
 }
 
+func reviewSubscriptionAttachmentValue(subscription webcore.ReviewSubscription) string {
+	if !subscription.SubmitWithNextAppStoreVersionKnown {
+		return "unknown"
+	}
+	return reviewSubscriptionBool(subscription.SubmitWithNextAppStoreVersion)
+}
+
 func reviewSubscriptionState(subscription webcore.ReviewSubscription) string {
 	return strings.ToUpper(strings.TrimSpace(subscription.State))
 }
 
 func reviewSubscriptionAttachPreflight(appID string, subscription webcore.ReviewSubscription) error {
+	if !subscription.SubmitWithNextAppStoreVersionKnown {
+		return shared.NewReportedError(fmt.Errorf(
+			"web review subscriptions attach: Apple did not return a reliable next-version attachment state for subscription %q; refresh App Store Connect and retry",
+			strings.TrimSpace(subscription.ID),
+		))
+	}
 	state := reviewSubscriptionState(subscription)
 	if state == "READY_TO_SUBMIT" {
 		return nil
@@ -123,7 +136,7 @@ func reviewSubscriptionAttachPreflight(appID string, subscription webcore.Review
 func countAttachedReviewSubscriptions(subscriptions []webcore.ReviewSubscription) int {
 	count := 0
 	for _, subscription := range subscriptions {
-		if subscription.SubmitWithNextAppStoreVersion {
+		if subscription.SubmitWithNextAppStoreVersionKnown && subscription.SubmitWithNextAppStoreVersion {
 			count++
 		}
 	}
@@ -189,7 +202,7 @@ func buildReviewSubscriptionsListTableRows(subscriptions []webcore.ReviewSubscri
 			reviewSubscriptionValue(subscription.ProductID),
 			reviewSubscriptionValue(reviewSubscriptionName(subscription)),
 			reviewSubscriptionValue(subscription.State),
-			reviewSubscriptionBool(subscription.SubmitWithNextAppStoreVersion),
+			reviewSubscriptionAttachmentValue(subscription),
 			reviewSubscriptionBool(subscription.IsAppStoreReviewInProgress),
 		})
 	}
@@ -219,7 +232,7 @@ func buildReviewSubscriptionMutationRows(payload reviewSubscriptionMutationOutpu
 		{"Subscription", "Name", reviewSubscriptionValue(reviewSubscriptionName(payload.Subscription))},
 		{"Subscription", "Group", reviewSubscriptionValue(payload.Subscription.GroupReferenceName)},
 		{"Subscription", "State", reviewSubscriptionValue(payload.Subscription.State)},
-		{"Subscription", "Next Version", reviewSubscriptionBool(payload.Subscription.SubmitWithNextAppStoreVersion)},
+		{"Subscription", "Next Version", reviewSubscriptionAttachmentValue(payload.Subscription)},
 		{"Subscription", "Review In Progress", reviewSubscriptionBool(payload.Subscription.IsAppStoreReviewInProgress)},
 	}
 }
@@ -338,6 +351,10 @@ func reviewSubscriptionRemoveUnchangedAfterRefreshReason() string {
 	return "remove request completed but refreshed state still shows attached"
 }
 
+func reviewSubscriptionChangedAfterRefresh(subscription webcore.ReviewSubscription, wantAttached bool) bool {
+	return subscription.SubmitWithNextAppStoreVersionKnown && subscription.SubmitWithNextAppStoreVersion == wantAttached
+}
+
 func collectReviewSubscriptionGroupChanges(
 	refreshedGroup []webcore.ReviewSubscription,
 	subscriptionIDs []string,
@@ -355,7 +372,14 @@ func collectReviewSubscriptionGroupChanges(
 			})
 			continue
 		}
-		if refreshed.SubmitWithNextAppStoreVersion == wantAttached {
+		if !refreshed.SubmitWithNextAppStoreVersionKnown {
+			skipped = append(skipped, reviewSubscriptionMutationSkip{
+				Subscription: *refreshed,
+				Reason:       "next-version attachment state is unknown after refresh",
+			})
+			continue
+		}
+		if reviewSubscriptionChangedAfterRefresh(*refreshed, wantAttached) {
 			changed = append(changed, *refreshed)
 			continue
 		}
@@ -371,10 +395,10 @@ func reviewSubscriptionGroupAttachPreflight(appID, groupID string, subscriptions
 	readyCount := 0
 	attachedCount := 0
 	for _, subscription := range subscriptions {
-		if subscription.SubmitWithNextAppStoreVersion {
+		if subscription.SubmitWithNextAppStoreVersionKnown && subscription.SubmitWithNextAppStoreVersion {
 			attachedCount++
 		}
-		if reviewSubscriptionState(subscription) == "READY_TO_SUBMIT" && !subscription.SubmitWithNextAppStoreVersion {
+		if reviewSubscriptionState(subscription) == "READY_TO_SUBMIT" && subscription.SubmitWithNextAppStoreVersionKnown && !subscription.SubmitWithNextAppStoreVersion {
 			readyCount++
 		}
 	}
@@ -385,7 +409,7 @@ func reviewSubscriptionGroupAttachPreflight(appID, groupID string, subscriptions
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintf(
 		os.Stderr,
-		"Attach preflight: subscription group %q (%s) has no READY_TO_SUBMIT subscriptions for first-review attachment yet.\n",
+		"Attach preflight: subscription group %q (%s) has no READY_TO_SUBMIT subscriptions for first-submission attachment yet.\n",
 		reviewSubscriptionGroupLabel(subscriptions, groupID),
 		reviewSubscriptionValue(groupID),
 	)
@@ -470,10 +494,8 @@ func WebReviewSubscriptionsListCommand() *ffcli.Command {
 				)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, authFlags)
 			if err != nil {
 				return err
 			}
@@ -528,10 +550,8 @@ func WebReviewSubscriptionsAttachCommand() *ffcli.Command {
 				return shared.UsageError("--confirm is required")
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, authFlags)
 			if err != nil {
 				return err
 			}
@@ -552,6 +572,9 @@ func WebReviewSubscriptionsAttachCommand() *ffcli.Command {
 				Operation:    "attach",
 				Changed:      false,
 				Subscription: *selected,
+			}
+			if !selected.SubmitWithNextAppStoreVersionKnown {
+				return reviewSubscriptionAttachPreflight(trimmedAppID, *selected)
 			}
 			if !selected.SubmitWithNextAppStoreVersion {
 				if err := reviewSubscriptionAttachPreflight(trimmedAppID, *selected); err != nil {
@@ -574,7 +597,7 @@ func WebReviewSubscriptionsAttachCommand() *ffcli.Command {
 					return fmt.Errorf("subscription %q was not found for app %q after attach: %w", trimmedSubscriptionID, trimmedAppID, err)
 				}
 				payload.SubmissionID = strings.TrimSpace(submission.ID)
-				payload.Changed = refreshed.SubmitWithNextAppStoreVersion
+				payload.Changed = reviewSubscriptionChangedAfterRefresh(*refreshed, true)
 				payload.Subscription = *refreshed
 			}
 
@@ -617,10 +640,8 @@ func WebReviewSubscriptionsAttachGroupCommand() *ffcli.Command {
 				return shared.UsageError("--confirm is required")
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, authFlags)
 			if err != nil {
 				return err
 			}
@@ -642,6 +663,8 @@ func WebReviewSubscriptionsAttachGroupCommand() *ffcli.Command {
 			attachIDs := make([]string, 0)
 			for _, subscription := range groupSubscriptions {
 				switch {
+				case !subscription.SubmitWithNextAppStoreVersionKnown:
+					skipped = append(skipped, reviewSubscriptionMutationSkip{Subscription: subscription, Reason: "next-version attachment state is unknown"})
 				case subscription.SubmitWithNextAppStoreVersion:
 					skipped = append(skipped, reviewSubscriptionMutationSkip{Subscription: subscription, Reason: "already attached"})
 				case reviewSubscriptionState(subscription) != "READY_TO_SUBMIT":
@@ -729,10 +752,8 @@ func WebReviewSubscriptionsRemoveCommand() *ffcli.Command {
 				return shared.UsageError("--confirm is required")
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, authFlags)
 			if err != nil {
 				return err
 			}
@@ -754,6 +775,12 @@ func WebReviewSubscriptionsRemoveCommand() *ffcli.Command {
 				Changed:      false,
 				Subscription: *selected,
 			}
+			if !selected.SubmitWithNextAppStoreVersionKnown {
+				return shared.NewReportedError(fmt.Errorf(
+					"web review subscriptions remove: Apple did not return a reliable next-version attachment state for subscription %q; refresh App Store Connect and retry",
+					trimmedSubscriptionID,
+				))
+			}
 			if selected.SubmitWithNextAppStoreVersion {
 				err = withWebSpinner("Removing subscription from next app version", func() error {
 					return client.DeleteSubscriptionSubmission(requestCtx, trimmedSubscriptionID)
@@ -770,7 +797,7 @@ func WebReviewSubscriptionsRemoveCommand() *ffcli.Command {
 				if err != nil {
 					return fmt.Errorf("subscription %q was not found for app %q after remove: %w", trimmedSubscriptionID, trimmedAppID, err)
 				}
-				payload.Changed = !refreshed.SubmitWithNextAppStoreVersion
+				payload.Changed = reviewSubscriptionChangedAfterRefresh(*refreshed, false)
 				payload.Subscription = *refreshed
 			}
 
@@ -813,10 +840,8 @@ func WebReviewSubscriptionsRemoveGroupCommand() *ffcli.Command {
 				return shared.UsageError("--confirm is required")
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			session, requestCtx, cancel, err := resolveWebSessionForCommand(ctx, authFlags)
 			defer cancel()
-
-			session, err := resolveWebSessionForCommand(requestCtx, authFlags)
 			if err != nil {
 				return err
 			}
@@ -834,6 +859,10 @@ func WebReviewSubscriptionsRemoveGroupCommand() *ffcli.Command {
 			skipped := make([]reviewSubscriptionMutationSkip, 0)
 			removeIDs := make([]string, 0)
 			for _, subscription := range groupSubscriptions {
+				if !subscription.SubmitWithNextAppStoreVersionKnown {
+					skipped = append(skipped, reviewSubscriptionMutationSkip{Subscription: subscription, Reason: "next-version attachment state is unknown"})
+					continue
+				}
 				if subscription.SubmitWithNextAppStoreVersion {
 					removeIDs = append(removeIDs, strings.TrimSpace(subscription.ID))
 					continue

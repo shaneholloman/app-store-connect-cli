@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -324,6 +326,197 @@ class WebsiteCommandChecksTest(unittest.TestCase):
             )
             errors = check_website_commands.collect_errors(website, index)
             self.assertEqual(errors, [])
+
+    def test_website_command_checks_accept_command_passthrough(self) -> None:
+        index = {
+            (): check_website_commands.CommandSpec(
+                path=(),
+                usage="asc <subcommand> [flags]",
+                flags={},
+                subcommands={"signing"},
+            ),
+            ("signing",): check_website_commands.CommandSpec(
+                path=("signing",),
+                usage="asc signing <subcommand> [flags]",
+                flags={},
+                subcommands={"run"},
+            ),
+            ("signing", "run"): check_website_commands.CommandSpec(
+                path=("signing", "run"),
+                usage=(
+                    "asc signing run --identity PATH --profile PATH [flags] "
+                    "-- <command> [args...]"
+                ),
+                flags={"--identity": False, "--profile": False},
+                subcommands=set(),
+            ),
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            website = Path(tmpdir)
+            (website / "index.mdx").write_text(
+                "```bash\n"
+                "asc signing run --identity signing.p12 --profile app.mobileprovision "
+                "-- xcodebuild -exportArchive --archivePath App.xcarchive\n"
+                "```\n"
+            )
+            errors = check_website_commands.collect_errors(website, index)
+            self.assertEqual(errors, [])
+
+    def test_website_command_checks_reject_empty_command_passthrough(self) -> None:
+        index = {
+            (): check_website_commands.CommandSpec(
+                path=(),
+                usage="asc <subcommand> [flags]",
+                flags={},
+                subcommands={"signing"},
+            ),
+            ("signing",): check_website_commands.CommandSpec(
+                path=("signing",),
+                usage="asc signing <subcommand> [flags]",
+                flags={},
+                subcommands={"run"},
+            ),
+            ("signing", "run"): check_website_commands.CommandSpec(
+                path=("signing", "run"),
+                usage=(
+                    "asc signing run --identity PATH --profile PATH [flags] "
+                    "-- <command> [args...]"
+                ),
+                flags={"--identity": False, "--profile": False},
+                subcommands=set(),
+            ),
+        }
+        examples = ('""', '"   "')
+
+        for command in examples:
+            with self.subTest(command=command):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    website = Path(tmpdir)
+                    (website / "index.mdx").write_text(
+                        "```bash\n"
+                        "asc signing run --identity signing.p12 "
+                        f"--profile app.mobileprovision -- {command}\n"
+                        "```\n"
+                    )
+                    errors = check_website_commands.collect_errors(website, index)
+                    self.assertEqual(len(errors), 1)
+                    self.assertIn("non-empty command", errors[0])
+
+    def test_website_command_checks_require_flags_before_command_passthrough(self) -> None:
+        index = {
+            (): check_website_commands.CommandSpec(
+                path=(),
+                usage="asc <subcommand> [flags]",
+                flags={},
+                subcommands={"signing"},
+            ),
+            ("signing",): check_website_commands.CommandSpec(
+                path=("signing",),
+                usage="asc signing <subcommand> [flags]",
+                flags={},
+                subcommands={"run"},
+            ),
+            ("signing", "run"): check_website_commands.CommandSpec(
+                path=("signing", "run"),
+                usage=(
+                    "asc signing run --identity PATH --profile PATH [flags] "
+                    "-- <command> [args...]"
+                ),
+                flags={"--identity": False, "--profile": False},
+                subcommands=set(),
+            ),
+        }
+        examples = {
+            "--identity signing.p12": "--profile",
+            "--profile app.mobileprovision": "--identity",
+        }
+
+        for flags, missing_flag in examples.items():
+            with self.subTest(missing_flag=missing_flag):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    website = Path(tmpdir)
+                    (website / "index.mdx").write_text(
+                        f"```bash\nasc signing run {flags} -- xcodebuild -exportArchive\n```\n"
+                    )
+                    errors = check_website_commands.collect_errors(website, index)
+                    self.assertEqual(len(errors), 1)
+                    self.assertIn("missing required flag", errors[0])
+                    self.assertIn(missing_flag, errors[0])
+
+    def test_website_command_checks_reject_empty_flags_before_command_passthrough(self) -> None:
+        index = {
+            (): check_website_commands.CommandSpec(
+                path=(),
+                usage="asc <subcommand> [flags]",
+                flags={},
+                subcommands={"signing"},
+            ),
+            ("signing",): check_website_commands.CommandSpec(
+                path=("signing",),
+                usage="asc signing <subcommand> [flags]",
+                flags={},
+                subcommands={"run"},
+            ),
+            ("signing", "run"): check_website_commands.CommandSpec(
+                path=("signing", "run"),
+                usage=(
+                    "asc signing run --identity PATH --profile PATH [flags] "
+                    "-- <command> [args...]"
+                ),
+                flags={"--identity": False, "--profile": False},
+                subcommands=set(),
+            ),
+        }
+        examples = {
+            "--identity= --profile app.mobileprovision": "--identity",
+            '--identity "" --profile app.mobileprovision': "--identity",
+            "--identity signing.p12 --identity= --profile app.mobileprovision": "--identity",
+            "--identity signing.p12 --profile=": "--profile",
+            '--identity signing.p12 --profile ""': "--profile",
+            '--identity signing.p12 --profile app.mobileprovision --profile ""': "--profile",
+        }
+
+        for flags, missing_flag in examples.items():
+            with self.subTest(flags=flags):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    website = Path(tmpdir)
+                    (website / "index.mdx").write_text(
+                        f"```bash\nasc signing run {flags} -- xcodebuild -exportArchive\n```\n"
+                    )
+                    errors = check_website_commands.collect_errors(website, index)
+                    self.assertEqual(len(errors), 1)
+                    self.assertIn("missing required flag", errors[0])
+                    self.assertIn(missing_flag, errors[0])
+
+    def test_website_command_checks_reject_unsupported_command_passthrough(self) -> None:
+        index = {
+            (): check_website_commands.CommandSpec(
+                path=(),
+                usage="asc <subcommand> [flags]",
+                flags={},
+                subcommands={"apps"},
+            ),
+            ("apps",): check_website_commands.CommandSpec(
+                path=("apps",),
+                usage="asc apps list [flags]",
+                flags={},
+                subcommands={"list"},
+            ),
+            ("apps", "list"): check_website_commands.CommandSpec(
+                path=("apps", "list"),
+                usage="asc apps list [flags]",
+                flags={},
+                subcommands=set(),
+            ),
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            website = Path(tmpdir)
+            (website / "index.mdx").write_text(
+                "```bash\nasc apps list -- echo unexpected\n```\n"
+            )
+            errors = check_website_commands.collect_errors(website, index)
+            self.assertEqual(len(errors), 1)
+            self.assertIn("does not accept command passthrough", errors[0])
 
     def test_website_command_checks_reject_unknown_subcommand(self) -> None:
         index = {
@@ -1141,25 +1334,67 @@ class DocLinksTest(unittest.TestCase):
 
 
 class HookChecksTest(unittest.TestCase):
-    def test_pre_commit_treats_root_level_mdx_and_mintlify_config_as_docs(self) -> None:
-        hook = (
-            Path(__file__).resolve().parents[1] / ".githooks" / "pre-commit"
-        ).read_text()
-        self.assertIn(
-            'docs.json|.mintignore|.mintlify/*|*.mdx|cicd/*|commands/*|concepts/*|configuration/*|guides/*|resources/*)',
-            hook,
-        )
+    def run_hook(self, paths: list[str], fail_target: str = "") -> tuple[int, list[str]]:
+        hook = Path(__file__).resolve().parents[1] / ".githooks" / "pre-commit"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            commands = {
+                "git": '\n'.join([
+                    '#!/usr/bin/env bash',
+                    'if [ "$1" = rev-parse ]; then pwd;',
+                    'elif [ "$2" = --cached ]; then printf "%s\\n" "$HOOK_PATHS"; fi',
+                ]),
+                "go": '#!/usr/bin/env bash\nif [ "$1" = env ]; then pwd; else echo "go $*" >> "$HOOK_LOG"; fi\n',
+                "make": '#!/usr/bin/env bash\necho "make $*" >> "$HOOK_LOG"\n[ "$1" != "$HOOK_FAIL" ]\n',
+            }
+            for name, content in commands.items():
+                command = root / name
+                command.write_text(content)
+                command.chmod(0o755)
+            log = root / "calls"
+            result = subprocess.run(
+                ["bash", str(hook)], cwd=root, capture_output=True, text=True,
+                env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+                     "HOOK_PATHS": "\n".join(paths), "HOOK_LOG": str(log),
+                     "HOOK_FAIL": fail_target},
+            )
+            return result.returncode, log.read_text().splitlines() if log.exists() else []
 
-    def test_pre_commit_treats_docs_go_files_as_code(self) -> None:
-        hook = (
-            Path(__file__).resolve().parents[1] / ".githooks" / "pre-commit"
-        ).read_text()
-        needs_code_case = hook.split('case "$path" in')[4]
-        docs_case = needs_code_case.index(
-            'docs.json|.mintignore|.mintlify/*|*.mdx|cicd/*|commands/*|concepts/*|configuration/*|guides/*|resources/*|README.md|CONTRIBUTING.md|SUPPORT.md|docs/*)'
-        )
-        go_case = needs_code_case.index("*.go|go.mod|go.sum|Makefile)")
-        self.assertLess(go_case, docs_case)
+    def test_instruction_docs_run_validators_without_go_gates(self) -> None:
+        for path in ["AGENTS.md", ".agents/skills/watch-asc-pr/SKILL.md",
+                     ".agents/skills/watch-asc-pr/references/checks.md",
+                     ".agents/skills/watch-asc-pr/agents/openai.yaml"]:
+            with self.subTest(path=path):
+                code, calls = self.run_hook([path])
+                self.assertEqual(code, 0)
+                self.assertEqual(calls, ["make check-repo-docs", "make check-agent-skills"])
+
+    def test_executable_and_mixed_changes_keep_code_gates(self) -> None:
+        for paths in [[".agents/skills/example/scripts/check.py"],
+                      ["AGENTS.md", "internal/cli/main.go"], ["docs/example.go"],
+                      [".githooks/pre-commit"]]:
+            with self.subTest(paths=paths):
+                code, calls = self.run_hook(paths)
+                self.assertEqual(code, 0)
+                self.assertIn("make format", calls)
+                self.assertIn("make lint", calls)
+                self.assertIn("go test -short ./...", calls)
+
+    def test_instruction_validation_failure_blocks_commit(self) -> None:
+        for target in ["check-repo-docs", "check-agent-skills"]:
+            with self.subTest(target=target):
+                code, calls = self.run_hook(["AGENTS.md"], target)
+                self.assertNotEqual(code, 0)
+                self.assertNotIn("make format", calls)
+
+    def test_website_and_wall_fast_paths_remain_separate(self) -> None:
+        for path, expected in [("index.mdx", "make check-website-docs"),
+                               (".mintlify/config.json", "make check-website-docs"),
+                               ("docs/wall-of-apps.json", "make check-wall-of-apps")]:
+            with self.subTest(path=path):
+                code, calls = self.run_hook([path])
+                self.assertEqual(code, 0)
+                self.assertEqual(calls, [expected])
 
 
 if __name__ == "__main__":

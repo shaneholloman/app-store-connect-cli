@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
@@ -59,11 +60,67 @@ func SetSyncAppClipBundleIDCapability(fn func(context.Context, *webcore.Client, 
 	}
 }
 
+func SetUnassignDeveloperAppGroup(fn func(context.Context, *webcore.Client, webcore.DeveloperAppGroupUnassignRequest) (*asc.WebAppGroupUnassignResult, error)) func() {
+	prev := unassignDeveloperAppGroupFn
+	unassignDeveloperAppGroupFn = fn
+	return func() {
+		unassignDeveloperAppGroupFn = prev
+	}
+}
+
+func SetSetDeveloperAppGroups(fn func(context.Context, *webcore.Client, webcore.DeveloperAppGroupSetRequest) (*asc.WebAppGroupSetResult, error)) func() {
+	prev := setDeveloperAppGroupsFn
+	setDeveloperAppGroupsFn = fn
+	return func() {
+		setDeveloperAppGroupsFn = prev
+	}
+}
+
+func SetDeleteDeveloperAppGroup(fn func(context.Context, *webcore.Client, webcore.DeveloperAppGroupDeleteRequest) (*asc.WebAppGroupDeleteResult, error)) func() {
+	prev := deleteDeveloperAppGroupFn
+	deleteDeveloperAppGroupFn = fn
+	return func() {
+		deleteDeveloperAppGroupFn = prev
+	}
+}
+
 func SetEnableDeveloperBundleIDCapability(fn func(context.Context, *webcore.Client, webcore.DeveloperBundleIDCapabilityEnableRequest) (*webcore.DeveloperBundleIDCapabilityEnableResult, error)) func() {
 	prev := enableDeveloperBundleIDCapabilityFn
 	enableDeveloperBundleIDCapabilityFn = fn
 	return func() {
 		enableDeveloperBundleIDCapabilityFn = prev
+	}
+}
+
+func SetDisableDeveloperBundleIDCapability(fn func(context.Context, *webcore.Client, webcore.DeveloperBundleIDCapabilityDisableRequest) (*asc.DeveloperBundleIDCapabilityDisableResult, error)) func() {
+	prev := disableDeveloperBundleIDCapabilityFn
+	disableDeveloperBundleIDCapabilityFn = fn
+	return func() {
+		disableDeveloperBundleIDCapabilityFn = prev
+	}
+}
+
+func SetListDeveloperBundleIDs(fn func(context.Context, *webcore.Client) (*webcore.DeveloperBundleIDsListResult, error)) func() {
+	prev := listDeveloperBundleIDsFn
+	listDeveloperBundleIDsFn = fn
+	return func() {
+		listDeveloperBundleIDsFn = prev
+	}
+}
+
+func SetGetDeveloperBundleID(fn func(context.Context, *webcore.Client, string) (*webcore.DeveloperBundleIDGetResult, error)) func() {
+	prev := getDeveloperBundleIDFn
+	getDeveloperBundleIDFn = fn
+	return func() {
+		getDeveloperBundleIDFn = prev
+	}
+}
+
+func SetPersistWebSession(fn func(*webcore.AuthSession) error) func() {
+	prev := persistWebSessionFn
+	persistWebSessionFn = fn
+	return func() {
+		persistWebSessionFn = prev
 	}
 }
 

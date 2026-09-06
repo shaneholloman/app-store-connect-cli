@@ -19,7 +19,7 @@ func WebCommand() *ffcli.Command {
 	return &ffcli.Command{
 		Name:       "web",
 		ShortUsage: "asc web <subcommand> [flags]",
-		ShortHelp:  "Apple web-session workflows.",
+		ShortHelp:  "Apple web-session workflows, including finance report downloads.",
 		LongHelp: `WEB SESSION WORKFLOWS
 
 Use Apple web sessions for App Store Connect and Developer Portal workflows.
@@ -28,6 +28,8 @@ Use ` + "`asc web apps create`" + ` as the canonical app-creation command in thi
 Examples:
   asc web auth status
   asc web agreements status
+  asc web api-keys list --output json
+  asc web api-keys view --key-id KEY_ID
   asc web api-keys create --name "Release automation"
   asc web sandbox create --first-name "Jane" --last-name "Tester" --email "jane+sandbox@example.com" --password "Passwordtest1" --territory "USA"
   asc web auth login --apple-id "user@example.com"
@@ -44,11 +46,16 @@ Examples:
 		Subcommands: []*ffcli.Command{
 			WebAuthCommand(),
 			WebAgreementsCommand(),
+			WebFinanceCommand(),
+			WebIAPCommand(),
 			WebAPIKeysCommand(),
 			WebSandboxCommand(),
 			WebAppsCommand(),
 			WebRemovedAppsCommand(),
 			WebBundleIDsCommand(),
+			WebServiceIDsCommand(),
+			WebWebsitePushIDsCommand(),
+			WebICloudContainersCommand(),
 			WebAppGroupsCommand(),
 			WebPrivacyCommand(),
 			WebReviewCommand(),
