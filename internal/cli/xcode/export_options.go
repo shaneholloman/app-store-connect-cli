@@ -35,6 +35,10 @@ an existing .xcarchive. Automatic signing lets Xcode resolve signing for the
 app and any embedded targets; provide --signing-style manual to resolve local
 profiles.
 
+Manual App Store macOS generation also resolves an installed package-installer
+identity. Profile mappings are emitted for executable bundles that carry an
+embedded provisioning profile or whose entitlements require one.
+
 Examples:
   asc xcode export-options generate --archive-path .asc/artifacts/App.xcarchive
   asc xcode export-options generate --archive-path .asc/artifacts/App.xcarchive --method release-testing
@@ -59,7 +63,7 @@ func XcodeExportOptionsCommand() *ffcli.Command {
 
 	archivePath := fs.String("archive-path", "", "Path to the .xcarchive input (required)")
 	outputPath := fs.String("output-path", "", "Destination path for the generated ExportOptions.plist (defaults to a method-specific .asc path)")
-	method := fs.String("method", "app-store-connect", "[experimental] Xcode export method: app-store-connect or release-testing")
+	method := fs.String("method", "app-store-connect", "Xcode export method: app-store-connect or release-testing")
 	destination := fs.String("destination", "export", "Xcode export destination: export or upload")
 	signingStyle := fs.String("signing-style", "automatic", "Signing style: automatic or manual")
 	teamID := fs.String("team-id", "", "Apple Developer team ID (overrides archive metadata)")
@@ -172,6 +176,9 @@ func exportOptionsResultRows(result *localxcode.ExportOptionsGenerateResult) [][
 	}
 	if signingCertificate := strings.TrimSpace(result.SigningCertificate); signingCertificate != "" {
 		rows = append(rows, []string{"signing_certificate", signingCertificate})
+	}
+	if installerSigningCertificate := strings.TrimSpace(result.InstallerSigningCertificate); installerSigningCertificate != "" {
+		rows = append(rows, []string{"installer_signing_certificate", installerSigningCertificate})
 	}
 	bundleIDs := make([]string, 0, len(result.ProvisioningProfiles))
 	for bundleID := range result.ProvisioningProfiles {

@@ -32,7 +32,7 @@ Examples:
   asc profiles create --name "Profile" --profile-type IOS_APP_DEVELOPMENT --bundle "BUNDLE_ID" --certificate "CERT_ID"
   asc profiles delete --id "PROFILE_ID" --confirm
   asc profiles download --id "PROFILE_ID" --output "./profile.mobileprovision"
-  asc profiles inspect --path "./profile.mobileprovision"
+  asc profiles inspect --path "./profile.provisionprofile"
   asc profiles links bundle-id --id "PROFILE_ID"
   asc profiles links certificates --id "PROFILE_ID"
   asc profiles links devices --id "PROFILE_ID"`,
@@ -58,18 +58,18 @@ Examples:
 func ProfilesListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
-	name := fs.String("name", "", "[experimental] Filter by profile name(s), comma-separated")
-	ids := fs.String("id", "", "[experimental] Filter by profile ID(s), comma-separated")
+	name := fs.String("name", "", "Filter by profile name(s), comma-separated")
+	ids := fs.String("id", "", "Filter by profile ID(s), comma-separated")
 	profileType := fs.String("profile-type", "", "Filter by profile type(s), comma-separated")
 	profileState := fs.String("profile-state", "", "Filter by profile state(s): ACTIVE, INVALID (default: ACTIVE,INVALID)")
-	sort := fs.String("sort", "", "[experimental] Sort by: "+strings.Join(profileSortList(), ", "))
-	fields := fs.String("fields", "", "[experimental] Fields to include: "+strings.Join(profileFieldsList(), ", "))
-	bundleIDFields := fs.String("bundle-id-fields", "", "[experimental] Bundle ID fields to include: "+strings.Join(profileBundleIDFieldsList(), ", "))
-	deviceFields := fs.String("device-fields", "", "[experimental] Device fields to include: "+strings.Join(profileDeviceFieldsList(), ", "))
-	certificateFields := fs.String("certificate-fields", "", "[experimental] Certificate fields to include: "+strings.Join(profileCertificateFieldsList(), ", "))
-	include := fs.String("include", "", "[experimental] Include related resources: "+strings.Join(profileIncludeList(), ", "))
-	devicesLimit := fs.Int("limit-devices", 0, "[experimental] Maximum included devices (1-50)")
-	certificatesLimit := fs.Int("limit-certificates", 0, "[experimental] Maximum included certificates (1-50)")
+	sort := fs.String("sort", "", "Sort by: "+strings.Join(profileSortList(), ", "))
+	fields := fs.String("fields", "", "Fields to include: "+strings.Join(profileFieldsList(), ", "))
+	bundleIDFields := fs.String("bundle-id-fields", "", "Bundle ID fields to include: "+strings.Join(profileBundleIDFieldsList(), ", "))
+	deviceFields := fs.String("device-fields", "", "Device fields to include: "+strings.Join(profileDeviceFieldsList(), ", "))
+	certificateFields := fs.String("certificate-fields", "", "Certificate fields to include: "+strings.Join(profileCertificateFieldsList(), ", "))
+	include := fs.String("include", "", "Include related resources: "+strings.Join(profileIncludeList(), ", "))
+	devicesLimit := fs.Int("limit-devices", 0, "Maximum included devices (1-50)")
+	certificatesLimit := fs.Int("limit-certificates", 0, "Maximum included certificates (1-50)")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
@@ -454,7 +454,7 @@ func ProfilesDownloadCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("download", flag.ExitOnError)
 
 	id := fs.String("id", "", "Profile ID")
-	outputPath := fs.String("output", "", "Output .mobileprovision file path")
+	outputPath := fs.String("output", "", "Output .mobileprovision or .provisionprofile file path")
 	output := shared.BindMetadataOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -464,7 +464,8 @@ func ProfilesDownloadCommand() *ffcli.Command {
 		LongHelp: `Download a provisioning profile.
 
 Examples:
-  asc profiles download --id "PROFILE_ID" --output "./profile.mobileprovision"`,
+  asc profiles download --id "PROFILE_ID" --output "./profile.mobileprovision"
+  asc profiles download --id "PROFILE_ID" --output "./profile.provisionprofile"`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {

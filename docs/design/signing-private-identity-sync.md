@@ -4,7 +4,7 @@
 
 ## Placement and invocation
 
-This change extends the existing experimental `asc signing sync push` command.
+This change extends the existing `asc signing sync push` command.
 It does not add a second signing store or imply that App Store Connect can
 return a private key.
 
@@ -47,6 +47,10 @@ The encrypted repository password resolves in this order:
 2. The explicit legacy `--password` flag, with a deprecation warning.
 3. `ASC_SIGNING_SYNC_PASSWORD`.
 4. The legacy `ASC_MATCH_PASSWORD` environment variable, with a deprecation warning.
+
+Profile artifacts use `.provisionprofile.enc` for native macOS profile types
+and `.mobileprovision.enc` for iOS and tvOS profile types. Existing legacy
+profile paths remain readable; sync does not rename them implicitly.
 
 The existing certificate/profile-only invocation remains valid. Its structured
 result reports `identityPresent: false`. Pull results list decrypted identity
@@ -155,5 +159,5 @@ unknown passwords, and ambiguous certificate selection. Normalization makes the
 semantic payload canonical and unambiguous while PKCS#12 and outer encryption
 remain intentionally randomized. Creating a separate
 identity command would duplicate repository, encryption, and profile resolution
-logic; extending the existing experimental sync command keeps one coherent
+logic; extending the existing sync command keeps one coherent
 store while preserving certificate/profile-only workflows.

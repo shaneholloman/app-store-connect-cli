@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	rootcmd "github.com/rudrankriyam/App-Store-Connect-CLI/cmd"
+	localxcode "github.com/rudrankriyam/App-Store-Connect-CLI/internal/xcode"
 )
 
 func TestXcodeCommandExists(t *testing.T) {
@@ -22,17 +23,13 @@ func TestXcodeCommandExists(t *testing.T) {
 		t.Fatal("expected xcode command")
 		return
 	}
-	if strings.HasPrefix(xcodeCmd.ShortHelp, "[experimental]") {
-		t.Fatalf("expected xcode command not to be experimental, got %q", xcodeCmd.ShortHelp)
-	}
+
 	buildCmd := findSubcommand(root, "xcode", "build")
 	if buildCmd == nil {
 		t.Fatal("expected xcode build command")
 		return
 	}
-	if !strings.HasPrefix(buildCmd.ShortHelp, "[experimental]") {
-		t.Fatalf("expected xcode build to be introduced as experimental, got %q", buildCmd.ShortHelp)
-	}
+
 	for _, name := range []string{"project", "workspace", "scheme", "configuration", "destination", "derived-data-path", "result-bundle-path", "clean", "no-code-signing", "xcodebuild-flag", "output"} {
 		if buildCmd.FlagSet.Lookup(name) == nil {
 			t.Fatalf("expected xcode build to expose --%s", name)
@@ -45,9 +42,7 @@ func TestXcodeCommandExists(t *testing.T) {
 		t.Fatal("expected xcode test command")
 	}
 	testCmd := findSubcommand(root, "xcode", "test")
-	if !strings.HasPrefix(testCmd.ShortHelp, "[experimental]") {
-		t.Fatalf("expected xcode test to be introduced as experimental, got %q", testCmd.ShortHelp)
-	}
+
 	for _, name := range []string{"project", "workspace", "scheme", "action", "configuration", "destination", "test-plan", "xctestrun", "only-testing", "skip-testing", "derived-data-path", "result-bundle-path", "clean", "no-code-signing", "xcodebuild-flag", "output"} {
 		if testCmd.FlagSet.Lookup(name) == nil {
 			t.Fatalf("expected xcode test to expose --%s", name)
@@ -56,8 +51,14 @@ func TestXcodeCommandExists(t *testing.T) {
 	if findSubcommand(root, "xcode", "export") == nil {
 		t.Fatal("expected xcode export command")
 	}
-	if findSubcommand(root, "xcode", "validate") == nil {
+	validateCmd := findSubcommand(root, "xcode", "validate")
+	if validateCmd == nil {
 		t.Fatal("expected xcode validate command")
+	}
+	for _, name := range []string{"ipa", "pkg", "api-key", "api-issuer", "output"} {
+		if validateCmd.FlagSet.Lookup(name) == nil {
+			t.Fatalf("expected xcode validate to expose --%s", name)
+		}
 	}
 	if findSubcommand(root, "xcode", "version") == nil {
 		t.Fatal("expected xcode version command")
@@ -98,8 +99,6 @@ func TestXcodeCommandExists(t *testing.T) {
 	}
 	if flag := editCmd.FlagSet.Lookup("allow-external-xcconfig"); flag == nil {
 		t.Fatal("expected xcode version edit to expose --allow-external-xcconfig")
-	} else if !strings.HasPrefix(flag.Usage, "[experimental]") {
-		t.Fatalf("expected --allow-external-xcconfig to be introduced as experimental, usage = %q", flag.Usage)
 	}
 	bumpCmd := findSubcommand(root, "xcode", "version", "bump")
 	if bumpCmd == nil {
@@ -123,8 +122,6 @@ func TestXcodeCommandExists(t *testing.T) {
 	}
 	if flag := bumpCmd.FlagSet.Lookup("allow-external-xcconfig"); flag == nil {
 		t.Fatal("expected xcode version bump to expose --allow-external-xcconfig")
-	} else if !strings.HasPrefix(flag.Usage, "[experimental]") {
-		t.Fatalf("expected --allow-external-xcconfig to be introduced as experimental, usage = %q", flag.Usage)
 	}
 	if findSubcommand(root, "xcode", "version", "get") != nil {
 		t.Fatal("expected xcode version get command to be absent")
@@ -218,6 +215,9 @@ func TestXcodeExportHelpMentionsDirectUploadMode(t *testing.T) {
 	}
 	if got := exportCmd.FlagSet.Lookup("ipa-path").Usage; !strings.Contains(got, "when one is produced") {
 		t.Fatalf("expected ipa-path usage to mention produced IPA behavior, got %q", got)
+	}
+	if got := exportCmd.FlagSet.Lookup("pkg-path").Usage; !strings.Contains(got, "macOS .pkg") {
+		t.Fatalf("expected pkg-path usage to mention macOS PKG behavior, got %q", got)
 	}
 	if exportCmd.FlagSet.Lookup("timeout") == nil {
 		t.Fatal("expected xcode export to expose --timeout")
@@ -404,7 +404,11 @@ func TestXcodeExportRequiresArchivePath(t *testing.T) {
 
 func TestXcodeExportWithoutExportOptionsPreflightsBeforeGeneration(t *testing.T) {
 	if runtime.GOOS == "darwin" {
-		binDir := t.TempDir()
+		developerDir := filepath.Join(t.TempDir(), "Xcode.app", "Contents", "Developer")
+		binDir := filepath.Join(developerDir, "usr", "bin")
+		if err := os.MkdirAll(binDir, 0o755); err != nil {
+			t.Fatalf("create fake developer directory: %v", err)
+		}
 		xcodebuildPath := filepath.Join(binDir, "xcodebuild")
 		script := "#!/bin/sh\n" +
 			"if [ \"$1\" = \"-version\" ]; then\n" +
@@ -416,7 +420,13 @@ func TestXcodeExportWithoutExportOptionsPreflightsBeforeGeneration(t *testing.T)
 		if err := os.WriteFile(xcodebuildPath, []byte(script), 0o755); err != nil {
 			t.Fatalf("write fake xcodebuild: %v", err)
 		}
-		t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		fakeXcrun := filepath.Join(t.TempDir(), "xcrun")
+		xcrunScript := "#!/bin/sh\nif [ \"$1\" = \"--find\" ] && [ \"$2\" = \"xcodebuild\" ]; then\n  printf '%s\\n' \"$DEVELOPER_DIR/usr/bin/xcodebuild\"\n  exit 0\nfi\nexit 2\n"
+		if err := os.WriteFile(fakeXcrun, []byte(xcrunScript), 0o700); err != nil {
+			t.Fatalf("write fake trusted xcrun: %v", err)
+		}
+		t.Cleanup(localxcode.OverrideTrustedXcrunPathForTesting(fakeXcrun))
+		t.Setenv("DEVELOPER_DIR", developerDir)
 	}
 
 	root := RootCommand("1.2.3")
@@ -494,7 +504,7 @@ func TestXcodeExportRejectsInvalidImplicitDestinationAsUsage(t *testing.T) {
 	}
 }
 
-func TestXcodeValidateRequiresIPA(t *testing.T) {
+func TestXcodeValidateRequiresArtifact(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
@@ -511,12 +521,12 @@ func TestXcodeValidateRequiresIPA(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "Error: --ipa is required") {
-		t.Fatalf("expected ipa error, got %q", stderr)
+	if !strings.Contains(stderr, "Error: --ipa or --pkg is required") {
+		t.Fatalf("expected artifact error, got %q", stderr)
 	}
 }
 
-func TestXcodeExportRequiresIPAPath(t *testing.T) {
+func TestXcodeExportRequiresArtifactPath(t *testing.T) {
 	root := RootCommand("1.2.3")
 	root.FlagSet.SetOutput(io.Discard)
 
@@ -533,7 +543,7 @@ func TestXcodeExportRequiresIPAPath(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "Error: --ipa-path is required") {
-		t.Fatalf("expected ipa-path error, got %q", stderr)
+	if !strings.Contains(stderr, "Error: --ipa-path or --pkg-path is required for a local export") {
+		t.Fatalf("expected artifact path error, got %q", stderr)
 	}
 }

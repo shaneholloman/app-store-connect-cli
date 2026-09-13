@@ -61,6 +61,9 @@ Fetches signing assets from App Store Connect, encrypts them, and stores them
 in a shared git repository. Team members and CI workers can pull and decrypt
 the same verified signing files.
 
+Native macOS profile types use .provisionprofile paths; iOS and tvOS profile
+types retain .mobileprovision. Existing legacy profile paths remain readable.
+
 Examples:
   asc signing sync push --bundle-id com.example.app --profile-type IOS_APP_STORE \
     --repo git@github.com:team/certs.git --password-file ~/.config/asc/signing-sync-password
@@ -137,18 +140,18 @@ func syncPushCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("push", flag.ExitOnError)
 
 	bundleID := fs.String("bundle-id", "", "Bundle identifier (required unless --targets-file is used)")
-	targetsFile := fs.String("targets-file", "", "[experimental] Command-root-relative JSON file containing 1-32 bundle targets (mutually exclusive with --bundle-id)")
+	targetsFile := fs.String("targets-file", "", "Command-root-relative JSON file containing 1-32 bundle targets (mutually exclusive with --bundle-id)")
 	profileType := fs.String("profile-type", "", "Profile type: IOS_APP_STORE, IOS_APP_DEVELOPMENT, etc. (required)")
 	repoURL := fs.String("repo", "", "Git repo URL for encrypted storage (required)")
-	passwordFile := fs.String("password-file", "", "[experimental] Protected file containing the repository encryption password (or set ASC_SIGNING_SYNC_PASSWORD)")
+	passwordFile := fs.String("password-file", "", "Protected file containing the repository encryption password (or set ASC_SIGNING_SYNC_PASSWORD)")
 	branch := fs.String("branch", "main", "Git branch")
 	certType := fs.String("certificate-type", "", "Certificate type filter (optional)")
 	deviceIDs := fs.String("device", "", "Device ID(s), comma-separated (requires --create-missing; required for development profiles)")
 	createMissing := fs.Bool("create-missing", false, "Create missing profiles")
-	identityPath := fs.String("identity", "", "[experimental] Protected PKCS#12 signing identity file")
-	privateKeyPath := fs.String("private-key", "", "[experimental] Protected RSA or EC private key PEM file")
-	identitySHA256 := fs.String("identity-sha256", "", "[experimental] SHA-256 certificate fingerprint selecting a PKCS#12 identity or the ASC certificate for --private-key")
-	identityPasswordFile := fs.String("identity-password-file", "", "[experimental] Protected file containing the source PKCS#12 password")
+	identityPath := fs.String("identity", "", "Protected PKCS#12 signing identity file")
+	privateKeyPath := fs.String("private-key", "", "Protected RSA or EC private key PEM file")
+	identitySHA256 := fs.String("identity-sha256", "", "SHA-256 certificate fingerprint selecting a PKCS#12 identity or the ASC certificate for --private-key")
+	identityPasswordFile := fs.String("identity-password-file", "", "Protected file containing the source PKCS#12 password")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -331,11 +334,17 @@ func syncPushCommand() *ffcli.Command {
 								return err
 							}
 						}
-						plannedPaths := signingAssetRepositoryPaths(plan.Certificates, profType, plan.ProfileName, "profile", identityArtifacts)
+						profileExtension := shared.ProvisioningProfileExtension("", profType)
+						preferredProfilePath := filepath.Join("profiles", profileDirectoryName(profType), safeFileName(plan.ProfileName, "profile")+profileExtension)
+						profilePath, err := resolveCompatibleSigningProfilePath(store, preferredProfilePath)
+						if err != nil {
+							return err
+						}
+						plannedPaths := signingAssetRepositoryPathsForProfile(plan.Certificates, profType, profilePath, identityArtifacts)
 						if err := store.CheckEncryptedRepositoryPaths(plannedPaths); err != nil {
 							return err
 						}
-						if err := preflightSigningAssetDestinations(store, plan, profType); err != nil {
+						if err := preflightSigningAssetDestinationsForProfile(store, plan, profType, profilePath); err != nil {
 							return err
 						}
 						if identity != nil {
@@ -370,7 +379,12 @@ func syncPushCommand() *ffcli.Command {
 				return fmt.Errorf("signing sync push: decode profile: %w", err)
 			}
 			profileDir := profileDirectoryName(profType)
-			profileRelPath := filepath.Join("profiles", profileDir, safeFileName(profile.Data.Attributes.Name, profile.Data.ID)+".mobileprovision")
+			profileExtension := shared.ProvisioningProfileExtension(string(profile.Data.Attributes.Platform), profType)
+			profileRelPath := filepath.Join("profiles", profileDir, safeFileName(profile.Data.Attributes.Name, profile.Data.ID)+profileExtension)
+			profileRelPath, err = resolveCompatibleSigningProfilePath(store, profileRelPath)
+			if err != nil {
+				return fmt.Errorf("signing sync push: resolve profile repository path: %w", err)
+			}
 			profileMetadata, err := signingProfileArtifactMetadata(profile, bundle, profType)
 			if err != nil {
 				return fmt.Errorf("signing sync push: prepare profile metadata: %w", err)
@@ -386,7 +400,7 @@ func syncPushCommand() *ffcli.Command {
 					return fmt.Errorf("signing sync push: bind signing identity profile: %w", err)
 				}
 			}
-			plannedPaths := signingAssetRepositoryPaths(certs.Data, profType, profile.Data.Attributes.Name, profile.Data.ID, identityArtifacts)
+			plannedPaths := signingAssetRepositoryPathsForProfile(certs.Data, profType, profileRelPath, identityArtifacts)
 			if err := store.CheckEncryptedRepositoryPaths(plannedPaths); err != nil {
 				return fmt.Errorf("signing sync push: preflight repository paths: %w", err)
 			}
@@ -463,10 +477,10 @@ func syncPullCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pull", flag.ExitOnError)
 
 	repoURL := fs.String("repo", "", "Git repo URL (required)")
-	bundleID := fs.String("bundle-id", "", "[experimental] Decrypt only one bundle target (requires --profile-type; mutually exclusive with --targets-file)")
-	targetsFile := fs.String("targets-file", "", "[experimental] Decrypt only the 1-32 bundle targets in a root-relative JSON file (requires --profile-type; mutually exclusive with --bundle-id)")
-	profileType := fs.String("profile-type", "", "[experimental] Profile type for --bundle-id or --targets-file")
-	passwordFile := fs.String("password-file", "", "[experimental] Protected file containing the repository encryption password (or set ASC_SIGNING_SYNC_PASSWORD)")
+	bundleID := fs.String("bundle-id", "", "Decrypt only one bundle target (requires --profile-type; mutually exclusive with --targets-file)")
+	targetsFile := fs.String("targets-file", "", "Decrypt only the 1-32 bundle targets in a root-relative JSON file (requires --profile-type; mutually exclusive with --bundle-id)")
+	profileType := fs.String("profile-type", "", "Profile type for --bundle-id or --targets-file")
+	passwordFile := fs.String("password-file", "", "Protected file containing the repository encryption password (or set ASC_SIGNING_SYNC_PASSWORD)")
 	branch := fs.String("branch", "main", "Git branch")
 	outputDir := fs.String("output-dir", "./signing", "Output directory for decrypted files")
 	output := shared.BindOutputFlags(fs)

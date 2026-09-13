@@ -154,15 +154,15 @@ Examples:
 func stapleCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("notarization staple", flag.ExitOnError)
 
-	filePath := bindSingleStringFlag(fs, "file", "[experimental] Path to a notarized app bundle, disk image, or signed flat package (required; zip files must be recreated after stapling)")
-	confirm := fs.Bool("confirm", false, "[experimental] Confirm in-place ticket stapling (required)")
+	filePath := bindSingleStringFlag(fs, "file", "Path to a notarized app bundle, disk image, or signed flat package (required; zip files must be recreated after stapling)")
+	confirm := fs.Bool("confirm", false, "Confirm in-place ticket stapling (required)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "staple",
 		ShortUsage: "asc notarization staple --file <path> --confirm [flags]",
-		ShortHelp:  "[experimental] Attach and validate a macOS notarization ticket locally.",
-		LongHelp: `[experimental] Attach Apple's notarization ticket to a local macOS artifact and
+		ShortHelp:  "Attach and validate a macOS notarization ticket locally.",
+		LongHelp: `Attach Apple's notarization ticket to a local macOS artifact and
 validate it immediately afterward. The target must be a notarized app bundle,
 UDIF disk image, or signed flat installer package. ZIP archives cannot be
 stapled directly; staple the contained item and recreate the archive. This
@@ -293,14 +293,14 @@ Examples:
 func validateStapleCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("notarization validate", flag.ExitOnError)
 
-	filePath := bindSingleStringFlag(fs, "file", "[experimental] Path to an artifact with an existing notarization ticket (required; zip files must be validated after recreating them)")
+	filePath := bindSingleStringFlag(fs, "file", "Path to an artifact with an existing notarization ticket (required; zip files must be validated after recreating them)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "validate",
 		ShortUsage: "asc notarization validate --file <path> [flags]",
-		ShortHelp:  "[experimental] Validate a stapled macOS notarization ticket locally.",
-		LongHelp: `[experimental] Validate an existing stapled ticket on a local macOS artifact.
+		ShortHelp:  "Validate a stapled macOS notarization ticket locally.",
+		LongHelp: `Validate an existing stapled ticket on a local macOS artifact.
 The target must be a notarized app bundle, UDIF disk image, or signed flat
 installer package. ZIP archives cannot be validated directly; validate the
 contained item after recreating the archive. This command never mutates the
@@ -1510,6 +1510,9 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("notarization submit: failed to stat opened file: %w", err)
 			}
+			if err := validateOpenedNotarizationArtifactIdentity(pathInfo, info); err != nil {
+				return fmt.Errorf("notarization submit: %w", err)
+			}
 			if info.IsDir() {
 				return fmt.Errorf("notarization submit: %q is a directory", pathValue)
 			}
@@ -1525,14 +1528,24 @@ Examples:
 				return fmt.Errorf("notarization submit: unsupported file type %q (must be .zip, .dmg, or .pkg)", ext)
 			}
 
-			// Compute SHA-256
+			// Snapshot and compute SHA-256 before any remote mutation. The upload
+			// must consume the same operation-owned bytes as the submitted hash.
 			if shared.ProgressEnabled() {
 				fmt.Fprintf(os.Stderr, "Computing SHA-256 hash of %s...\n", pathValue)
 			}
-			sha256Hash, err := asc.ComputeFileSHA256(fileHandle)
+			snapshot, snapshotSize, sha256Hash, cleanupSnapshot, err := snapshotNotarizationArtifact(ctx, fileHandle, info.Size())
 			if err != nil {
-				return fmt.Errorf("notarization submit: failed to compute SHA-256: %w", err)
+				return fmt.Errorf("notarization submit: failed to snapshot and compute SHA-256: %w", err)
 			}
+			snapshotReleased := false
+			releaseSnapshot := func() {
+				if snapshotReleased {
+					return
+				}
+				snapshotReleased = true
+				cleanupSnapshot()
+			}
+			defer releaseSnapshot()
 
 			client, err := shared.GetASCClient()
 			if err != nil {
@@ -1575,9 +1588,10 @@ Examples:
 			}
 
 			contentType := notaryContentType(pathValue)
-			if err := asc.UploadToS3(uploadCtx, creds, fileHandle, sha256Hash, info.Size(), contentType); err != nil {
+			if err := asc.UploadToS3(uploadCtx, creds, snapshot, sha256Hash, snapshotSize, contentType); err != nil {
 				return fmt.Errorf("notarization submit: upload failed: %w", err)
 			}
+			releaseSnapshot()
 
 			if shared.ProgressEnabled() {
 				fmt.Fprintln(os.Stderr, "Upload complete.")
@@ -1636,6 +1650,13 @@ Examples:
 			}
 		},
 	}
+}
+
+func validateOpenedNotarizationArtifactIdentity(pathInfo, openedInfo os.FileInfo) error {
+	if pathInfo == nil || openedInfo == nil || !os.SameFile(pathInfo, openedInfo) {
+		return fmt.Errorf("file changed while being opened")
+	}
+	return nil
 }
 
 // statusCommand returns the status subcommand.

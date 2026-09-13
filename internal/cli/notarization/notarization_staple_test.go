@@ -128,7 +128,7 @@ func TestNotarizationStapleHelpRequiresConfirmation(t *testing.T) {
 	}
 }
 
-func TestNotarizationLocalCommandsAreExperimental(t *testing.T) {
+func TestNotarizationLocalCommandsAreRegistered(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		cmd   *ffcli.Command
@@ -137,20 +137,10 @@ func TestNotarizationLocalCommandsAreExperimental(t *testing.T) {
 		{name: "staple", cmd: stapleCommand(), flags: []string{"file", "confirm"}},
 		{name: "validate", cmd: validateStapleCommand(), flags: []string{"file"}},
 	} {
-		if !strings.HasPrefix(test.cmd.ShortHelp, "[experimental] ") {
-			t.Errorf("%s short help = %q, want experimental marker", test.name, test.cmd.ShortHelp)
-		}
-		if !strings.HasPrefix(test.cmd.LongHelp, "[experimental] ") {
-			t.Errorf("%s long help = %q, want experimental marker", test.name, test.cmd.LongHelp)
-		}
 		for _, flagName := range test.flags {
 			flagValue := test.cmd.FlagSet.Lookup(flagName)
-			usage := "<missing>"
-			if flagValue != nil {
-				usage = flagValue.Usage
-			}
-			if flagValue == nil || !strings.HasPrefix(usage, "[experimental] ") {
-				t.Errorf("%s --%s usage = %q, want experimental marker", test.name, flagName, usage)
+			if flagValue == nil {
+				t.Errorf("%s --%s is not registered", test.name, flagName)
 			}
 		}
 	}
@@ -3325,12 +3315,7 @@ func TestNotarizationStapleProductionRunnerProjectsInventoryMismatchAsPartialMut
 	if err := os.WriteFile(fakeXcrun, []byte(script), 0o700); err != nil {
 		t.Fatalf("write fake xcrun: %v", err)
 	}
-	oldPath, hadPath := os.LookupEnv("PATH")
-	pathValue := fakeBin
-	if hadPath {
-		pathValue += string(os.PathListSeparator) + oldPath
-	}
-	t.Setenv("PATH", pathValue)
+	t.Cleanup(localxcode.OverrideTrustedXcrunPathForTesting(fakeXcrun))
 
 	previous := runStaplerStaple
 	runStaplerStaple = localxcode.StapleWithVerifier
@@ -3393,12 +3378,7 @@ func TestNotarizationValidateCommandReportsContextKilledChildAsCanceled(t *testi
 	if err := os.WriteFile(fakeXcrun, []byte(script), 0o700); err != nil {
 		t.Fatalf("write fake xcrun: %v", err)
 	}
-	oldPath, hadPath := os.LookupEnv("PATH")
-	pathValue := fakeBin
-	if hadPath {
-		pathValue += string(os.PathListSeparator) + oldPath
-	}
-	t.Setenv("PATH", pathValue)
+	t.Cleanup(localxcode.OverrideTrustedXcrunPathForTesting(fakeXcrun))
 	t.Setenv("ASC_STAPLER_VALIDATE_READY_PATH", readyPath)
 
 	previous := runStaplerValidate
@@ -3481,12 +3461,7 @@ func TestNotarizationValidateCommandReportsContextKilledResolverAsCanceled(t *te
 	if err := os.WriteFile(fakeXcrun, []byte(script), 0o700); err != nil {
 		t.Fatalf("write fake xcrun: %v", err)
 	}
-	oldPath, hadPath := os.LookupEnv("PATH")
-	pathValue := fakeBin
-	if hadPath {
-		pathValue += string(os.PathListSeparator) + oldPath
-	}
-	t.Setenv("PATH", pathValue)
+	t.Cleanup(localxcode.OverrideTrustedXcrunPathForTesting(fakeXcrun))
 	t.Setenv("ASC_STAPLER_FIND_READY_PATH", readyPath)
 
 	previous := runStaplerValidate

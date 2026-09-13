@@ -14,6 +14,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	webcli "github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/web"
 )
 
 func VersionsCommand() *ffcli.Command {
@@ -34,7 +35,8 @@ Examples:
   asc versions update --version-id "VERSION_ID" --release-type MANUAL
   asc versions attach-build --version-id "VERSION_ID" --build-id "BUILD_ID"
   asc versions release --version-id "VERSION_ID" --confirm
-  asc versions phased-release view --version-id "VERSION_ID"`,
+  asc versions phased-release view --version-id "VERSION_ID"
+  asc versions rating-reset view --version-id "VERSION_ID"`,
 		UsageFunc: shared.VisibleUsageFunc,
 		Subcommands: []*ffcli.Command{
 			VersionsListCommand(),
@@ -49,6 +51,7 @@ Examples:
 			VersionsAttachBuildCommand(),
 			VersionsReleaseCommand(),
 			PhasedReleaseCommand(),
+			webcli.VersionRatingResetCommand(),
 			VersionsPromotionsCommand(),
 		},
 		Exec: func(ctx context.Context, args []string) error {
@@ -64,12 +67,12 @@ func VersionsListCommand() *ffcli.Command {
 	version := fs.String("version", "", "Filter by version string (comma-separated)")
 	platform := fs.String("platform", "", "Filter by platform: IOS, MAC_OS, TV_OS, VISION_OS (comma-separated)")
 	state := fs.String("state", "", "Filter by state (comma-separated)")
-	include := shared.BindOnceCSVFlag(fs, "include", "[experimental] Include related resources: "+strings.Join(appStoreVersionsIncludeList(), ", "))
+	include := shared.BindOnceCSVFlag(fs, "include", "Include related resources: "+strings.Join(appStoreVersionsIncludeList(), ", "))
 	includeSensitive := shared.BindIncludeSensitiveFlag(fs)
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Next page URL from a previous response")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
-	latest := fs.Bool("latest", false, "[experimental] Keep only the newest version per platform by createdDate (fetches all pages)")
+	latest := fs.Bool("latest", false, "Keep only the newest version per platform by createdDate (fetches all pages)")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -327,9 +330,9 @@ func VersionsViewCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("versions view", flag.ExitOnError)
 
 	versionID := fs.String("version-id", "", "App Store version ID")
-	appID := fs.String("app", "", "[experimental] App Store Connect app ID (or ASC_APP_ID)")
-	versionString := fs.String("version", "", "[experimental] Version string used with --app")
-	platform := fs.String("platform", "IOS", "[experimental] Platform used with --app and --version: IOS, MAC_OS, TV_OS, VISION_OS")
+	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
+	versionString := fs.String("version", "", "Version string used with --app")
+	platform := fs.String("platform", "IOS", "Platform used with --app and --version: IOS, MAC_OS, TV_OS, VISION_OS")
 	includeBuild := fs.Bool("include-build", false, "Include attached build information")
 	includeSubmission := fs.Bool("include-submission", false, "Include submission information")
 	include := fs.String("include", "", "Include related resources: "+strings.Join(appStoreVersionIncludeList(), ", "))

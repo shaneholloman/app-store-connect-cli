@@ -178,8 +178,6 @@ The result lists private identities under `sensitiveFiles`. Install the pulled
 PKCS#12 into a new dedicated keychain when separate archive and export commands
 need the identity to persist:
 
-> [experimental] Persistent keychain installation can change before it reaches stable lifecycle status.
-
 ```bash  theme={null}
 identity_path="$(
   jq -er '
@@ -208,7 +206,7 @@ asc signing keychain install \
   --confirm \
   --output json
 
-jq -r '.files[] | select(endswith(".mobileprovision"))' \
+jq -r '.files[] | select(test("\\.(mobileprovision|provisionprofile)$"))' \
   .asc/signing/pull-result.json \
 | while IFS= read -r profile_path; do
     asc profiles local install \

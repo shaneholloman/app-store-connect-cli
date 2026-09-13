@@ -17,7 +17,7 @@ import (
 	"howett.net/plist"
 )
 
-func TestXcodeExportMethodFlagsAreExperimental(t *testing.T) {
+func TestXcodeExportMethodFlagsAreRegistered(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		cmd  *ffcli.Command
@@ -29,9 +29,6 @@ func TestXcodeExportMethodFlagsAreExperimental(t *testing.T) {
 			methodFlag := tc.cmd.FlagSet.Lookup("method")
 			if methodFlag == nil {
 				t.Fatal("method flag is not registered")
-			}
-			if !strings.HasPrefix(methodFlag.Usage, "[experimental] ") {
-				t.Fatalf("method flag usage = %q, want experimental lifecycle label", methodFlag.Usage)
 			}
 		})
 	}
@@ -729,7 +726,7 @@ func TestXcodeExportValidatesIPADestinationBeforeImplicitOptionGeneration(t *tes
 	}
 }
 
-func TestXcodeExportWaitPreflightsIPAParentBeforeImplicitOptionGeneration(t *testing.T) {
+func TestXcodeExportWaitIgnoresUnusedIPAParent(t *testing.T) {
 	restore := overrideXcodeCommandTestHooks(t)
 	defer restore()
 
@@ -737,9 +734,13 @@ func TestXcodeExportWaitPreflightsIPAParentBeforeImplicitOptionGeneration(t *tes
 	if err := os.WriteFile(parent, []byte("file"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	runGenerateExportOptions = func(context.Context, localxcode.ExportOptionsGenerateOptions) (*localxcode.ExportOptionsGenerateResult, error) {
-		t.Fatal("upload export options must not be generated for an unusable IPA parent")
-		return nil, nil
+	wantErr := errors.New("stop after generation")
+	runGenerateExportOptions = func(_ context.Context, opts localxcode.ExportOptionsGenerateOptions) (*localxcode.ExportOptionsGenerateResult, error) {
+		return &localxcode.ExportOptionsGenerateResult{Path: opts.OutputPath}, nil
+	}
+	isDirectUploadExportOptionsFn = func(string) bool { return true }
+	runExport = func(context.Context, localxcode.ExportOptions) (*localxcode.ExportResult, error) {
+		return nil, wantErr
 	}
 
 	cmd := XcodeExportCommand()
@@ -753,8 +754,8 @@ func TestXcodeExportWaitPreflightsIPAParentBeforeImplicitOptionGeneration(t *tes
 	}
 
 	err := cmd.Exec(context.Background(), nil)
-	if err == nil || errors.Is(err, flag.ErrHelp) || !strings.Contains(err.Error(), "ipa output parent") {
-		t.Fatalf("expected runtime IPA-parent error, got %v", err)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected export sentinel without touching the unused IPA parent, got %v", err)
 	}
 }
 
