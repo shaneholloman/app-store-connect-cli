@@ -2,6 +2,7 @@ package reviews
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -210,7 +211,7 @@ Examples:
 func ReviewSubmissionsGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("submissions-get", flag.ExitOnError)
 
-	submissionID := fs.String("id", "", "Review submission ID (required)")
+	submissionID := shared.BindResourceIDFlag(fs, "id", "reviewSubmissions", "Review submission ID (required)")
 	itemFields := fs.String("item-fields", "", "Review submission item fields: "+strings.Join(reviewSubmissionItemFields, ", "))
 	include := fs.String("include", "", "Include relationships: "+strings.Join(reviewSubmissionIncludes, ", "))
 	output := shared.BindOutputFlags(fs)
@@ -319,6 +320,20 @@ Examples:
 
 			resp, err := client.CreateReviewSubmission(requestCtx, resolvedAppID, asc.Platform(normalizedPlatform))
 			if err != nil {
+				var partialErr *asc.ReviewSubmissionCreatePartialError
+				if errors.As(err, &partialErr) && partialErr.Response != nil &&
+					partialErr.Response.Data.Type == asc.ResourceTypeReviewSubmissions {
+					submissionID := strings.TrimSpace(partialErr.Response.Data.ID)
+					if submissionID != "" {
+						return fmt.Errorf(
+							"review submissions-create: review submission %q may have been created; inspect it with `asc review submissions-get --id %s` or cancel it with `asc submit cancel --id %s --confirm`: %w",
+							submissionID,
+							submissionID,
+							submissionID,
+							err,
+						)
+					}
+				}
 				return fmt.Errorf("review submissions-create: %w", err)
 			}
 
@@ -331,7 +346,7 @@ Examples:
 func ReviewSubmissionsUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("submissions-update", flag.ExitOnError)
 
-	submissionID := fs.String("id", "", "Review submission ID (required)")
+	submissionID := shared.BindResourceIDFlag(fs, "id", "reviewSubmissions", "Review submission ID (required)")
 	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS")
 	submitted := fs.Bool("submitted", false, "Whether the submission is submitted (true/false)")
 	canceled := fs.Bool("canceled", false, "Whether the submission is canceled (true/false)")
@@ -424,6 +439,9 @@ Examples:
 
 			resp, err := client.UpdateReviewSubmission(requestCtx, trimmedID, attrs)
 			if err != nil {
+				if canceledProvided && *canceled {
+					err = shared.ExplainReviewSubmissionNotCancellable(ctx, client, trimmedID, err)
+				}
 				return fmt.Errorf("review submissions-update: %w", err)
 			}
 
@@ -436,7 +454,7 @@ Examples:
 func ReviewSubmissionsSubmitCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("submissions-submit", flag.ExitOnError)
 
-	submissionID := fs.String("id", "", "Review submission ID (required)")
+	submissionID := shared.BindResourceIDFlag(fs, "id", "reviewSubmissions", "Review submission ID (required)")
 	confirm := fs.Bool("confirm", false, "Confirm submission (required)")
 	output := shared.BindOutputFlags(fs)
 
@@ -485,7 +503,7 @@ Examples:
 func ReviewSubmissionsCancelCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("submissions-cancel", flag.ExitOnError)
 
-	submissionID := fs.String("id", "", "Review submission ID (required)")
+	submissionID := shared.BindResourceIDFlag(fs, "id", "reviewSubmissions", "Review submission ID (required)")
 	confirm := fs.Bool("confirm", false, "Confirm cancellation (required)")
 	output := shared.BindOutputFlags(fs)
 
@@ -520,9 +538,10 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			resp, err := client.CancelReviewSubmission(requestCtx, strings.TrimSpace(*submissionID))
+			trimmedID := strings.TrimSpace(*submissionID)
+			resp, err := client.CancelReviewSubmission(requestCtx, trimmedID)
 			if err != nil {
-				return fmt.Errorf("review submissions-cancel: %w", err)
+				return fmt.Errorf("review submissions-cancel: %w", shared.ExplainReviewSubmissionNotCancellable(ctx, client, trimmedID, err))
 			}
 
 			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
@@ -534,7 +553,7 @@ Examples:
 func ReviewSubmissionsItemsIDsCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("submissions-items-ids", flag.ExitOnError)
 
-	submissionID := fs.String("id", "", "Review submission ID (required)")
+	submissionID := shared.BindResourceIDFlag(fs, "id", "reviewSubmissions", "Review submission ID (required)")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Next page URL from a previous response")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")

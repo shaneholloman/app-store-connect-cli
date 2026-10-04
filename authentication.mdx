@@ -94,7 +94,7 @@ asc auth login \
   --private-key ~/.asc/AuthKey_ABC123.p8
 ```
 
-This creates `~/.asc/config.json` with `0600` permissions.
+This creates `~/.asc/config.json` with `0600` permissions. When `ASC_CONFIG_PATH` is set, the login writes that file instead, because it is the only config later commands read.
 
 <Warning>
   Config file storage is less secure than keychain. Use keychain when possible, especially on shared systems.
@@ -179,12 +179,27 @@ asc web auth import --file ./web-session.json --apple-id "user@example.com"
 asc web auth status
 ```
 
+Set `ASC_WEB_APPLE_ID` to choose the Apple Account for the `asc web` commands
+that resolve or create a session, including `asc web auth login`, without
+repeating `--apple-id`; an explicit flag still wins. The cache-management
+commands above (`status`, `export`, `import`, `logout`) ignore it. See
+[Choosing the Apple Account](/commands/web#choosing-the-apple-account).
+
 Pass `--overwrite` to replace an existing destination file on export, or an
 existing cached session for that Apple Account on import. Isolate tests and
 automation with `ASC_WEB_SESSION_CACHE_DIR` and
 `ASC_WEB_SESSION_CACHE_BACKEND=file` so they cannot read or replace the
 operator's real session cache. An unset or `auto` backend still falls back to
 the keychain when the file cache is empty.
+
+A runner that cannot answer prompts can create the session non-interactively
+instead: `ASC_WEB_PASSWORD` supplies the Apple Account password and
+`ASC_WEB_2FA_CODE_COMMAND` names a shell command that prints the two-factor
+code. Both are read only when a fresh login is required, and a password taken
+from the environment is never written to the saved-password store. Set
+`ASC_WEB_DONT_STORE_PASSWORD=1` to turn off saved-password reads and writes
+altogether. See
+[Web session variables](/configuration/environment-variables#web-session-variables).
 
 ## Manage multiple profiles
 
@@ -251,7 +266,9 @@ When config is consulted, its path is selected in this order:
 
 When `ASC_CONFIG_PATH` is unset, an empty local config can fall back to global credentials. Once the local config contains any credential fields, it intentionally shadows the global credential store; incomplete credential data can therefore error instead of falling back. Setting `ASC_CONFIG_PATH` disables global fallback entirely.
 
-`asc auth login --bypass-keychain` or a truthy `ASC_BYPASS_KEYCHAIN` controls where that login writes: global config by default, or local config with `--local`. The environment variable also controls how later commands read credentials; the login flag does not persist the read behavior.
+The upward search in step 2 does not stop at your home directory. When the current directory is inside your account's home directory, it reaches that account's `~/.asc/config.json` even if `HOME` points somewhere else, so overriding `HOME` does not isolate `asc` from your stored config. `asc` prints a warning when this happens; a future release will stop treating that file as a local config when `HOME` points elsewhere. To isolate a CI job, sandbox, agent, or test run from stored config, set `ASC_CONFIG_PATH` to an absolute path (it does not need to exist) and set `ASC_BYPASS_KEYCHAIN=1`.
+
+`asc auth login --bypass-keychain` or a truthy `ASC_BYPASS_KEYCHAIN` controls where that login writes: the `ASC_CONFIG_PATH` file when it is set, otherwise the global config, or local config with `--local`. `asc auth init` writes its template to the same default file. An explicit `--local` still writes `./.asc/config.json` when `ASC_CONFIG_PATH` is set, and prints a warning because later commands read only the `ASC_CONFIG_PATH` file. The environment variable also controls how later commands read credentials; the login flag does not persist the read behavior.
 
 Within stored credentials, an explicitly selected profile wins. Without one, `asc` uses the stored default, or the only stored credential when exactly one exists. Multiple credentials without a default are never selected arbitrarily; resolution either errors or uses an allowed environment fallback.
 
@@ -281,8 +298,9 @@ By default, `asc` warns and continues with a mixed credential. Use `--strict-aut
   ```
 
   ```bash Force a stored profile theme={null}
-  # Root flags appear before the command group.
+  # --profile is accepted on either side of the command.
   asc --profile "WorkApp" apps list
+  asc apps list --profile "WorkApp"
   ```
 
   ```bash Config or environment only theme={null}
@@ -422,6 +440,14 @@ asc auth logout --all --confirm
 
 `--all` always attempts config cleanup and also attempts keychain cleanup. If config cleanup succeeds, a keychain cleanup error is treated as non-fatal.
 
+Config cleanup follows the same file selection as reads. When `ASC_CONFIG_PATH` is set, logout changes only that config file (plus the keychain), so an isolated CI job, sandbox, agent, or test run cannot remove the credentials in your `~/.asc/config.json`. If that file still holds matching credentials, logout prints a warning naming it. To remove them as well, run logout with `ASC_CONFIG_PATH` unset, or pass `--include-global`:
+
+```bash  theme={null}
+asc auth logout --all --include-global --confirm
+```
+
+Without `ASC_CONFIG_PATH`, logout removes matching credentials from the active config file and `~/.asc/config.json`. A keychain login that replaces a profile follows the same rule when it removes the old config entry.
+
 `--confirm` is required. Running logout without it is a usage error and no credentials are removed.
 
 ## Security best practices
@@ -506,7 +532,7 @@ Ensure your `.p8` file:
 
 * Starts with `-----BEGIN PRIVATE KEY-----`
 * Is ECDSA format (App Store Connect uses P-256/ES256)
-* Has correct permissions: `chmod 600 AuthKey_*.p8`
+* Has correct permissions: `chmod 600 AuthKey_*.p8`, or re-run `asc auth login --fix-permissions` to let asc change an ordinary over-permissive file to `0600` (owner-unreadable files on macOS require a manual `chmod`)
 
 ### JWT generation failed
 

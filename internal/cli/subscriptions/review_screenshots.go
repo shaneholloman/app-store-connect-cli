@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -47,7 +48,7 @@ Examples:
 func SubscriptionsReviewScreenshotsGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("review-screenshots view", flag.ExitOnError)
 
-	screenshotID := fs.String("screenshot-id", "", "Review screenshot ID")
+	screenshotID := shared.BindResourceIDFlag(fs, "screenshot-id", "subscriptionAppStoreReviewScreenshots", "Review screenshot ID")
 	subscriptionFields := fs.String("subscription-fields", "", "Included subscription fields (comma-separated)")
 	output := shared.BindOutputFlags(fs)
 
@@ -98,7 +99,7 @@ Examples:
 func SubscriptionsReviewScreenshotsCreateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("review-screenshots create", flag.ExitOnError)
 
-	subscriptionID := fs.String("subscription-id", "", "Subscription ID, product ID, or exact current name")
+	subscriptionID := shared.BindResourceIDFlag(fs, "subscription-id", "subscriptions", "Subscription ID, product ID, or exact current name")
 	appID := addSubscriptionLookupAppFlag(fs)
 	filePath := fs.String("file", "", "Path to review screenshot file")
 	output := shared.BindOutputFlags(fs)
@@ -108,6 +109,12 @@ func SubscriptionsReviewScreenshotsCreateCommand() *ffcli.Command {
 		ShortUsage: "asc subscriptions review-screenshots create [flags]",
 		ShortHelp:  "Upload a review screenshot for a subscription.",
 		LongHelp: `Upload a review screenshot for a subscription.
+
+The file must be a PNG or JPEG named .png, .jpg, or .jpeg; any other file is
+rejected before anything is uploaded. The command also warns, and still
+uploads, when the size matches no documented App Store screenshot size (such
+as 1290x2796 for iPhone), the image has an alpha channel, or the image data
+does not fully decode.
 
 Examples:
   asc subscriptions review-screenshots create --subscription-id "SUB_ID" --file "./screenshot.png"`,
@@ -132,12 +139,15 @@ Examples:
 				return shared.UsageError(err.Error())
 			}
 
-			file, info, err := openSubscriptionImageFile(pathValue)
+			snapshot, info, cleanupSnapshot, err := snapshotSubscriptionReviewScreenshot(pathValue)
 			if err != nil {
 				return fmt.Errorf("subscriptions review-screenshots create: %w", err)
 			}
-			defer file.Close()
-			checksum, err := asc.ComputeFileChecksum(pathValue, asc.ChecksumAlgorithmMD5)
+			defer cleanupSnapshot()
+			if err := shared.PreflightReviewScreenshot(pathValue, snapshot, info.Size()); err != nil {
+				return shared.ReviewScreenshotUsageError("--file", shared.RewriteUsageMessage(ctx, "subscriptions review-screenshots create: "+err.Error()))
+			}
+			checksum, err := asc.ComputeChecksumFromReader(io.NewSectionReader(snapshot, 0, info.Size()), asc.ChecksumAlgorithmMD5)
 			if err != nil {
 				return fmt.Errorf("subscriptions review-screenshots create: checksum failed: %w", err)
 			}
@@ -152,7 +162,7 @@ Examples:
 				return err
 			}
 
-			finalResp, err := createOrResumeSubscriptionReviewScreenshot(ctx, client, id, pathValue, info, checksum.Hash)
+			finalResp, err := createOrResumeSubscriptionReviewScreenshot(ctx, client, id, snapshot, info, checksum.Hash)
 			if err != nil {
 				return fmt.Errorf("subscriptions review-screenshots create: %w", err)
 			}
@@ -166,7 +176,7 @@ Examples:
 func SubscriptionsReviewScreenshotsUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("review-screenshots update", flag.ExitOnError)
 
-	screenshotID := fs.String("screenshot-id", "", "Review screenshot ID")
+	screenshotID := shared.BindResourceIDFlag(fs, "screenshot-id", "subscriptionAppStoreReviewScreenshots", "Review screenshot ID")
 	checksum := fs.String("checksum", "", "Source file checksum (MD5)")
 	var uploaded shared.OptionalBool
 	fs.Var(&uploaded, "uploaded", "Mark upload complete: true or false")
@@ -226,7 +236,7 @@ Examples:
 func SubscriptionsReviewScreenshotsDeleteCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("review-screenshots delete", flag.ExitOnError)
 
-	screenshotID := fs.String("screenshot-id", "", "Review screenshot ID")
+	screenshotID := shared.BindResourceIDFlag(fs, "screenshot-id", "subscriptionAppStoreReviewScreenshots", "Review screenshot ID")
 	confirm := fs.Bool("confirm", false, "Confirm deletion")
 	output := shared.BindOutputFlags(fs)
 

@@ -194,6 +194,31 @@ func IsReportedUsageError(err error) bool {
 	return errors.As(err, &reportedUsage)
 }
 
+// ErrPending marks a bounded wait that stopped before its target reached a
+// terminal state, after the command reported the pending state itself. Commands
+// return it only when the caller opted in to a pending outcome, and it maps to
+// the dedicated pending exit code instead of a failure.
+var ErrPending = errors.New("still pending")
+
+type pendingError struct {
+	message string
+}
+
+func (e pendingError) Error() string        { return e.message }
+func (e pendingError) Is(target error) bool { return target == ErrPending }
+func (e pendingError) Reported() bool       { return true }
+
+// NewPendingError returns an already-reported ErrPending outcome. The root
+// renderer prints nothing for it; the command must have written its pending
+// result and any stderr notice before returning it.
+func NewPendingError(message string) error {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = ErrPending.Error()
+	}
+	return pendingError{message: message}
+}
+
 // NewValidationError wraps an error that represents local/domain validation.
 func NewValidationError(err error) error {
 	if err == nil {
@@ -208,6 +233,17 @@ func NewValidationReportedError(err error) error {
 		return nil
 	}
 	return NewReportedError(NewValidationError(err))
+}
+
+// NewNotConfiguredReportedError classifies an already-printed expected
+// negative for a resource that has not been configured yet, such as an app
+// without an availability record. It maps to the validation exit code and the
+// state_not_ready diagnostic instead of a not-found API failure.
+func NewNotConfiguredReportedError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return WithDiagnostic(NewValidationReportedError(err), DiagnosticStateNotReady, "")
 }
 
 // NewErrorWithCause preserves err's rendered message and classification while

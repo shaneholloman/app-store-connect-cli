@@ -130,7 +130,6 @@ func TestPricingScheduleCreateCommand_MissingFlags(t *testing.T) {
 		{name: "missing app", args: []string{"--price-point", "PP", "--base-territory", "USA", "--start-date", "2024-03-01"}},
 		{name: "missing price point", args: []string{"--app", "APP", "--base-territory", "USA", "--start-date", "2024-03-01"}},
 		{name: "missing base territory", args: []string{"--app", "APP", "--price-point", "PP", "--start-date", "2024-03-01"}},
-		{name: "missing start date", args: []string{"--app", "APP", "--price-point", "PP", "--base-territory", "USA"}},
 	}
 
 	for _, test := range tests {
@@ -199,8 +198,26 @@ func TestPricingScheduleCreateCommand_InvalidDate(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid start date")
 	}
-	if errors.Is(err, flag.ErrHelp) {
-		t.Fatal("expected non-ErrHelp error for invalid start date")
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected usage error (flag.ErrHelp) for invalid start date, got %v", err)
+	}
+}
+
+func TestPricingScheduleCreateCommand_HelpDocumentsStartDateDefault(t *testing.T) {
+	cmd := PricingScheduleCreateCommand()
+
+	usage := cmd.FlagSet.Lookup("start-date").Usage
+	if !strings.Contains(usage, "default: today in US Pacific time") {
+		t.Fatalf("expected --start-date help to document the US Pacific default, got %q", usage)
+	}
+	if !strings.Contains(cmd.LongHelp, "today's date in US Pacific time") {
+		t.Fatalf("expected long help to document the US Pacific default, got %q", cmd.LongHelp)
+	}
+	if !strings.Contains(usage, "today or later") {
+		t.Fatalf("expected --start-date help to mention Apple requires today or later, got %q", usage)
+	}
+	if !strings.Contains(cmd.LongHelp, "Apple requires the start date to be today or later") {
+		t.Fatalf("expected long help to mention Apple's today-or-later rule, got %q", cmd.LongHelp)
 	}
 }
 
@@ -318,7 +335,8 @@ func TestPricingAvailabilityCreateCommand_MissingFlags(t *testing.T) {
 		wantStderr string
 	}{
 		{name: "missing app", args: []string{"--territory", "USA", "--available", "true", "--available-in-new-territories", "true"}, wantStderr: "--app is required"},
-		{name: "missing territory", args: []string{"--app", "APP", "--available", "true", "--available-in-new-territories", "true"}, wantStderr: "--territory must include at least one value"},
+		{name: "missing territory", args: []string{"--app", "APP", "--available", "true", "--available-in-new-territories", "true"}, wantStderr: "--territory or --all-territories is required"},
+		{name: "territory and all territories", args: []string{"--app", "APP", "--territory", "USA", "--all-territories", "--available", "true", "--available-in-new-territories", "true"}, wantStderr: "--territory and --all-territories are mutually exclusive"},
 		{name: "invalid territory csv", args: []string{"--app", "APP", "--territory", ",,,", "--available", "true", "--available-in-new-territories", "true"}, wantStderr: "--territory must include at least one value"},
 		{name: "missing available", args: []string{"--app", "APP", "--territory", "USA", "--available-in-new-territories", "true"}, wantStderr: "--available is required"},
 		{name: "missing available in new territories", args: []string{"--app", "APP", "--territory", "USA", "--available", "true"}, wantStderr: "--available-in-new-territories is required"},

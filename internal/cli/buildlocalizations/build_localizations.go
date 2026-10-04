@@ -23,6 +23,11 @@ func BuildLocalizationsCommand() *ffcli.Command {
 		ShortHelp:  "Manage build release notes localizations.",
 		LongHelp: `Manage localized release notes by build.
 
+These commands manage the App Store version localizations (What's New text)
+of the App Store version a build is attached to. A build that is not
+attached to an App Store version, such as a TestFlight-only build, is rejected.
+For TestFlight What to Test notes use asc builds test-notes.
+
 Examples:
   asc build-localizations list --build-id "BUILD_ID"
   asc build-localizations view --id "LOCALIZATION_ID"
@@ -48,7 +53,7 @@ Examples:
 func BuildLocalizationsListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
-	buildID := fs.String("build-id", "", "Build ID")
+	buildID := shared.BindResourceIDFlag(fs, "build-id", "builds", "Build ID")
 	locale := fs.String("locale", "", "Filter by locale(s), comma-separated")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
@@ -60,6 +65,9 @@ func BuildLocalizationsListCommand() *ffcli.Command {
 		ShortUsage: "asc build-localizations list [flags]",
 		ShortHelp:  "List release note localizations for a build.",
 		LongHelp: `List release note localizations for a build.
+
+Lists the App Store version localizations of the App Store version the build
+is attached to. For TestFlight What to Test notes use asc builds test-notes list.
 
 Examples:
   asc build-localizations list --build-id "BUILD_ID"
@@ -94,8 +102,11 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			versionID, err := resolveBuildAppStoreVersion(requestCtx, client, build)
+			versionID, err := resolveBuildAppStoreVersion(requestCtx, client, "list", build)
 			if err != nil {
+				if shared.IsReportedUsageError(err) {
+					return err
+				}
 				return fmt.Errorf("build-localizations list: %w", err)
 			}
 
@@ -136,7 +147,7 @@ Examples:
 func BuildLocalizationsGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("view", flag.ExitOnError)
 
-	localizationID := fs.String("id", "", "Localization ID")
+	localizationID := shared.BindResourceIDFlag(fs, "id", "appStoreVersionLocalizations", "Localization ID")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -178,7 +189,7 @@ Examples:
 func BuildLocalizationsCreateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 
-	buildID := fs.String("build-id", "", "Build ID")
+	buildID := shared.BindResourceIDFlag(fs, "build-id", "builds", "Build ID")
 	locale := fs.String("locale", "", "Locale (e.g., en-US)")
 	whatsNew := fs.String("whats-new", "", "Release notes (whats new), up to 4000 characters")
 	output := shared.BindOutputFlags(fs)
@@ -188,6 +199,9 @@ func BuildLocalizationsCreateCommand() *ffcli.Command {
 		ShortUsage: "asc build-localizations create [flags]",
 		ShortHelp:  "Create a localization for a build.",
 		LongHelp: `Create a localization for a build.
+
+Creates an App Store version localization on the App Store version the build
+is attached to. For TestFlight What to Test notes use asc builds test-notes create.
 
 Release notes are limited to 4000 characters and are checked before the
 request is sent.
@@ -233,8 +247,11 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			versionID, err := resolveBuildAppStoreVersion(requestCtx, client, build)
+			versionID, err := resolveBuildAppStoreVersion(requestCtx, client, "create", build)
 			if err != nil {
+				if shared.IsReportedUsageError(err) {
+					return err
+				}
 				return fmt.Errorf("build-localizations create: %w", err)
 			}
 
@@ -264,7 +281,7 @@ Examples:
 func BuildLocalizationsUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 
-	localizationID := fs.String("id", "", "Localization ID")
+	localizationID := shared.BindResourceIDFlag(fs, "id", "appStoreVersionLocalizations", "Localization ID")
 	whatsNew := fs.String("whats-new", "", "Release notes (whats new), up to 4000 characters")
 	output := shared.BindOutputFlags(fs)
 
@@ -323,7 +340,7 @@ Examples:
 func BuildLocalizationsDeleteCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
 
-	localizationID := fs.String("id", "", "Localization ID")
+	localizationID := shared.BindResourceIDFlag(fs, "id", "appStoreVersionLocalizations", "Localization ID")
 	confirm := fs.Bool("confirm", false, "Confirm deletion")
 	output := shared.BindOutputFlags(fs)
 
@@ -370,16 +387,28 @@ Examples:
 	}
 }
 
-func resolveBuildAppStoreVersion(ctx context.Context, client *asc.Client, buildID string) (string, error) {
+// resolveBuildAppStoreVersion returns the App Store version a build is attached
+// to. Apple answers GET /v1/builds/{id}/appStoreVersion with a null data object
+// for a build that is not attached to any version, which is the normal state of
+// a TestFlight-only build, so that case is reported as a usage error with
+// guidance instead of a generic failure. API errors, including an unknown build
+// ID, are returned unchanged so the service detail and classification survive.
+func resolveBuildAppStoreVersion(ctx context.Context, client *asc.Client, subcommand, buildID string) (string, error) {
 	resp, err := client.GetBuildAppStoreVersion(ctx, buildID)
 	if err != nil {
-		if asc.IsNotFound(err) {
-			return "", fmt.Errorf("build %s has no associated App Store version", buildID)
-		}
 		return "", err
 	}
 	if resp == nil || strings.TrimSpace(resp.Data.ID) == "" {
-		return "", fmt.Errorf("build %s has no associated App Store version", buildID)
+		testNotesCommand := fmt.Sprintf(`asc builds test-notes %s --build-id "BUILD_ID"`, subcommand)
+		if subcommand == "create" {
+			testNotesCommand += ` --locale "LOCALE" --whats-new "NOTES"`
+		}
+		message := fmt.Sprintf(
+			"build-localizations %s: the selected build is not attached to an App Store version. build-localizations manages the App Store version's What's New text; for TestFlight What to Test notes use `%s`.",
+			subcommand, testNotesCommand,
+		)
+		fmt.Fprintf(os.Stderr, "Error: %s\n", message)
+		return "", shared.NewReportedUsageError(shared.UsageErrorInvalidValue, message)
 	}
 	return resp.Data.ID, nil
 }

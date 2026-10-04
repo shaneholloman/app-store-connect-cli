@@ -18,6 +18,7 @@ package rootfs
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -73,10 +74,11 @@ var (
 )
 
 const (
-	temporaryFilePattern        = ".asc-tmp-*"
-	backupFilePattern           = ".asc-tmp-backup-*"
-	rollbackFilePattern         = ".asc-tmp-rollback-*"
-	fileIdentityDataLimit int64 = 8 << 20
+	temporaryFilePattern           = ".asc-tmp-*"
+	backupFilePattern              = ".asc-tmp-backup-*"
+	rollbackFilePattern            = ".asc-tmp-rollback-*"
+	fileIdentityDataLimit    int64 = 8 << 20
+	fileIdentityCaptureLimit int64 = 16 << 20
 )
 
 // Root is a trusted directory anchor for rooted filesystem operations.
@@ -91,6 +93,9 @@ type Root struct {
 	// afterValidationForTest makes path-swap regressions deterministic. It is
 	// intentionally unexported and unset outside package tests.
 	afterValidationForTest func()
+	// afterChmodOpenForTest runs after ChmodFile has opened and verified the
+	// retained descriptor but before it changes that descriptor's mode.
+	afterChmodOpenForTest func()
 	// beforeOpenRootForTest makes trusted-root path-swap regressions
 	// deterministic. It is intentionally unexported and unset outside tests.
 	beforeOpenRootForTest func()
@@ -194,10 +199,28 @@ type FileIdentity struct {
 	file              *os.File
 	info              os.FileInfo
 	data              []byte
+	removalDigest     *[sha256.Size]byte
 	path              string
 	multipleHardLinks bool
 	metadata          fileIdentityMetadata
 	metadataCaptured  bool
+}
+
+// ReleaseFileIdentity releases a token superseded by a completed operation.
+// Only its owning Root may release it. Repeated release is harmless; subsequent
+// identity-checked use of the released token fails. It never changes a pathname.
+func (r Root) ReleaseFileIdentity(identity *FileIdentity) error {
+	if err := r.selectedIdentity.begin(); err != nil {
+		return err
+	}
+	defer r.selectedIdentity.end()
+	if identity == nil {
+		return ErrFileIdentityChanged
+	}
+	if identity.owner != r.selectedIdentity {
+		return ErrFileIdentityMismatch
+	}
+	return r.selectedIdentity.releaseFile(identity.file)
 }
 
 // Info returns the captured file metadata snapshot. The snapshot is useful for
@@ -214,6 +237,9 @@ func (identity *FileIdentity) Info() os.FileInfo {
 func (identity *FileIdentity) Data() []byte {
 	if identity == nil {
 		return nil
+	}
+	if identity.removalDigest != nil {
+		panic("rootfs: removal-only identity has no byte snapshot")
 	}
 	return bytes.Clone(identity.data)
 }
@@ -369,15 +395,19 @@ func (identity *rootIdentity) retainIdentity(file *os.File, info os.FileInfo, da
 }
 
 func (identity *rootIdentity) retainIdentityWithMetadata(file *os.File, info os.FileInfo, data []byte, path string, metadata fileIdentityMetadata, metadataCaptured bool) (*FileIdentity, error) {
+	return identity.retainIdentityWithMetadataLimited(file, info, data, path, metadata, metadataCaptured, fileIdentityDataLimit)
+}
+
+func (identity *rootIdentity) retainIdentityWithMetadataLimited(file *os.File, info os.FileInfo, data []byte, path string, metadata fileIdentityMetadata, metadataCaptured bool, limit int64) (*FileIdentity, error) {
 	if file == nil || info == nil {
 		if file != nil {
 			_ = file.Close()
 		}
 		return nil, fmt.Errorf("%w: descriptor or metadata is unavailable", ErrFileIdentityChanged)
 	}
-	if int64(len(data)) > fileIdentityDataLimit {
+	if int64(len(data)) > limit {
 		_ = file.Close()
-		return nil, fmt.Errorf("%w: %d bytes exceeds %d-byte limit", ErrFileIdentityDataTooLarge, len(data), fileIdentityDataLimit)
+		return nil, fmt.Errorf("%w: %d bytes exceeds %d-byte limit", ErrFileIdentityDataTooLarge, len(data), limit)
 	}
 	multipleHardLinks, err := hasMultipleHardLinks(file, info)
 	if err != nil {
@@ -628,16 +658,77 @@ func validateMissingRootComponent(component string) error {
 // final-component O_NOFOLLOW open, this rejects symlinks in parent components
 // below the selected root.
 func OpenFile(path string) (*os.File, error) {
+	root, relative, err := trustedAnchorFor(path)
+	if err != nil {
+		return nil, err
+	}
+	file, openErr := root.OpenFile(relative)
+	closeErr := root.Close()
+	if openErr != nil || closeErr != nil {
+		if file != nil {
+			closeErr = errors.Join(closeErr, file.Close())
+		}
+		if openErr == nil {
+			return nil, closeErr
+		}
+		if closeErr == nil {
+			return nil, openErr
+		}
+		return nil, errors.Join(openErr, closeErr)
+	}
+	return file, nil
+}
+
+// CheckContainedPath verifies an operator-supplied path through the same
+// rooted traversal used by OpenFile without opening the target. It rejects a
+// symlink in any component below the selected trusted anchor.
+func CheckContainedPath(path string) error {
+	root, relative, err := trustedAnchorFor(path)
+	if err != nil {
+		return err
+	}
+	return errors.Join(root.CheckContained(relative), root.Close())
+}
+
+// ChmodFile changes the mode of an existing regular file through the same
+// rooted traversal OpenFile uses. A symlinked final component, a symlink in any
+// component below the selected root, and any non-regular file are rejected.
+func ChmodFile(path string, mode os.FileMode) error {
+	root, relative, err := trustedAnchorFor(path)
+	if err != nil {
+		return err
+	}
+	return errors.Join(root.ChmodFile(relative, mode), root.Close())
+}
+
+// ChmodFileIfSame changes the mode of an existing regular file only when it
+// still has the identity captured in expected. This closes the gap for callers
+// that inspect a file before deciding whether its mode needs repair.
+func ChmodFileIfSame(path string, expected os.FileInfo, mode os.FileMode) error {
+	root, relative, err := trustedAnchorFor(path)
+	if err != nil {
+		return err
+	}
+	return errors.Join(root.ChmodFileIfSame(relative, expected, mode), root.Close())
+}
+
+// trustedAnchorFor selects the trusted root for an operator-supplied path and
+// returns the path relative to it. Paths below the current working directory
+// or OS temporary directory use that anchor; other paths use their filesystem
+// root.
+func trustedAnchorFor(path string) (Root, string, error) {
 	if path == "" {
-		return nil, fmt.Errorf("%w: path is empty", ErrEscapesRoot)
+		return Root{}, "", fmt.Errorf("%w: path is empty", ErrEscapesRoot)
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
-		return nil, fmt.Errorf("resolve path %q: %w", path, err)
+		return Root{}, "", fmt.Errorf("resolve path %q: %w", path, err)
 	}
 	volumeRoot := filepath.VolumeName(absolute) + string(filepath.Separator)
 	rootPath := volumeRoot
-	for _, candidate := range []string{workingDirectory(), os.TempDir()} {
+	candidates := []string{workingDirectory(), os.TempDir()}
+	candidates = append(candidates, trustedPathAliases()...)
+	for _, candidate := range candidates {
 		candidate, err = filepath.Abs(candidate)
 		if err != nil {
 			continue
@@ -649,13 +740,13 @@ func OpenFile(path string) (*os.File, error) {
 	}
 	root, err := New(rootPath)
 	if err != nil {
-		return nil, err
+		return Root{}, "", err
 	}
 	relative, err := filepath.Rel(root.Path(), absolute)
 	if err != nil {
-		return nil, fmt.Errorf("%w: resolve %q below %q: %w", ErrEscapesRoot, path, root.Path(), err)
+		return Root{}, "", fmt.Errorf("%w: resolve %q below %q: %w", ErrEscapesRoot, path, root.Path(), err)
 	}
-	return root.OpenFile(relative)
+	return root, relative, nil
 }
 
 func workingDirectory() string {
@@ -1179,10 +1270,85 @@ func (r Root) OpenFile(name string) (*os.File, error) {
 	return file, nil
 }
 
+// ChmodFile changes the mode of an existing regular file beneath the root. The
+// mode is applied through a retained descriptor, so replacing the checked
+// pathname cannot redirect the mutation. Symlinked components and non-regular
+// files are rejected. Some platforms cannot securely open a file that denies
+// its owner read access; those platforms fail closed instead of falling back to
+// a pathname-based chmod.
+func (r Root) ChmodFile(name string, mode os.FileMode) error {
+	return r.chmodFile(name, nil, mode)
+}
+
+// ChmodFileIfSame changes the mode of an existing regular file beneath the
+// root only when it still has the identity captured in expected.
+func (r Root) ChmodFileIfSame(name string, expected os.FileInfo, mode os.FileMode) error {
+	if expected == nil {
+		return errors.New("expected file identity is required")
+	}
+	return r.chmodFile(name, expected, mode)
+}
+
+func (r Root) chmodFile(name string, expected os.FileInfo, mode os.FileMode) error {
+	resolved, err := r.Resolve(name)
+	if err != nil {
+		return err
+	}
+	parent, base, err := r.openParentRooted(resolved)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	if err := r.checkParentComponents(resolved); err != nil {
+		return err
+	}
+	info, err := parent.Lstat(base)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return symlinkError(resolved)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%q is not a regular file", resolved)
+	}
+	if expected != nil && !os.SameFile(expected, info) {
+		return fmt.Errorf("%w: %q", ErrFileIdentityChanged, resolved)
+	}
+	if r.afterValidationForTest != nil {
+		r.afterValidationForTest()
+	}
+
+	file, err := openChmodFile(parent, base)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if openedInfo.Mode()&os.ModeSymlink != 0 {
+		return symlinkError(resolved)
+	}
+	if !openedInfo.Mode().IsRegular() {
+		return fmt.Errorf("%q is not a regular file", resolved)
+	}
+	if !os.SameFile(info, openedInfo) {
+		return fmt.Errorf("%w: %q", ErrFileIdentityChanged, resolved)
+	}
+	if r.afterChmodOpenForTest != nil {
+		r.afterChmodOpenForTest()
+	}
+	return chmodFileDescriptor(file, mode)
+}
+
 // CaptureFile opens and reads a regular file beneath the root while retaining
 // the descriptor that supplied its identity. The default snapshot is bounded
-// by the identity memory limit; use CaptureFileLimited to request a smaller
-// bound. The returned token is bound to this Root and remains valid until
+// by the general identity memory limit; use CaptureFileLimited when a caller's
+// input contract permits the larger explicit capture bound. The returned token
+// is bound to this Root and remains valid until
 // Root.Close. Callers must use the token for subsequent identity-checked
 // mutations instead of retaining an os.FileInfo snapshot returned by os.Stat.
 func (r Root) CaptureFile(name string) (*FileIdentity, error) {
@@ -1191,18 +1357,24 @@ func (r Root) CaptureFile(name string) (*FileIdentity, error) {
 
 // CaptureFileLimited is CaptureFile with an explicit maximum byte count for
 // the retained data snapshot. It refuses, rather than truncates, a regular
-// file larger than limit. The limit cannot exceed the identity memory bound so
-// every retained token remains bounded until Root.Close.
+// file larger than limit. The explicit limit cannot exceed the capture memory
+// bound. Callers should request only the smallest bound their input contract
+// requires; general identity-backed mutation and publication remain subject to
+// the smaller identity memory limit.
 func (r Root) CaptureFileLimited(name string, limit int64) (*FileIdentity, error) {
 	if err := r.selectedIdentity.begin(); err != nil {
 		return nil, err
 	}
 	defer r.selectedIdentity.end()
+	return r.captureFile(name, limit, nil)
+}
+
+func (r Root) captureFile(name string, limit int64, digest *[sha256.Size]byte) (*FileIdentity, error) {
 	if limit < 0 {
 		return nil, fmt.Errorf("file identity capture limit must not be negative")
 	}
-	if limit > fileIdentityDataLimit {
-		return nil, fmt.Errorf("file identity capture limit %d exceeds %d-byte limit: %w", limit, fileIdentityDataLimit, ErrFileIdentityDataTooLarge)
+	if digest == nil && limit > fileIdentityCaptureLimit {
+		return nil, fmt.Errorf("file identity capture limit %d exceeds %d-byte limit: %w", limit, fileIdentityCaptureLimit, ErrFileIdentityDataTooLarge)
 	}
 	resolved, err := r.Resolve(name)
 	if err != nil {
@@ -1233,6 +1405,9 @@ func (r Root) CaptureFileLimited(name string, limit int64) (*FileIdentity, error
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%q is not a regular file", resolved)
 	}
+	if digest != nil && info.Size() != limit {
+		return nil, fmt.Errorf("%w: file size differs from recorded export", ErrFileIdentityChanged)
+	}
 	initialMultipleLinks, err := hasMultipleHardLinks(file, info)
 	if err != nil {
 		return nil, fmt.Errorf("inspect captured file links: %w", err)
@@ -1244,6 +1419,12 @@ func (r Root) CaptureFileLimited(name string, limit int64) (*FileIdentity, error
 	readSnapshot := func() ([]byte, error) {
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
 			return nil, err
+		}
+		if digest != nil {
+			if err := verifyFileDigest(file, limit, *digest); err != nil {
+				return nil, err
+			}
+			return nil, nil
 		}
 		data, err := io.ReadAll(io.LimitReader(file, limit+1))
 		if err != nil {
@@ -1299,10 +1480,14 @@ func (r Root) CaptureFileLimited(name string, limit int64) (*FileIdentity, error
 		!sameFileIdentityMetadata(initialMetadata, middleMetadata) ||
 		!sameFileIdentityMetadata(middleMetadata, finalMetadata) ||
 		!sameFileIdentityMetadata(finalMetadata, rootedMetadata) ||
-		!bytes.Equal(data, verifiedData) || finalInfo.Size() != int64(len(verifiedData)) {
+		!bytes.Equal(data, verifiedData) || (digest == nil && finalInfo.Size() != int64(len(verifiedData))) {
 		return nil, fmt.Errorf("%w: %q changed during identity capture", ErrFileIdentityChanged, resolved)
 	}
-	identity, err := r.selectedIdentity.retainIdentityWithMetadata(file, finalInfo, verifiedData, resolved, finalMetadata, true)
+	retainedLimit := limit
+	if digest != nil {
+		retainedLimit = fileIdentityDataLimit
+	}
+	identity, err := r.selectedIdentity.retainIdentityWithMetadataLimited(file, finalInfo, verifiedData, resolved, finalMetadata, true, retainedLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -1317,6 +1502,7 @@ func (r Root) CaptureFileLimited(name string, limit int64) (*FileIdentity, error
 			r.selectedIdentity.releaseFile(file),
 		)
 	}
+	identity.removalDigest = digest
 	closeOnError = false
 	return identity, nil
 }
@@ -1811,6 +1997,41 @@ func (r Root) removeFileIfSameLegacy(name string, expected os.FileInfo, expected
 	return nil
 }
 
+// RemoveFileIfSHA256Same removes a regular file only when its recorded size and
+// SHA-256 still match. Hashing uses bounded memory, retaining a descriptor through
+// the existing quarantine and recovery checks. The digest identity never escapes
+// this operation. As with RemoveFileIfSameIdentity, Windows is unsupported.
+func (r Root) RemoveFileIfSHA256Same(name string, expectedSize int64, expectedDigest [sha256.Size]byte) (resultErr error) {
+	if err := r.selectedIdentity.begin(); err != nil {
+		return err
+	}
+	defer r.selectedIdentity.end()
+	if runtime.GOOS == "windows" {
+		return ErrFileIdentityMutationUnsupported
+	}
+	if expectedSize < 0 || expectedSize == math.MaxInt64 {
+		return fmt.Errorf("invalid expected file size")
+	}
+	identity, err := r.captureFile(name, expectedSize, &expectedDigest)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, r.selectedIdentity.releaseFile(identity.file)) }()
+	return r.removeFileIfSameIdentity(name, identity)
+}
+
+func verifyFileDigest(file *os.File, size int64, expected [sha256.Size]byte) error {
+	hash := sha256.New()
+	n, err := io.Copy(hash, io.LimitReader(file, size+1))
+	if err != nil {
+		return err
+	}
+	if n != size || !bytes.Equal(hash.Sum(nil), expected[:]) {
+		return fmt.Errorf("%w: file contents differ from recorded export", ErrFileIdentityChanged)
+	}
+	return nil
+}
+
 // RemoveFileIfSameIdentity removes name only when the descriptor-backed
 // identity captured by the same Root still matches. The matching file is first
 // moved to an unpredictable quarantine name in the same rooted directory. A
@@ -1825,6 +2046,13 @@ func (r Root) RemoveFileIfSameIdentity(name string, expected *FileIdentity) (res
 		return err
 	}
 	defer r.selectedIdentity.end()
+	if expected != nil && expected.removalDigest != nil {
+		return ErrFileIdentityMutationUnsupported
+	}
+	return r.removeFileIfSameIdentity(name, expected)
+}
+
+func (r Root) removeFileIfSameIdentity(name string, expected *FileIdentity) (resultErr error) {
 	if runtime.GOOS == "windows" {
 		return ErrFileIdentityMutationUnsupported
 	}
@@ -2027,6 +2255,9 @@ func (r Root) writeFileIfSame(
 	requireNativeNoReplace bool,
 	strictIdentity bool,
 ) (_ os.FileInfo, resultErr error) {
+	if expected != nil && expected.removalDigest != nil {
+		return nil, ErrFileIdentityMutationUnsupported
+	}
 	if strictIdentity && int64(len(data)) > fileIdentityDataLimit {
 		return nil, fmt.Errorf("%d bytes exceeds %d-byte identity limit: %w", len(data), fileIdentityDataLimit, ErrFileIdentityDataTooLarge)
 	}
@@ -2629,6 +2860,9 @@ func (r Root) openExpectedIdentityRootedFile(parent *os.Root, name string, expec
 		if _, err := file.Seek(0, io.SeekStart); err != nil {
 			return nil, err
 		}
+		if expected.removalDigest != nil {
+			return nil, verifyFileDigest(file, expected.info.Size(), *expected.removalDigest)
+		}
 		return io.ReadAll(io.LimitReader(file, int64(len(expected.data))+1))
 	}
 	contents, err := readExpected()
@@ -3043,7 +3277,12 @@ func (r Root) removeExpectedIdentityQuarantine(parent *os.Root, quarantineName s
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return uncertain("rewind quarantined file before removal", err)
 	}
-	contents, err := io.ReadAll(io.LimitReader(file, int64(len(expected.data))+1))
+	var contents []byte
+	if expected.removalDigest != nil {
+		err = verifyFileDigest(file, expected.info.Size(), *expected.removalDigest)
+	} else {
+		contents, err = io.ReadAll(io.LimitReader(file, int64(len(expected.data))+1))
+	}
 	if err != nil {
 		return uncertain("re-read quarantined file before removal", err)
 	}

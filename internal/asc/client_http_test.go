@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -399,7 +400,11 @@ func TestListEndpoints_UseNextURL(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			response := jsonResponse(http.StatusOK, `{"data":[]}`)
+			body := `{"data":[]}`
+			if tt.name == "ListReviewSubmissions" {
+				body = `{"data":[],"links":{"self":"https://api.appstoreconnect.apple.com/v1/reviewSubmissions"}}`
+			}
+			response := jsonResponse(http.StatusOK, body)
 			client := newTestClient(t, func(req *http.Request) {
 				if req.URL.String() != tt.next {
 					t.Fatalf("expected next URL %q, got %q", tt.next, req.URL.String())
@@ -8393,6 +8398,51 @@ func TestCreateCertificate_WithPassTypeIDRelationship(t *testing.T) {
 	}
 }
 
+func TestCreateCertificate_WithMerchantIDRelationship(t *testing.T) {
+	response := jsonResponse(http.StatusCreated, `{"data":{"type":"certificates","id":"c1","attributes":{"name":"Merchant Cert","certificateType":"APPLE_PAY_MERCHANT_IDENTITY"}}}`)
+	client := newTestClient(t, func(req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("expected POST, got %s", req.Method)
+		}
+		if req.URL.Path != "/v1/certificates" {
+			t.Fatalf("expected path /v1/certificates, got %s", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read body error: %v", err)
+		}
+		var payload CertificateCreateRequest
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body error: %v", err)
+		}
+		if payload.Data.Attributes.CertificateType != "APPLE_PAY_MERCHANT_IDENTITY" {
+			t.Fatalf("expected certificate type APPLE_PAY_MERCHANT_IDENTITY, got %q", payload.Data.Attributes.CertificateType)
+		}
+		if payload.Data.Relationships == nil || payload.Data.Relationships.MerchantID == nil {
+			t.Fatal("expected merchantId relationship")
+		}
+		if got := payload.Data.Relationships.MerchantID.Data.Type; got != ResourceTypeMerchantIds {
+			t.Fatalf("expected relationship type merchantIds, got %q", got)
+		}
+		if got := payload.Data.Relationships.MerchantID.Data.ID; got != "merchant-123" {
+			t.Fatalf("expected relationship ID merchant-123, got %q", got)
+		}
+		if payload.Data.Relationships.PassTypeID != nil {
+			t.Fatalf("expected passTypeId to be omitted, got %#v", payload.Data.Relationships.PassTypeID)
+		}
+		assertAuthorized(t, req)
+	}, response)
+
+	if _, err := client.CreateCertificate(
+		context.Background(),
+		"CSR_CONTENT",
+		"APPLE_PAY_MERCHANT_IDENTITY",
+		WithCertificateMerchantID(" merchant-123 "),
+	); err != nil {
+		t.Fatalf("CreateCertificate() error: %v", err)
+	}
+}
+
 func TestUpdateCertificate_SendsRequest(t *testing.T) {
 	response := jsonResponse(http.StatusOK, `{"data":{"type":"certificates","id":"c1","attributes":{"name":"Cert","certificateType":"IOS_DISTRIBUTION","activated":true}}}`)
 	client := newTestClient(t, func(req *http.Request) {
@@ -9714,6 +9764,29 @@ func TestClientLimitsConcurrentMutatingRequests(t *testing.T) {
 	}
 }
 
+// fixedDeadlineContext reports a deadline without arming a timer, so a test can
+// check deadline arithmetic without racing the wall clock. It never expires on
+// its own. read is closed the first time a caller asks for the deadline.
+type fixedDeadlineContext struct {
+	context.Context
+	deadline time.Time
+	read     chan struct{}
+	readOnce sync.Once
+}
+
+func newFixedDeadlineContext(deadline time.Time) *fixedDeadlineContext {
+	return &fixedDeadlineContext{
+		Context:  context.Background(),
+		deadline: deadline,
+		read:     make(chan struct{}),
+	}
+}
+
+func (c *fixedDeadlineContext) Deadline() (time.Time, bool) {
+	c.readOnce.Do(func() { close(c.read) })
+	return c.deadline, true
+}
+
 func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -9724,7 +9797,6 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 	started := make(chan struct{}, 2)
 	var requests atomic.Int32
 	derivedDeadlineCh := make(chan time.Time, 1)
-	parentDeadlineCh := make(chan time.Time, 1)
 
 	client := &Client{
 		httpClient: &http.Client{
@@ -9736,10 +9808,8 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 				if attempt == 1 {
 					<-release
 				} else {
-					deadline, ok := req.Context().Deadline()
-					if !ok {
-						t.Fatal("expected queued mutating request to have a timeout")
-					}
+					// A zero time reports a missing deadline to the test goroutine.
+					deadline, _ := req.Context().Deadline()
 					derivedDeadlineCh <- deadline
 				}
 
@@ -9759,26 +9829,21 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 	}()
 	<-started
 
+	// The queued request's deadline is fixed data rather than a timer, so a
+	// stalled host cannot expire it while the request waits for the slot.
+	parent := newFixedDeadlineContext(time.Now().Add(time.Minute))
 	go func() {
-		requestCtx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
-		defer cancel()
-		deadline, ok := requestCtx.Deadline()
-		if !ok {
-			errCh <- fmt.Errorf("expected parent mutating request context to have a deadline")
-			return
-		}
-		parentDeadlineCh <- deadline
-
-		_, err := client.CreateSubscriptionAvailability(requestCtx, "sub-2", []string{"CAN"}, SubscriptionAvailabilityAttributes{})
+		_, err := client.CreateSubscriptionAvailability(parent, "sub-2", []string{"CAN"}, SubscriptionAvailabilityAttributes{})
 		errCh <- err
 	}()
 
+	// The client sizes the queued request's budget from the parent deadline
+	// before it waits for the slot the first request still holds.
 	select {
-	case <-started:
-		t.Fatal("expected second mutating request to wait for limiter")
-	case <-time.After(20 * time.Millisecond):
+	case <-parent.read:
+	case <-time.After(30 * time.Second):
+		t.Fatal("queued mutating request never read its parent deadline")
 	}
-
 	close(release)
 
 	for i := 0; i < 2; i++ {
@@ -9787,12 +9852,14 @@ func TestClientRenewsMutatingRequestTimeoutAfterLimiterWait(t *testing.T) {
 		}
 	}
 
-	parentDeadline := <-parentDeadlineCh
 	derivedDeadline := <-derivedDeadlineCh
-	if !derivedDeadline.After(parentDeadline) {
+	if derivedDeadline.IsZero() {
+		t.Fatal("expected queued mutating request to have a timeout")
+	}
+	if !derivedDeadline.After(parent.deadline) {
 		t.Fatalf(
 			"expected queued request to receive a refreshed timeout deadline after %s, got %s",
-			parentDeadline.Format(time.RFC3339Nano),
+			parent.deadline.Format(time.RFC3339Nano),
 			derivedDeadline.Format(time.RFC3339Nano),
 		)
 	}
@@ -12514,7 +12581,7 @@ func TestListBetaBuildLocalizationsGlobal_WithBuildFilter(t *testing.T) {
 }
 
 func TestListReviewSubmissionsGlobal_UsesV1ReviewSubmissionsPath(t *testing.T) {
-	response := jsonResponse(http.StatusOK, `{"data":[{"type":"reviewSubmissions","id":"rs-1","attributes":{"platform":"IOS","state":"READY_FOR_REVIEW"}}]}`)
+	response := jsonResponse(http.StatusOK, `{"data":[{"type":"reviewSubmissions","id":"rs-1","attributes":{"platform":"IOS","state":"READY_FOR_REVIEW"}}],"links":{"self":"https://api.appstoreconnect.apple.com/v1/reviewSubmissions"}}`)
 	client := newTestClient(t, func(req *http.Request) {
 		if req.Method != http.MethodGet {
 			t.Fatalf("expected GET, got %s", req.Method)
@@ -12542,7 +12609,7 @@ func TestListReviewSubmissionsGlobal_UsesV1ReviewSubmissionsPath(t *testing.T) {
 }
 
 func TestListReviewSubmissionsGlobal_WithFilters(t *testing.T) {
-	response := jsonResponse(http.StatusOK, `{"data":[]}`)
+	response := jsonResponse(http.StatusOK, `{"data":[],"links":{"self":"https://api.appstoreconnect.apple.com/v1/reviewSubmissions"}}`)
 	client := newTestClient(t, func(req *http.Request) {
 		if req.URL.Path != "/v1/reviewSubmissions" {
 			t.Fatalf("expected path /v1/reviewSubmissions, got %s", req.URL.Path)

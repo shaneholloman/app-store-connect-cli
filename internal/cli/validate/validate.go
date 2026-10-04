@@ -24,6 +24,7 @@ type validateOptions struct {
 	Deep      bool
 	CheckURLs bool
 	AppleID   string
+	IPAPath   string
 	Output    string
 	Pretty    bool
 }
@@ -40,12 +41,13 @@ func ValidateCommand() *ffcli.Command {
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
 	version := fs.String("version", "", "App Store version string")
-	versionID := fs.String("version-id", "", "App Store version ID")
+	versionID := shared.BindResourceIDFlag(fs, "version-id", "appStoreVersions", "App Store version ID")
 	platform := fs.String("platform", "", "Platform: IOS, MAC_OS, TV_OS, VISION_OS")
 	strict := fs.Bool("strict", false, "Treat warnings as errors (exit non-zero)")
 	deep := fs.Bool("deep", false, "Verify blockers that require a cached Apple web session")
 	checkURLs := fs.Bool("check-urls", false, "Check metadata URL destinations with bounded public HTTP requests")
 	appleID := fs.String("apple-id", "", "Cached Apple web session to use with --deep")
+	ipaPath := fs.String("ipa", "", "Path to the version's .ipa; its UIDeviceFamily decides whether iPad screenshots are required")
 	output := shared.BindOutputFlags(fs)
 
 	testFlight := wrapValidateSubcommand(ValidateTestFlightCommand(), fs)
@@ -54,7 +56,7 @@ func ValidateCommand() *ffcli.Command {
 
 	return &ffcli.Command{
 		Name:       "validate",
-		ShortUsage: "asc validate --app \"APP_ID\" (--version-id \"VERSION_ID\" | --version \"VERSION\") [flags]",
+		ShortUsage: "asc validate --app \"APP_ID\" [--version-id \"VERSION_ID\" | --version \"VERSION\"] [flags]",
 		ShortHelp:  "Canonical App Store submission readiness report.",
 		LongHelp: `Validate pre-submission readiness for an App Store version.
 
@@ -78,8 +80,9 @@ Checks:
   - Build attached and processed
   - Build encryption declaration readiness
   - App content rights declaration
-  - Pricing schedule and territory availability
+  - Pricing schedule, base territory price (Free counts), and territory availability
   - Screenshot presence and size compatibility
+  - Required iPad screenshots for builds that run on iPad (--ipa)
   - Subscription review readiness and promotional image guidance
   - Age rating completeness
 
@@ -90,13 +93,34 @@ Deep validation:
   web-fixable, or manual and returns exact available commands and App Store
   Connect links. Deep validation never starts an interactive login.
 
+iPad screenshots:
+  The App Store Connect API does not report whether a build runs on iPad, so
+  pass --ipa with the IOS version's .ipa to read UIDeviceFamily locally. When
+  it includes iPad (2) and the primary locale has no APP_IPAD_PRO_3GEN_129
+  screenshot set, screenshots.required.ipad blocks submission. Without --ipa,
+  a version with iPhone screenshots but no primary-locale APP_IPAD_PRO_3GEN_129
+  set gets the non-blocking screenshots.required.ipad_unverified info check.
+  The IPA's bundle ID must
+  match the app's, its CFBundleShortVersionString must match the version, and
+  its CFBundleVersion must match the attached build when one is attached.
+
+Default version selection:
+  When --version and --version-id are omitted, validate selects the app's
+  newest active editable App Store version. If none exists, it checks for a
+  DEVELOPER_REMOVED_FROM_SALE version; if that is absent, it falls back to the newest live version.
+  Pass --platform when that tier has candidates on more than one platform. The
+  selected version is always reported on stderr. A live fallback does not mean the live version is ready for submission;
+  its state is evaluated by the same readiness checks and can still block.
+
 Examples:
+  asc validate --app "APP_ID"
   asc validate --app "APP_ID" --version-id "VERSION_ID"
   asc validate --app "APP_ID" --version "1.0.0" --platform IOS
   asc validate --app "APP_ID" --version-id "VERSION_ID" --platform IOS --output table
   asc validate --app "APP_ID" --version-id "VERSION_ID" --strict
   asc validate --app "APP_ID" --version-id "VERSION_ID" --deep
   asc validate --app "APP_ID" --version-id "VERSION_ID" --check-urls
+  asc validate --app "APP_ID" --version-id "VERSION_ID" --ipa "./App.ipa"
   asc validate --app "APP_ID" --version "1.0.0" --deep --apple-id "user@example.com"
 
 TestFlight:
@@ -121,9 +145,6 @@ Subscriptions:
 			}
 			trimmedVersion := strings.TrimSpace(*version)
 			trimmedVersionID := strings.TrimSpace(*versionID)
-			if trimmedVersion == "" && trimmedVersionID == "" {
-				return shared.WithDiagnostic(shared.UsageError("--version or --version-id is required"), shared.DiagnosticRequiredInputMissing, "")
-			}
 			if trimmedVersion != "" && trimmedVersionID != "" {
 				return shared.WithDiagnostic(shared.UsageError("--version and --version-id are mutually exclusive"), shared.DiagnosticConflictingInput, "--version-id")
 			}
@@ -155,6 +176,7 @@ Subscriptions:
 				Deep:      *deep,
 				CheckURLs: *checkURLs,
 				AppleID:   trimmedAppleID,
+				IPAPath:   strings.TrimSpace(*ipaPath),
 				Output:    *output.Output,
 				Pretty:    *output.Pretty,
 			})
@@ -188,7 +210,7 @@ func validateParentFlagUsageMessage(parentFlags *flag.FlagSet) string {
 		switch f.Name {
 		case "app", "output", "pretty", "strict":
 			moveAfterSubcommand = append(moveAfterSubcommand, "--"+f.Name)
-		case "version", "version-id", "platform", "deep", "check-urls", "apple-id":
+		case "version", "version-id", "platform", "deep", "check-urls", "apple-id", "ipa":
 			topLevelOnly = append(topLevelOnly, "--"+f.Name)
 		}
 	})
@@ -229,15 +251,46 @@ func validateFlagVerb(flags []string) string {
 }
 
 func runValidate(ctx context.Context, opts validateOptions) error {
-	report, err := buildReadinessReportFn(ctx, ReadinessOptions{
-		AppID:     opts.AppID,
-		Version:   opts.Version,
-		VersionID: opts.VersionID,
-		Platform:  opts.Platform,
-		Strict:    opts.Strict,
-		Deep:      opts.Deep,
-		CheckURLs: opts.CheckURLs,
-	})
+	var localIPA *LocalIPA
+	if opts.IPAPath != "" {
+		loaded, loadErr := loadLocalIPA(opts.IPAPath)
+		if loadErr != nil {
+			return shared.WithDiagnostic(fmt.Errorf("validate: --ipa: %w", loadErr), shared.DiagnosticInvalidInput, "--ipa")
+		}
+		localIPA = loaded
+	}
+
+	var report validation.Report
+	var err error
+	if strings.TrimSpace(opts.Version) == "" && strings.TrimSpace(opts.VersionID) == "" {
+		client, clientErr := clientFactory()
+		if clientErr != nil {
+			err = clientErr
+		} else {
+			resolveCtx, cancel := shared.ContextWithTimeout(ctx)
+			resolved, resolveErr := shared.ResolveAndAnnounceDefaultAppStoreVersion(resolveCtx, client, opts.AppID, opts.Platform, "--version")
+			cancel()
+			if resolveErr != nil {
+				err = resolveErr
+			} else {
+				opts.Version = resolved.VersionString
+				opts.VersionID = resolved.ID
+				opts.Platform = resolved.Platform
+			}
+		}
+	}
+	if err == nil {
+		report, err = buildReadinessReportFn(ctx, ReadinessOptions{
+			AppID:     opts.AppID,
+			Version:   opts.Version,
+			VersionID: opts.VersionID,
+			Platform:  opts.Platform,
+			Strict:    opts.Strict,
+			Deep:      opts.Deep,
+			CheckURLs: opts.CheckURLs,
+			IPA:       localIPA,
+		})
+	}
 	if err != nil {
 		if !opts.Deep || !asc.IsRequiredAgreementError(err) {
 			return fmt.Errorf("validate: %w", err)
@@ -320,17 +373,23 @@ func resolveVersionID(ctx context.Context, client *asc.Client, appID, version, p
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve app store version: %w", err)
 	}
-	if resp == nil || len(resp.Data) == 0 {
-		if strings.TrimSpace(platform) != "" {
-			return "", fmt.Errorf("app store version not found for version %q and platform %q", version, platform)
-		}
-		return "", fmt.Errorf("app store version not found for version %q", version)
+	if resp == nil {
+		return "", fmt.Errorf("failed to resolve app store version: empty response")
 	}
-	if len(resp.Data) > 1 {
+	pageHasNext := strings.TrimSpace(resp.Links.Next) != ""
+	if len(resp.Data) == 0 && !pageHasNext {
+		notFound := fmt.Errorf("app store version not found for version %q", version)
 		if strings.TrimSpace(platform) != "" {
-			return "", fmt.Errorf("multiple app store versions found for version %q and platform %q (use --version-id)", version, platform)
+			notFound = fmt.Errorf("app store version not found for version %q and platform %q", version, platform)
 		}
-		return "", fmt.Errorf("multiple app store versions found for version %q (use --platform or --version-id)", version)
+		return "", shared.WithAppStoreVersionNotFoundDiagnostics(ctx, client, appID, version, platform, notFound)
+	}
+	if len(resp.Data) > 1 || pageHasNext {
+		ambiguous := shared.AmbiguousAppStoreVersionError(version, platform, resp.Data, "--platform", "--version-id")
+		if pageHasNext {
+			return "", shared.MarkAmbiguousSelectionSample(ambiguous)
+		}
+		return "", ambiguous
 	}
 	return resp.Data[0].ID, nil
 }

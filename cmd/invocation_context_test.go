@@ -105,6 +105,14 @@ func TestRuntimeFailureContextClassifiesLowCardinalityFailures(t *testing.T) {
 			wantOutcome: telemetry.OutcomeAuthError,
 		},
 		{
+			name:        "missing Apple web session is a missing-input usage failure",
+			err:         fmt.Errorf("web review show failed: %w", &shared.MissingWebSessionError{Message: "no Apple web session is cached"}),
+			exitCode:    ExitUsage,
+			wantKind:    telemetry.ErrorKindMissingRequired,
+			wantStage:   telemetry.FailureStageValidation,
+			wantOutcome: telemetry.OutcomeUsageError,
+		},
+		{
 			name:        "invalid Apple Account credentials",
 			err:         fmt.Errorf("SRP login failed: %w", webcore.ErrInvalidAppleAccountCredentials),
 			exitCode:    ExitError,
@@ -330,6 +338,33 @@ func TestRuntimeFailureContextCarriesStructuredDiagnostic(t *testing.T) {
 		got.OutcomeKind != telemetry.OutcomeExpectedNegative ||
 		got.FailureParameter != "--private-key" ||
 		got.DiagnosticCode != string(shared.DiagnosticFileNotFound) {
+		t.Fatalf("runtimeFailureContext() = %+v", got)
+	}
+}
+
+func TestRuntimeFailureContextKeepsExplainedConflictAsAPIConflict(t *testing.T) {
+	// Apple's 409 for a past start date on POST /v1/appPriceSchedules, captured
+	// live on 2026-09-26. The pricing command explains it and adds a
+	// diagnostic; the event must stay an API conflict with the 409 status.
+	body := `{"errors":[{"id":"4e33e336-382f-4c14-b0c6-76e89677419c","status":"409","code":"ENTITY_ERROR.INVALID_START_DATE","title":"There is a problem with the request entity","detail":"Interval can not have a start date in the past","source":{"pointer":"/data/relationships/manualPrices/data/0/attributes/startDate"}}]}`
+	err := shared.WithDiagnostic(
+		fmt.Errorf("pricing schedule create: --start-date is in the past\n\nApp Store Connect: %w", asc.ParseErrorWithStatus([]byte(body), http.StatusConflict)),
+		shared.DiagnosticInvalidInput,
+		"--start-date",
+	)
+
+	got := runtimeFailureContext(
+		invocationAnalysis{shape: telemetry.InvocationShapeLeaf},
+		err,
+		ExitCodeFromError(err),
+	)
+
+	if got.ErrorKind != telemetry.ErrorKindAPIConflict ||
+		got.FailureStage != telemetry.FailureStageRequest ||
+		got.OutcomeKind != telemetry.OutcomeConflict ||
+		got.HTTPStatus != http.StatusConflict ||
+		got.FailureParameter != "--start-date" ||
+		got.DiagnosticCode != string(shared.DiagnosticInvalidInput) {
 		t.Fatalf("runtimeFailureContext() = %+v", got)
 	}
 }

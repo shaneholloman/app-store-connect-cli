@@ -8,6 +8,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/readonly"
 )
 
 type ClassifiedError struct {
@@ -24,6 +25,20 @@ const (
 func Classify(err error) ClassifiedError {
 	if err == nil {
 		return ClassifiedError{}
+	}
+
+	// A read-only refusal is a policy decision, not a command failure: render
+	// the refusal itself so the line stays stable regardless of which command
+	// wrapped it, and add no hint because the message already names the cause.
+	if refused, ok := errors.AsType[*readonly.RefusedError](err); ok {
+		return ClassifiedError{Message: refused.Error()}
+	}
+
+	// A missing Apple web session carries its own next step; the App Store
+	// Connect API credential hint below would send the caller to the wrong
+	// sign-in.
+	if missing, ok := errors.AsType[*shared.MissingWebSessionError](err); ok {
+		return ClassifiedError{Message: err.Error(), Hint: missing.Hint}
 	}
 
 	if errors.Is(err, shared.ErrMissingAuth) {

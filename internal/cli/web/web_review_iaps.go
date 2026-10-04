@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -60,7 +61,7 @@ func renderReviewIAPMutationMarkdown(payload reviewIAPMutationOutput) error {
 func validateReviewIAPAttachInputs(appID, iapID string, confirm bool) error {
 	switch {
 	case strings.TrimSpace(appID) == "":
-		return shared.UsageError("--app is required")
+		return shared.UsageError("--app is required (or set ASC_APP_ID)")
 	case shared.SelectorNeedsLookup(appID):
 		return shared.UsageError("--app must be a numeric App Store Connect app ID")
 	case strings.TrimSpace(iapID) == "":
@@ -69,6 +70,29 @@ func validateReviewIAPAttachInputs(appID, iapID string, confirm bool) error {
 		return shared.UsageError("--confirm is required")
 	default:
 		return nil
+	}
+}
+
+func reviewIAPAmbiguousSelectionError(err error) *shared.AmbiguousSelectionError {
+	var ambiguous *webcore.ReviewIAPAmbiguousError
+	if !errors.As(err, &ambiguous) || ambiguous == nil {
+		return nil
+	}
+	candidates := make([]shared.AmbiguousCandidate, 0, len(ambiguous.Matches))
+	for _, match := range ambiguous.Matches {
+		candidates = append(candidates, shared.AmbiguousCandidate{
+			ID:    strings.TrimSpace(match.ID),
+			Label: strings.TrimSpace(match.ProductID),
+			Extra: strings.TrimSpace(match.ReferenceName),
+		})
+	}
+	return &shared.AmbiguousSelectionError{
+		Kind:             "in-app purchase",
+		Description:      fmt.Sprintf("%q by %s", strings.TrimSpace(ambiguous.Selector), strings.TrimSpace(ambiguous.Field)),
+		Flag:             "--iap-id",
+		Candidates:       candidates,
+		Hint:             "Use the Iris resource ID to disambiguate.",
+		DisplayTextLimit: shared.AmbiguousDiagnosticTextLimit,
 	}
 }
 
@@ -102,6 +126,9 @@ func verifyReviewIAPBelongsToApp(ctx context.Context, client reviewIAPFinder, ap
 
 	iap, found, err := client.FindReviewIAP(ctx, appID, iapID)
 	if err != nil {
+		if ambiguous := reviewIAPAmbiguousSelectionError(err); ambiguous != nil {
+			return webcore.ReviewIAP{}, fmt.Errorf("verify in-app purchase %q under app %q: %w", iapID, appID, ambiguous)
+		}
 		return webcore.ReviewIAP{}, fmt.Errorf("verify in-app purchase %q under app %q: %w", iapID, appID, err)
 	}
 	if !found {
@@ -153,29 +180,29 @@ submitWithNextAppStoreVersion=true; this command exposes that same call.
 func WebReviewIAPsAttachCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("web review iaps attach", flag.ExitOnError)
 
-	appID := fs.String("app", "", "App ID")
-	iapID := fs.String("iap-id", "", "Iris IAP resource ID or product ID")
+	appID := fs.String("app", "", "App ID (or ASC_APP_ID env)")
+	iapID := fs.String("iap-id", "", "Iris IAP resource ID, product ID, or exact reference name")
 	confirm := fs.Bool("confirm", false, "Confirm the attach operation")
 	authFlags := bindWebSessionFlags(fs)
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "attach",
-		ShortUsage: "asc web review iaps attach --app APP_ID --iap-id IAP_ID_OR_PRODUCT_ID --confirm [flags]",
+		ShortUsage: "asc web review iaps attach --app APP_ID --iap-id IAP_SELECTOR --confirm [flags]",
 		ShortHelp:  "Attach a non-renewing IAP to the next app version review.",
 		LongHelp: `WEB SESSION WORKFLOWS
 
 Attach a non-renewing in-app purchase to the next app version review.
 
-The --iap-id selector accepts the Iris resource id or the bundle-style
-productId from ` + "`asc iap list`" + `. Apple's Iris listing does not expose the
-public numeric ASC IAP id, so that numeric id is not resolved by this command.
+The --iap-id selector accepts the Iris resource id, the bundle-style productId,
+or the exact current referenceName from ` + "`asc iap list`" + `. Apple's Iris listing does not
+expose the public numeric ASC IAP id, so that numeric id is not resolved by this command.
 
 `,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
-			trimmedAppID := strings.TrimSpace(*appID)
+			trimmedAppID := strings.TrimSpace(shared.ResolveAppID(*appID))
 			trimmedIAPID := strings.TrimSpace(*iapID)
 			if err := validateReviewIAPAttachInputs(trimmedAppID, trimmedIAPID, *confirm); err != nil {
 				return err
@@ -190,7 +217,7 @@ public numeric ASC IAP id, so that numeric id is not resolved by this command.
 
 			reviewIAP, err := verifyReviewIAPBelongsToApp(requestCtx, client, trimmedAppID, trimmedIAPID)
 			if err != nil {
-				return fmt.Errorf("web review iaps attach: %w", err)
+				return fmt.Errorf("web review iaps attach: %w", withReviewSelectorDiagnostic(err, "--iap-id"))
 			}
 			// The iris attach POST takes the iris resource id, not the
 			// caller's selector — `--iap-id` may have been a bundle-style

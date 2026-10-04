@@ -249,7 +249,7 @@ func BetaGroupsListCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
-	buildID := fs.String("build-id", "", "List groups that contain this build ID")
+	buildID := shared.BindResourceIDFlag(fs, "build-id", "builds", "List groups that contain this build ID")
 	global := fs.Bool("global", false, "List beta groups across all apps (top-level endpoint)")
 	internal := fs.Bool("internal", false, "Filter to internal groups only")
 	external := fs.Bool("external", false, "Filter to external groups only")
@@ -811,7 +811,7 @@ type BuildGroupsListCommandConfig struct {
 func BuildGroupsListCommand(config BuildGroupsListCommandConfig) *ffcli.Command {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
 
-	buildID := fs.String("build-id", "", "Build ID whose TestFlight groups should be listed")
+	buildID := shared.BindResourceIDFlag(fs, "build-id", "builds", "Build ID whose TestFlight groups should be listed")
 	output := shared.BindOutputFlags(fs)
 
 	errorPrefix := strings.TrimSpace(config.ErrorPrefix)
@@ -1008,7 +1008,7 @@ func optionalBetaGroupCreateBool(value shared.OptionalBool) *bool {
 func BetaGroupsGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("view", flag.ExitOnError)
 
-	id := fs.String("id", "", "Beta group ID")
+	id := shared.BindResourceIDFlag(fs, "id", "betaGroups", "Beta group ID")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -1049,7 +1049,7 @@ Examples:
 func BetaGroupsUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 
-	id := fs.String("id", "", "Beta group ID")
+	id := shared.BindResourceIDFlag(fs, "id", "betaGroups", "Beta group ID")
 	name := fs.String("name", "", "Beta group name")
 	publicLinkEnabled := fs.Bool("public-link-enabled", false, "Enable public link")
 	publicLinkLimitEnabled := fs.Bool("public-link-limit-enabled", false, "Enable public link limit")
@@ -1151,7 +1151,7 @@ Examples:
 func BetaGroupsDeleteCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
 
-	id := fs.String("id", "", "Beta group ID")
+	id := shared.BindResourceIDFlag(fs, "id", "betaGroups", "Beta group ID")
 	confirm := fs.Bool("confirm", false, "Confirm deletion")
 
 	return &ffcli.Command{
@@ -1196,15 +1196,22 @@ Examples:
 func BetaGroupsAddTestersCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("add-testers", flag.ExitOnError)
 
-	group := fs.String("group", "", "Beta group ID")
+	group := shared.BindResourceIDFlag(fs, "group", "betaGroups", "Beta group ID")
 	tester := shared.BindOnceCSVFlag(fs, "tester", "Beta tester ID(s), comma-separated")
 	email := shared.BindOnceCSVFlag(fs, "email", "Beta tester email(s), comma-separated")
+	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "add-testers",
 		ShortUsage: "asc testflight beta-groups add-testers --group \"GROUP_ID\" [--tester \"TESTER_ID[,TESTER_ID...]\" | --email \"EMAIL[,EMAIL...]\"]",
 		ShortHelp:  "Add beta testers to a beta group.",
 		LongHelp: `Add beta testers to a beta group.
+
+Adding a tester who is already in the group is an expected negative: App Store
+Connect rejects the request with HTTP 409, and asc reports the membership that
+already holds as a skip receipt ("action":"skipped") and exits 0. The conflict
+is only forgiven when a read-back confirms every requested tester is in the
+group; every other conflict still fails.
 
 Examples:
   asc testflight beta-groups add-testers --group "GROUP_ID" --tester "TESTER_ID"
@@ -1254,11 +1261,24 @@ Examples:
 					if err != nil {
 						return fmt.Errorf("beta-groups add-testers: failed to resolve tester email %q: %w", testerEmail, err)
 					}
-					if len(resp.Data) == 0 {
+					if resp == nil {
+						return fmt.Errorf("beta-groups add-testers: empty tester response for email %q", testerEmail)
+					}
+					pageHasNext := strings.TrimSpace(resp.Links.Next) != ""
+					if len(resp.Data) == 0 && !pageHasNext {
 						return fmt.Errorf("beta-groups add-testers: tester email %q not found for app %q", testerEmail, appID)
 					}
-					if len(resp.Data) > 1 {
-						return fmt.Errorf("beta-groups add-testers: multiple testers found for email %q; use --tester ID", testerEmail)
+					if len(resp.Data) > 1 || pageHasNext {
+						ambiguous := &shared.AmbiguousSelectionError{
+							Kind:        "beta tester",
+							Description: fmt.Sprintf("email %q", testerEmail),
+							Flag:        "--tester",
+							Candidates:  shared.BetaTesterCandidates(resp.Data),
+						}
+						if pageHasNext {
+							return fmt.Errorf("beta-groups add-testers: %w", shared.MarkAmbiguousSelectionSample(ambiguous))
+						}
+						return fmt.Errorf("beta-groups add-testers: %w", ambiguous)
 					}
 					testerIDs = append(testerIDs, resp.Data[0].ID)
 				}
@@ -1282,8 +1302,51 @@ Examples:
 			}
 			testerIDs = deduped
 
-			if err := client.AddBetaTestersToGroup(requestCtx, groupID, testerIDs); err != nil {
-				return fmt.Errorf("beta-groups add-testers: failed to add testers: %w", err)
+			addErr := client.AddBetaTestersToGroup(requestCtx, groupID, testerIDs)
+			if addErr != nil {
+				if !isHTTPConflict(addErr) {
+					return fmt.Errorf("beta-groups add-testers: failed to add testers: %w", addErr)
+				}
+
+				membership, readBackErr := readBackBetaGroupMembership(ctx, client, groupID, testerIDs)
+				if readBackErr != nil {
+					return fmt.Errorf(
+						"beta-groups add-testers: failed to add testers: %w (read-back of group membership failed: %w)",
+						addErr,
+						readBackErr,
+					)
+				}
+				if !membership.satisfied() {
+					return fmt.Errorf("beta-groups add-testers: failed to add testers: %w%s", addErr, membership.diagnostic())
+				}
+
+				result := &asc.BetaGroupTestersUpdateResult{
+					GroupID:        groupID,
+					TesterIDs:      testerIDs,
+					Action:         asc.BetaGroupTestersActionSkipped,
+					AlreadyPresent: true,
+				}
+				if err := shared.PrintOutput(result, *output.Output, *output.Pretty); err != nil {
+					return err
+				}
+
+				fmt.Fprintf(
+					os.Stderr,
+					"Skipped: %d tester(s) already in group %s (%s)\n",
+					len(membership.present),
+					groupID,
+					strings.Join(membership.present, ", "),
+				)
+				return nil
+			}
+
+			result := &asc.BetaGroupTestersUpdateResult{
+				GroupID:   groupID,
+				TesterIDs: testerIDs,
+				Action:    asc.BetaGroupTestersActionAdded,
+			}
+			if err := shared.PrintOutput(result, *output.Output, *output.Pretty); err != nil {
+				return err
 			}
 
 			fmt.Fprintf(os.Stderr, "Successfully added %d tester(s) to group %s\n", len(testerIDs), groupID)
@@ -1296,7 +1359,7 @@ Examples:
 func BetaGroupsRemoveTestersCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("remove-testers", flag.ExitOnError)
 
-	group := fs.String("group", "", "Beta group ID")
+	group := shared.BindResourceIDFlag(fs, "group", "betaGroups", "Beta group ID")
 	tester := shared.BindOnceCSVFlag(fs, "tester", "Beta tester ID(s), comma-separated")
 	confirm := fs.Bool("confirm", false, "Confirm removal")
 

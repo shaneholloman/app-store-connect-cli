@@ -173,15 +173,19 @@ func TestAppsSearchKeywordsSetResolutionFailures(t *testing.T) {
 		wantCalls int
 	}{
 		{
-			name:      "version not found",
-			responses: []string{`{"data":[]}`},
-			wantErr:   `app store version not found for version "1.2.3"`,
-			wantCalls: 1,
+			name: "version not found",
+			responses: []string{
+				`{"data":[]}`,
+				// The not-found diagnostic lists the app's existing versions.
+				`{"data":[{"type":"appStoreVersions","id":"version-2","attributes":{"platform":"IOS","versionString":"2.0","appStoreState":"PREPARE_FOR_SUBMISSION"}}]}`,
+			},
+			wantErr:   "app store version not found for version \"1.2.3\"\nExisting App Store versions for app \"app-1\" (newest first):\n  2.0  IOS  PREPARE_FOR_SUBMISSION  version-2\n",
+			wantCalls: 2,
 		},
 		{
 			name:      "platform is ambiguous",
 			responses: []string{`{"data":[{"type":"appStoreVersions","id":"ios-version","attributes":{"platform":"IOS","versionString":"1.2.3"}},{"type":"appStoreVersions","id":"mac-version","attributes":{"platform":"MAC_OS","versionString":"1.2.3"}}]}`},
-			wantErr:   `multiple app store versions found for version "1.2.3" on platforms IOS, MAC_OS; pass --platform`,
+			wantErr:   `2 app store versions match version "1.2.3"; pass --platform with one of:`,
 			wantCalls: 1,
 		},
 		{
@@ -199,7 +203,7 @@ func TestAppsSearchKeywordsSetResolutionFailures(t *testing.T) {
 				`{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"platform":"IOS","versionString":"1.2.3"}}]}`,
 				`{"data":[{"type":"appStoreVersionLocalizations","id":"loc-1","attributes":{"locale":"en-US"}},{"type":"appStoreVersionLocalizations","id":"loc-2","attributes":{"locale":"en-US"}}]}`,
 			},
-			wantErr:   `multiple version localizations found for locale "en-US"`,
+			wantErr:   `2 version localizations match locale "en-US":`,
 			wantCalls: 2,
 		},
 	}
@@ -358,7 +362,7 @@ func TestAppsSearchKeywordsSetUsageErrors(t *testing.T) {
 		{
 			name:    "positional argument",
 			args:    []string{"apps", "search-keywords", "set", "unexpected", "--app", "app-1", "--version", "1.2.3", "--locale", "en-US", "--keywords", "one,two", "--confirm"},
-			wantErr: "does not accept positional arguments",
+			wantErr: `unexpected argument "unexpected"`,
 		},
 		{
 			name:    "invalid output before mutation",

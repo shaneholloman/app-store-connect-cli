@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/pricing"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
@@ -23,23 +24,22 @@ func fetchCurrentAppPaidPricingEvidence(ctx context.Context, client *asc.Client,
 	const limit = 200
 	query := currentAppPricingQuery(limit)
 	fetchPage := func(nextURL string) (*asc.AppPricesResponse, error) {
-		requestCtx, cancel := shared.ContextWithTimeout(ctx)
-		defer cancel()
+		opts := []asc.AppPriceSchedulePricesOption{
+			asc.WithAppPriceSchedulePricesInclude([]string{"appPricePoint"}),
+			asc.WithAppPriceSchedulePricesFields([]string{"manual", "startDate", "endDate", "appPricePoint"}),
+			asc.WithAppPriceSchedulePricesPricePointFields([]string{"customerPrice"}),
+			asc.WithAppPriceSchedulePricesLimit(limit),
+		}
 		if strings.TrimSpace(nextURL) != "" {
 			merged, err := shared.MergeNextURLQuery(nextURL, query)
 			if err != nil {
 				return nil, err
 			}
-			return client.GetAppPriceScheduleManualPrices(requestCtx, scheduleID, asc.WithAppPriceSchedulePricesNextURL(merged))
+			opts = []asc.AppPriceSchedulePricesOption{asc.WithAppPriceSchedulePricesNextURL(merged)}
 		}
-		return client.GetAppPriceScheduleManualPrices(
-			requestCtx,
-			scheduleID,
-			asc.WithAppPriceSchedulePricesInclude([]string{"appPricePoint"}),
-			asc.WithAppPriceSchedulePricesFields([]string{"manual", "startDate", "endDate", "appPricePoint"}),
-			asc.WithAppPriceSchedulePricesPricePointFields([]string{"customerPrice"}),
-			asc.WithAppPriceSchedulePricesLimit(limit),
-		)
+		return doReadinessRequest(ctx, func(requestCtx context.Context) (*asc.AppPricesResponse, error) {
+			return client.GetAppPriceScheduleManualPrices(requestCtx, scheduleID, opts...)
+		})
 	}
 
 	firstPage, err := fetchPage("")
@@ -59,7 +59,7 @@ func fetchCurrentAppPaidPricingEvidence(ctx context.Context, client *asc.Client,
 	}); err != nil {
 		return false, false
 	}
-	return currentAppPaidPricingEvidence(pages, time.Now().UTC())
+	return currentAppPaidPricingEvidence(pages, shared.PricingNow())
 }
 
 func currentAppPricingQuery(limit int) url.Values {
@@ -79,7 +79,7 @@ func currentAppPaidPricingEvidence(pages []*asc.AppPricesResponse, now time.Time
 		}
 		pricePoints := includedAppPricePoints(page.Included)
 		for _, resource := range page.Data {
-			active, datesKnown := appPriceActiveOn(resource.Attributes, now)
+			active, datesKnown := pricing.AppPriceActiveOn(resource.Attributes.StartDate, resource.Attributes.EndDate, now)
 			if !datesKnown {
 				return false, false
 			}
@@ -159,27 +159,4 @@ func appPriceRelationshipID(raw json.RawMessage) string {
 		return ""
 	}
 	return strings.TrimSpace(relationships.AppPricePoint.Data.ID)
-}
-
-func appPriceActiveOn(attributes asc.AppPriceAttributes, now time.Time) (bool, bool) {
-	today := now.UTC().Format("2006-01-02")
-	start := strings.TrimSpace(attributes.StartDate)
-	if start != "" {
-		if _, err := time.Parse("2006-01-02", start); err != nil {
-			return false, false
-		}
-		if start > today {
-			return false, true
-		}
-	}
-	end := strings.TrimSpace(attributes.EndDate)
-	if end != "" {
-		if _, err := time.Parse("2006-01-02", end); err != nil {
-			return false, false
-		}
-		if end <= today {
-			return false, true
-		}
-	}
-	return true, true
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
@@ -41,7 +42,7 @@ func IAPAvailabilityGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing availability view", flag.ExitOnError)
 
 	appID := addIAPLookupAppFlag(fs)
-	iapID := fs.String("iap-id", "", "In-app purchase ID, product ID, or exact current name")
+	iapID := shared.BindResourceIDFlag(fs, "iap-id", "inAppPurchases", "In-app purchase ID, product ID, or exact current name")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -76,6 +77,11 @@ Examples:
 
 			resp, err := client.GetInAppPurchaseAvailability(requestCtx, iapValue)
 			if err != nil {
+				if asc.IsMissingResourceOfType(err, "inAppPurchaseAvailabilities") {
+					safeIAPID := asc.SanitizeTerminalText(iapValue)
+					fmt.Fprintf(os.Stderr, "In-app purchase %s has no availability configured yet; create it with: asc iap pricing availability set --iap-id %s --territories \"USA\"\n", safeIAPID, safeIAPID)
+					return shared.NewNotConfiguredReportedError(fmt.Errorf("iap pricing availability view: in-app purchase %q has no availability configured", iapValue))
+				}
 				return fmt.Errorf("iap pricing availability view: failed to fetch: %w", err)
 			}
 
@@ -89,7 +95,7 @@ func IAPAvailabilitySetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing availability set", flag.ExitOnError)
 
 	appID := addIAPLookupAppFlag(fs)
-	iapID := fs.String("iap-id", "", "In-app purchase ID, product ID, or exact current name")
+	iapID := shared.BindResourceIDFlag(fs, "iap-id", "inAppPurchases", "In-app purchase ID, product ID, or exact current name")
 	territories := shared.BindOnceCSVFlag(fs, "territories", "Territory inputs (comma-separated; accepts alpha-2, alpha-3, or exact English country names)")
 	availableInNew := fs.Bool("available-in-new-territories", false, "Include new territories automatically")
 	output := shared.BindOutputFlags(fs)

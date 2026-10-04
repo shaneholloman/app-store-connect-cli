@@ -1092,8 +1092,13 @@ func TestIAPValidationErrors(t *testing.T) {
 		},
 		{
 			name:    "iap review-screenshots update missing screenshot-id",
-			args:    []string{"iap", "review-screenshots", "update", "--file", "./review.png"},
+			args:    []string{"iap", "review-screenshots", "update", "--checksum", "HASH"},
 			wantErr: "--screenshot-id is required",
+		},
+		{
+			name:    "iap review-screenshots update missing update flags",
+			args:    []string{"iap", "review-screenshots", "update", "--screenshot-id", "SHOT_ID"},
+			wantErr: "at least one update flag is required",
 		},
 		{
 			name:    "iap review-screenshots delete missing confirm",
@@ -4259,7 +4264,7 @@ func TestAppsUpdateValidationErrors(t *testing.T) {
 		{
 			name:    "apps update missing fields",
 			args:    []string{"apps", "update", "--id", "APP_ID"},
-			wantErr: "Error: --bundle-id, --primary-locale, or --content-rights is required",
+			wantErr: "Error: at least one update field is required (--bundle-id, --primary-locale, --content-rights, --subscription-status-url, --sandbox-subscription-status-url)",
 		},
 		{
 			name:    "apps update invalid content rights",
@@ -5282,6 +5287,9 @@ func TestAuthLoginIndividualKeyAllowsMissingIssuer(t *testing.T) {
 	tempDir := t.TempDir()
 	keyPath := filepath.Join(tempDir, "AuthKey.p8")
 	writeECDSAPEM(t, keyPath)
+	// With ASC_CONFIG_PATH set, a --local login warns that reads use the other
+	// file; clear it so stderr shows only credential-shape diagnostics.
+	t.Setenv("ASC_CONFIG_PATH", "")
 
 	workDir := t.TempDir()
 	previousDir, err := os.Getwd()
@@ -5374,7 +5382,8 @@ func TestAuthLoginUsesEnvBypass(t *testing.T) {
 	keyPath := filepath.Join(tempDir, "AuthKey.p8")
 	writeECDSAPEM(t, keyPath)
 
-	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "config.json"))
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	t.Setenv("ASC_CONFIG_PATH", configPath)
 	t.Setenv("ASC_BYPASS_KEYCHAIN", "1")
 
 	root := RootCommand("1.2.3")
@@ -5396,12 +5405,12 @@ func TestAuthLoginUsesEnvBypass(t *testing.T) {
 		}
 	})
 
-	globalPath, err := config.GlobalPath()
+	cfg, err := config.LoadAt(configPath)
 	if err != nil {
-		t.Fatalf("GlobalPath() error: %v", err)
+		t.Fatalf("expected config to be written to ASC_CONFIG_PATH, got %v", err)
 	}
-	if _, err := os.Stat(globalPath); err != nil {
-		t.Fatalf("expected config to be written, got %v", err)
+	if len(cfg.Keys) != 1 || cfg.Keys[0].Name != "EnvKey" {
+		t.Fatalf("expected EnvKey in ASC_CONFIG_PATH config, got %+v", cfg.Keys)
 	}
 }
 

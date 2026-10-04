@@ -20,7 +20,10 @@ import (
 
 const (
 	bulkAvailabilityTimeout = 5 * time.Minute
-	bulkAvailabilityWorkers = 4
+	// bulkAvailabilityWorkers matches the client-wide bulk write limit that
+	// updateTerritoryAvailabilityTargets opts into, so every worker can hold a
+	// write slot at once.
+	bulkAvailabilityWorkers = asc.BulkMutatingRequestLimit
 )
 
 var availabilityClientFactory = getASCClient
@@ -97,7 +100,7 @@ func NewAvailabilitySetCommand(config AvailabilitySetCommandConfig) *ffcli.Comma
 				return fmt.Errorf("%s: %w", config.ErrorPrefix, err)
 			}
 
-			requestCtx, cancel := contextWithAvailabilityTimeout(ctx, *allTerritories)
+			requestCtx, cancel := ContextWithAvailabilityTimeout(ctx, *allTerritories)
 			defer cancel()
 
 			var expectedAvailableInNewTerritories *bool
@@ -177,7 +180,7 @@ Examples:
 				return fmt.Errorf("pricing availability remove-from-sale: %w", err)
 			}
 
-			requestCtx, cancel := contextWithAvailabilityTimeout(ctx, true)
+			requestCtx, cancel := ContextWithAvailabilityTimeout(ctx, true)
 			defer cancel()
 
 			liveListings, listingsErr := fetchLiveAvailabilityPlatformListings(requestCtx, client, resolvedAppID)
@@ -566,7 +569,10 @@ func availabilityListingStatus(attributes asc.AppStoreVersionAttributes) (string
 	return state, live, stateKnown
 }
 
-func contextWithAvailabilityTimeout(ctx context.Context, allTerritories bool) (context.Context, context.CancelFunc) {
+// ContextWithAvailabilityTimeout returns the request context for availability
+// updates: all-territories updates fan out one PATCH per territory, so they get
+// the longer bulk timeout.
+func ContextWithAvailabilityTimeout(ctx context.Context, allTerritories bool) (context.Context, context.CancelFunc) {
 	if allTerritories {
 		return ContextWithResolvedTimeout(ctx, bulkAvailabilityTimeout)
 	}
@@ -585,6 +591,7 @@ type territoryAvailabilityUpdateResult struct {
 }
 
 func updateTerritoryAvailabilityTargets(ctx context.Context, client *asc.Client, targets []availabilityEditTarget, available bool) map[string]error {
+	ctx = asc.WithBulkMutatingRequestLimit(ctx)
 	workerCount := min(bulkAvailabilityWorkers, len(targets))
 	jobs := make(chan availabilityEditTarget)
 	results := make(chan territoryAvailabilityUpdateResult, len(targets))
@@ -709,4 +716,37 @@ func territoryIDFromAvailabilityID(availabilityID string) (string, bool) {
 		return "", false
 	}
 	return strings.ToUpper(territoryID), true
+}
+
+// TerritoryAvailabilityUpdateRequest describes a territory availability change
+// applied to an app's existing availability record.
+type TerritoryAvailabilityUpdateRequest struct {
+	// AppID is the App Store Connect app whose availability is updated.
+	AppID string
+	// Territories lists the territories to change. Ignored when AllTerritories
+	// is set.
+	Territories []string
+	// AllTerritories applies the change to every territory in the record.
+	AllTerritories bool
+	// Available is the availability value applied to the selected territories.
+	Available bool
+	// ExpectedAvailableInNewTerritories, when set, verifies the record's
+	// existing new-territory policy. Apple exposes no update operation for it.
+	ExpectedAvailableInNewTerritories *bool
+	// ErrorPrefix prefixes returned errors, for example "pricing availability create".
+	ErrorPrefix string
+}
+
+// ApplyTerritoryAvailabilityUpdate applies request to an app's existing
+// availability record and returns Apple's response together with the number of
+// territories whose availability actually changed (0 when every requested
+// territory already matched). It is the same code path
+// "asc pricing availability edit" runs, exported so a create-style command can
+// route --if-exists update to it instead of duplicating the update logic.
+func ApplyTerritoryAvailabilityUpdate(ctx context.Context, client *asc.Client, request TerritoryAvailabilityUpdateRequest) (*asc.AppAvailabilityV2Response, int, error) {
+	resp, summary, err := executeTerritoryAvailabilityUpdate(ctx, client, availabilityUpdateRequest(request))
+	if err != nil {
+		return nil, 0, err
+	}
+	return resp, summary.UpdatedTerritories, nil
 }

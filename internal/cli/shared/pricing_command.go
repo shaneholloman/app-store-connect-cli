@@ -33,7 +33,7 @@ func NewPricingSetCommand(config PricingSetCommandConfig) *ffcli.Command {
 	fs := flag.NewFlagSet(config.FlagSetName, flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
-	pricePointID := fs.String("price-point", "", "App price point ID")
+	pricePointID := BindResourceIDFlag(fs, "price-point", "appPricePoints", "App price point ID")
 	tier := fs.Int("tier", 0, "Pricing tier number (1-based, mutually exclusive with --price-point, --price, and --free)")
 	price := fs.String("price", "", "Customer price (e.g., 0.99, mutually exclusive with --price-point, --tier, and --free) to select price point")
 	free := fs.Bool("free", false, "Set app price to Free ($0), mutually exclusive with --price-point, --tier, and --price")
@@ -84,22 +84,23 @@ func NewPricingSetCommand(config PricingSetCommandConfig) *ffcli.Command {
 			}
 
 			startDateValue := strings.TrimSpace(*startDate)
-			if startDateValue == "" {
-				if config.StartDateDefaultToday {
-					startDateValue = time.Now().Format("2006-01-02")
-				} else {
-					fmt.Fprintln(os.Stderr, "Error: --start-date is required")
-					return MissingRequiredUsageError("--start-date")
-				}
+			startDateDefaulted := startDateValue == ""
+			if startDateDefaulted && !config.StartDateDefaultToday {
+				fmt.Fprintln(os.Stderr, "Error: --start-date is required")
+				return MissingRequiredUsageError("--start-date")
 			}
 
-			normalizedStartDate, err := normalizePricingStartDate(startDateValue)
-			if err != nil {
-				return WithDiagnostic(
-					fmt.Errorf("%s: %w", config.ErrorPrefix, err),
-					DiagnosticInvalidInput,
-					"--start-date",
-				)
+			var normalizedStartDate string
+			if !startDateDefaulted {
+				normalized, normalizeErr := normalizePricingStartDate(startDateValue)
+				if normalizeErr != nil {
+					return WithDiagnostic(
+						UsageError(normalizeErr.Error()),
+						DiagnosticInvalidInput,
+						"--start-date",
+					)
+				}
+				normalizedStartDate = normalized
 			}
 
 			client, err := getASCClient()
@@ -142,13 +143,33 @@ func NewPricingSetCommand(config PricingSetCommandConfig) *ffcli.Command {
 				pricePointValue = resolvedID
 			}
 
+			// Resolve the default after every preliminary lookup so a request
+			// that crosses US Pacific midnight still sends today's date, never
+			// a past one Apple would reject.
+			if startDateDefaulted {
+				normalizedStartDate = pricingDefaultStartDate(pricingNow())
+				fmt.Fprintf(
+					os.Stderr,
+					"Note: --start-date not set; using %s (today in US Pacific time, which App Store Connect uses). Apple requires today or later.\n",
+					normalizedStartDate,
+				)
+			}
+
 			resp, err := client.CreateAppPriceSchedule(requestCtx, resolvedAppID, asc.AppPriceScheduleCreateAttributes{
 				PricePointID:    pricePointValue,
 				StartDate:       normalizedStartDate,
 				BaseTerritoryID: baseTerritoryID,
 			})
 			if err != nil {
-				return fmt.Errorf("%s: %w", config.ErrorPrefix, err)
+				return explainAppPriceScheduleConflict(err, appPriceScheduleConflictInput{
+					ErrorPrefix:        config.ErrorPrefix,
+					AppID:              resolvedAppID,
+					PricePointID:       pricePointValue,
+					PriceSelectionFlag: priceSelectionFlag(tierValue, priceValue, freeValue),
+					BaseTerritoryID:    baseTerritoryID,
+					StartDate:          normalizedStartDate,
+					StartDateDefaulted: startDateDefaulted,
+				})
 			}
 
 			return printOutput(resp, *output.Output, *output.Pretty)
@@ -156,16 +177,41 @@ func NewPricingSetCommand(config PricingSetCommandConfig) *ffcli.Command {
 	}
 }
 
+// priceSelectionFlag names the flag the operator used to choose the price.
+// ValidatePriceSelectionFlags has already ensured exactly one is set.
+func priceSelectionFlag(tier int, price string, free bool) string {
+	switch {
+	case free:
+		return "--free"
+	case tier > 0:
+		return "--tier"
+	case price != "":
+		return "--price"
+	default:
+		return "--price-point"
+	}
+}
+
+// pricingStartDateLayout is the date-only layout App Store Connect expects for
+// appPrices startDate ("format": "date" in the OpenAPI snapshot).
+const pricingStartDateLayout = "2006-01-02"
+
+// pricingDefaultStartDate returns today's App Store Connect pricing date (the
+// US Pacific date).
+func pricingDefaultStartDate(now time.Time) string {
+	return PricingDate(now).Format(pricingStartDateLayout)
+}
+
 func normalizePricingStartDate(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return "", fmt.Errorf("--start-date is required")
 	}
-	parsed, err := time.Parse("2006-01-02", trimmed)
+	parsed, err := time.Parse(pricingStartDateLayout, trimmed)
 	if err != nil {
 		return "", fmt.Errorf("--start-date must be in YYYY-MM-DD format")
 	}
-	return parsed.Format("2006-01-02"), nil
+	return parsed.Format(pricingStartDateLayout), nil
 }
 
 func requiresExplicitBaseTerritory(config PricingSetCommandConfig, baseTerritory string, tier int, price string, free bool) bool {

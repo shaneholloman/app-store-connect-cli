@@ -676,7 +676,7 @@ func TestLoginWithOptionalTwoFactorPromptsWhenCodeMissing(t *testing.T) {
 		return nil
 	}
 
-	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil)
+	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, nil)
 	if err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
@@ -717,7 +717,7 @@ func TestLoginWithOptionalTwoFactorUsesProvidedCodeWhenPresent(t *testing.T) {
 		return nil
 	}
 
-	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "654321", nil)
+	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "654321", nil, nil)
 	if err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
@@ -767,7 +767,7 @@ func TestLoginWithOptionalTwoFactorReturnsPromptError(t *testing.T) {
 		return nil
 	}
 
-	_, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, "")
+	_, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, nil, "")
 	if err == nil {
 		t.Fatal("expected error when prompt fails")
 	}
@@ -815,7 +815,7 @@ func TestLoginWithOptionalTwoFactorUsesCommandWhenConfigured(t *testing.T) {
 		return nil
 	}
 
-	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, "osascript ./get-2fa.scpt")
+	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, nil, "osascript ./get-2fa.scpt")
 	if err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
@@ -881,7 +881,7 @@ func TestLoginWithOptionalTwoFactorReappliesTimeoutAfterDelayedCommand(t *testin
 		return nil
 	}
 
-	session, err := loginWithOptionalTwoFactor(requestCtx, "user@example.com", "secret", "", nil, "osascript ./get-2fa.scpt")
+	session, err := loginWithOptionalTwoFactor(requestCtx, "user@example.com", "secret", "", nil, nil, "osascript ./get-2fa.scpt")
 	if err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
@@ -945,7 +945,7 @@ func TestLoginWithOptionalTwoFactorRequestsPhoneCodeBeforePrompt(t *testing.T) {
 	}
 	twoFactorStatusWriter = &statusOutput
 
-	if _, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil); err != nil {
+	if _, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, nil); err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
 
@@ -997,7 +997,7 @@ func TestLoginWithOptionalTwoFactorSkipsPhoneRequestWhenCodeProvided(t *testing.
 	}
 	twoFactorStatusWriter = &statusOutput
 
-	if _, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "123456", nil); err != nil {
+	if _, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "123456", nil, nil); err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
 
@@ -1069,7 +1069,7 @@ func TestLoginWithOptionalTwoFactorRepromptsAfterFallbackPhoneRequest(t *testing
 	}
 	twoFactorStatusWriter = &statusOutput
 
-	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil)
+	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, nil)
 	if err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
@@ -1165,7 +1165,7 @@ func TestLoginWithOptionalTwoFactorRerunsCommandAfterFallbackPhoneRequest(t *tes
 	}
 	twoFactorStatusWriter = &statusOutput
 
-	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, "osascript ./get-2fa.scpt")
+	session, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, nil, "osascript ./get-2fa.scpt")
 	if err != nil {
 		t.Fatalf("loginWithOptionalTwoFactor returned error: %v", err)
 	}
@@ -1234,7 +1234,7 @@ func TestLoginWithOptionalTwoFactorWrapsFallbackPhoneVerificationError(t *testin
 		return errors.New("apple rejected code")
 	}
 
-	_, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil)
+	_, err := loginWithOptionalTwoFactor(context.Background(), "user@example.com", "secret", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected fallback verification error")
 	}
@@ -1278,7 +1278,7 @@ func TestResolveSessionUsesLastCachedSessionWhenAppleIDMissing(t *testing.T) {
 	}
 }
 
-func TestResolveSessionRequiresAppleIDWhenNoCachedSessionExists(t *testing.T) {
+func TestResolveSessionReportsMissingWebSessionWhenNoCachedSessionExists(t *testing.T) {
 	origTryResumeLast := tryResumeLastFn
 	t.Cleanup(func() {
 		tryResumeLastFn = origTryResumeLast
@@ -1289,8 +1289,15 @@ func TestResolveSessionRequiresAppleIDWhenNoCachedSessionExists(t *testing.T) {
 	}
 
 	_, _, err := resolveSession(context.Background(), "", "", "")
+	if !errors.Is(err, shared.ErrMissingWebSession) || errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected the missing-session error without the usage page, got %v", err)
+	}
+
+	captureOutput(t, func() {
+		_, _, err = resolveSession(contextForWebSignIn(context.Background()), "", "", "")
+	})
 	if !errors.Is(err, flag.ErrHelp) {
-		t.Fatalf("expected ErrHelp, got %v", err)
+		t.Fatalf("expected web auth login to keep the --apple-id usage error, got %v", err)
 	}
 }
 

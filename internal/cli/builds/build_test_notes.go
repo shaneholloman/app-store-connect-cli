@@ -158,7 +158,7 @@ func BuildsTestNotesViewCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("view", flag.ExitOnError)
 
 	selectors := bindTestNotesBuildSelectorFlags(fs)
-	localizationID := fs.String("localization-id", "", "Localization ID (low-level escape hatch)")
+	localizationID := shared.BindResourceIDFlag(fs, "localization-id", "betaBuildLocalizations", "Localization ID (low-level escape hatch)")
 	locale := fs.String("locale", "", "Locale (e.g., en-US, required with build selectors)")
 	output := shared.BindOutputFlags(fs)
 
@@ -257,6 +257,10 @@ Examples:
 				fmt.Fprintln(os.Stderr, "Error: --whats-new is required")
 				return shared.MissingRequiredUsageError("--whats-new")
 			}
+			whatsNewValue, normalizeErr := shared.NormalizeTestNotesForCommand(os.Stderr, whatsNewValue)
+			if normalizeErr != nil {
+				return fmt.Errorf("builds test-notes create: %w", normalizeErr)
+			}
 
 			client, err := shared.GetASCClient()
 			if err != nil {
@@ -270,7 +274,7 @@ Examples:
 			requestCtx, cancel := shared.ContextWithTimeout(ctx)
 			defer cancel()
 
-			resp, err := shared.UpsertBetaBuildLocalization(requestCtx, client, buildResp.Data.ID, localeValue, whatsNewValue)
+			resp, err := shared.UpsertBetaBuildLocalization(requestCtx, client, buildResp.Data.ID, localeValue, whatsNewValue, shared.UpsertBetaBuildLocalizationOptions{Diagnostics: os.Stderr})
 			if err != nil {
 				return fmt.Errorf("builds test-notes create: %w", err)
 			}
@@ -285,7 +289,7 @@ func BuildsTestNotesUpdateCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("update", flag.ExitOnError)
 
 	selectors := bindTestNotesBuildSelectorFlags(fs)
-	localizationID := fs.String("localization-id", "", "Localization ID (low-level escape hatch)")
+	localizationID := shared.BindResourceIDFlag(fs, "localization-id", "betaBuildLocalizations", "Localization ID (low-level escape hatch)")
 	locale := fs.String("locale", "", "Locale (e.g., en-US, required with build selectors)")
 	whatsNew := fs.String("whats-new", "", "What to Test notes")
 	output := shared.BindOutputFlags(fs)
@@ -319,6 +323,10 @@ Examples:
 			if whatsNewValue == "" {
 				fmt.Fprintln(os.Stderr, "Error: at least one update flag is required")
 				return shared.MissingRequiredUsageError("--whats-new")
+			}
+			whatsNewValue, normalizeErr := shared.NormalizeTestNotesForCommand(os.Stderr, whatsNewValue)
+			if normalizeErr != nil {
+				return fmt.Errorf("builds test-notes update: %w", normalizeErr)
 			}
 
 			client, err := shared.GetASCClient()
@@ -356,7 +364,7 @@ func BuildsTestNotesDeleteCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
 
 	selectors := bindTestNotesBuildSelectorFlags(fs)
-	localizationID := fs.String("localization-id", "", "Localization ID (low-level escape hatch)")
+	localizationID := shared.BindResourceIDFlag(fs, "localization-id", "betaBuildLocalizations", "Localization ID (low-level escape hatch)")
 	locale := fs.String("locale", "", "Locale (e.g., en-US, required with build selectors)")
 	confirm := fs.Bool("confirm", false, "Confirm deletion")
 	output := shared.BindOutputFlags(fs)
@@ -491,11 +499,27 @@ func resolveTestNotesLocalization(ctx context.Context, client *asc.Client, selec
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve localization: %w", err)
 	}
-	if len(localizations.Data) == 0 {
+	if localizations == nil {
+		return nil, fmt.Errorf("empty localization response")
+	}
+	pageHasNext := strings.TrimSpace(localizations.Links.Next) != ""
+	if len(localizations.Data) == 0 && !pageHasNext {
 		return nil, fmt.Errorf("no localization found for build %q and locale %q", buildResp.Data.ID, locale)
 	}
-	if len(localizations.Data) > 1 {
-		return nil, fmt.Errorf("multiple localizations found for build %q and locale %q; use --localization-id", buildResp.Data.ID, locale)
+	if len(localizations.Data) > 1 || pageHasNext {
+		ambiguous := &shared.AmbiguousSelectionError{
+			Kind:        "build localization",
+			Description: fmt.Sprintf("build %q and locale %q", buildResp.Data.ID, strings.TrimSpace(locale)),
+			Flag:        "--localization-id",
+			Candidates: shared.LocalizationCandidates(localizations.Data, func(attributes asc.BetaBuildLocalizationAttributes) string {
+				return attributes.Locale
+			}),
+			Hint: "Use --localization-id instead of the build and locale selectors.",
+		}
+		if pageHasNext {
+			return nil, shared.MarkAmbiguousSelectionSample(ambiguous)
+		}
+		return nil, ambiguous
 	}
 
 	match := localizations.Data[0]

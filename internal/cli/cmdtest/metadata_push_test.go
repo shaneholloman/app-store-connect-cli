@@ -351,7 +351,7 @@ func TestMetadataPushDryRunDoesNotWarnForCompleteCreate(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 			}, nil
 		case "/v1/apps/app-1/appStoreVersions":
-			if strings.Contains(req.URL.RawQuery, "filter%5BappStoreState%5D") {
+			if strings.Contains(req.URL.RawQuery, "filter%5BappStoreState%5D") || req.URL.Query().Get("filter[appVersionState]") == "READY_FOR_DISTRIBUTION" {
 				body := `{"data":[],"links":{"next":""}}`
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -1214,7 +1214,7 @@ func TestMetadataPushApplyWarnsWhenUpdateRequiresWhatsNew(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 			}, nil
 		case "/v1/apps/app-1/appStoreVersions":
-			if strings.Contains(req.URL.RawQuery, "filter%5BappStoreState%5D") {
+			if strings.Contains(req.URL.RawQuery, "filter%5BappStoreState%5D") || req.URL.Query().Get("filter[appVersionState]") == "READY_FOR_DISTRIBUTION" {
 				body := `{"data":[{"type":"appStoreVersions","id":"released-version","attributes":{"versionString":"1.0","platform":"IOS","appStoreState":"READY_FOR_SALE"}}],"links":{"next":""}}`
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -1575,7 +1575,7 @@ func TestMetadataPushRejectsAmbiguousVersionWithoutPlatform(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, `Error: --platform is required when multiple app store versions match --version "1.2.3"`) {
+	if !strings.Contains(stderr, `Error: 2 app store versions match version "1.2.3"; pass --platform with one of:`) {
 		t.Fatalf("expected ambiguous-version error, got %q", stderr)
 	}
 }
@@ -1653,7 +1653,7 @@ func TestMetadataPushRejectsAmbiguousAppInfoWithActionableRemediation(t *testing
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, `Error: multiple app infos found for app "app-1"`) {
+	if !strings.Contains(stderr, `Error: 2 app infos match app "app-1"; pass --app-info with one of:`) {
 		t.Fatalf("expected ambiguous app-info error, got %q", stderr)
 	}
 	if !strings.Contains(stderr, `asc apps info list --app "app-1"`) {

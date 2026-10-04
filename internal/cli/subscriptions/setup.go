@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -156,7 +157,7 @@ func SubscriptionsSetupCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID env)")
-	groupID := fs.String("group-id", "", "Existing subscription group ID")
+	groupID := shared.BindResourceIDFlag(fs, "group-id", "subscriptionGroups", "Existing subscription group ID")
 	groupReferenceName := fs.String("group-reference-name", "", "Reference name for a new subscription group")
 	groupRefNameAlias := fs.String("group-ref-name", "", "Reference name alias for a new subscription group")
 	groupLocale := fs.String("group-locale", "", "Locale for the subscription group localization (e.g., en-US)")
@@ -176,7 +177,7 @@ func SubscriptionsSetupCommand() *ffcli.Command {
 	reviewScreenshot := fs.String("review-screenshot", "", "Path to the App Review screenshot for the subscription")
 
 	priceTerritory := fs.String("price-territory", "", "Territory used to resolve and verify the initial subscription price (accepts alpha-2, alpha-3, or exact English country name)")
-	pricePointID := fs.String("price-point-id", "", "Explicit price point ID for the initial subscription price")
+	pricePointID := shared.BindResourceIDFlag(fs, "price-point-id", "subscriptionPricePoints", "Explicit price point ID for the initial subscription price")
 	tier := fs.Int("tier", 0, "Pricing tier number for the initial subscription price")
 	price := fs.String("price", "", "Customer price for the initial subscription price")
 	startDate := fs.String("start-date", "", "Start date for the initial subscription price (YYYY-MM-DD)")
@@ -341,11 +342,9 @@ Examples:
 				return shared.UsageError("--repair requires pricing flags")
 			}
 			if opts.ReviewScreenshot != "" {
-				file, _, err := openSubscriptionImageFile(opts.ReviewScreenshot)
-				if err != nil {
-					return shared.UsageError(fmt.Sprintf("invalid --review-screenshot: %v", err))
+				if err := validateSubscriptionReviewScreenshotFile(opts.ReviewScreenshot); err != nil {
+					return shared.ReviewScreenshotUsageError("--review-screenshot", fmt.Sprintf("invalid --review-screenshot: %v", err))
 				}
-				_ = file.Close()
 			}
 
 			if err := shared.ValidateFinitePriceFlag("--price", opts.Price); err != nil {
@@ -779,16 +778,22 @@ func executeSubscriptionsSetup(ctx context.Context, opts subscriptionsSetupOptio
 			Message: "no review screenshot provided",
 		})
 	} else {
-		file, info, err := openSubscriptionImageFile(opts.ReviewScreenshot)
+		// Flag validation rejected an unusable file before any request; check
+		// the snapshot being uploaded in case the file changed while earlier
+		// steps ran, and warn here so warnings describe the uploaded bytes.
+		snapshot, info, cleanupSnapshot, err := snapshotSubscriptionReviewScreenshot(opts.ReviewScreenshot)
 		if err != nil {
 			return failSubscriptionsSetupStep(result, subscriptionsSetupStepUploadReviewScreenshot, err, "invalid review screenshot")
 		}
-		_ = file.Close()
-		checksum, err := asc.ComputeFileChecksum(opts.ReviewScreenshot, asc.ChecksumAlgorithmMD5)
+		defer cleanupSnapshot()
+		if err := shared.PreflightReviewScreenshot(opts.ReviewScreenshot, snapshot, info.Size()); err != nil {
+			return failSubscriptionsSetupStep(result, subscriptionsSetupStepUploadReviewScreenshot, err, "invalid review screenshot")
+		}
+		checksum, err := asc.ComputeChecksumFromReader(io.NewSectionReader(snapshot, 0, info.Size()), asc.ChecksumAlgorithmMD5)
 		if err != nil {
 			return failSubscriptionsSetupStep(result, subscriptionsSetupStepUploadReviewScreenshot, err, "review screenshot checksum failed")
 		}
-		screenshotResp, err := createOrResumeSubscriptionReviewScreenshot(ctx, client, result.SubscriptionID, opts.ReviewScreenshot, info, checksum.Hash)
+		screenshotResp, err := createOrResumeSubscriptionReviewScreenshot(ctx, client, result.SubscriptionID, snapshot, info, checksum.Hash)
 		if err != nil {
 			return failSubscriptionsSetupStep(result, subscriptionsSetupStepUploadReviewScreenshot, err, "failed to upload review screenshot")
 		}

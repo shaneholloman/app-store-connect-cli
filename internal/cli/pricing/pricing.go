@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
 
@@ -36,13 +35,14 @@ Examples:
   asc pricing tiers --app "123456789" --territory "US"
   asc pricing schedule view --app "123456789"
   asc pricing schedule view --id "SCHEDULE_ID"
-  asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --base-territory "United States" --start-date "2024-03-01"
-  asc pricing schedule create --app "123456789" --free --base-territory "US" --start-date "2024-03-01"
+  asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --base-territory "United States" --start-date "YYYY-MM-DD"
+  asc pricing schedule create --app "123456789" --free --base-territory "US" --start-date "YYYY-MM-DD"
   asc pricing schedule manual-prices --schedule "SCHEDULE_ID"
   asc pricing schedule automatic-prices --schedule "SCHEDULE_ID"
   asc pricing availability view --app "123456789"
   asc pricing availability view --id "AVAILABILITY_ID"
   asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true
+  asc pricing availability create --app "123456789" --all-territories --available true --available-in-new-territories true
   asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true
   asc pricing availability edit --app "123456789" --all-territories --available true
   asc pricing availability platforms --app "123456789"
@@ -247,7 +247,7 @@ Examples:
 func PricingPricePointsGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing price-points view", flag.ExitOnError)
 
-	pricePointID := fs.String("price-point", "", "App price point ID")
+	pricePointID := shared.BindResourceIDFlag(fs, "price-point", "appPricePoints", "App price point ID")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -295,6 +295,7 @@ func PricingPricePointsEqualizationsCommand() *ffcli.Command {
 		Subject:     "a price point",
 		ParentFlag:  "price-point",
 		ParentUsage: "App price point ID",
+		ParentType:  "appPricePoints",
 		LimitMax:    200,
 		ErrorPrefix: "pricing price-points equalizations",
 		FetchPage: func(ctx context.Context, client *asc.Client, pricePointID string, limit int, next string) (asc.PaginatedResponse, error) {
@@ -318,8 +319,8 @@ func PricingScheduleCommand() *ffcli.Command {
 Examples:
   asc pricing schedule view --app "123456789"
   asc pricing schedule view --id "SCHEDULE_ID"
-  asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --start-date "2024-03-01"
-  asc pricing schedule create --app "123456789" --free --base-territory "US" --start-date "2024-03-01"
+  asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --start-date "YYYY-MM-DD"
+  asc pricing schedule create --app "123456789" --free --base-territory "US" --start-date "YYYY-MM-DD"
   asc pricing schedule manual-prices --schedule "SCHEDULE_ID"
   asc pricing schedule automatic-prices --schedule "SCHEDULE_ID"`,
 		UsageFunc: shared.DefaultUsageFunc,
@@ -340,7 +341,7 @@ func PricingScheduleGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing schedule view", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
-	id := fs.String("id", "", "App price schedule ID")
+	id := shared.BindResourceIDFlag(fs, "id", "appPriceSchedules", "App price schedule ID")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -401,12 +402,18 @@ func PricingScheduleCreateCommand() *ffcli.Command {
 		ShortHelp:   "Create an app price schedule.",
 		LongHelp: `Create an app price schedule.
 
+--start-date defaults to today's date in US Pacific time when omitted, because
+App Store Connect uses that date as today; the chosen date is printed on
+stderr. Apple requires the start date to be today or later.
+
 Examples:
-  asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --base-territory "United States" --start-date "2024-03-01"
-  asc pricing schedule create --app "123456789" --free --base-territory "US" --start-date "2024-03-01"`,
-		ErrorPrefix:          "pricing schedule create",
-		StartDateHelp:        "Start date (YYYY-MM-DD)",
-		RequireBaseTerritory: true,
+  asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --base-territory "United States" --start-date "YYYY-MM-DD"
+  asc pricing schedule create --app "123456789" --price-point "PRICE_POINT_ID" --base-territory "United States"
+  asc pricing schedule create --app "123456789" --free --base-territory "US" --start-date "YYYY-MM-DD"`,
+		ErrorPrefix:           "pricing schedule create",
+		StartDateHelp:         "Start date (YYYY-MM-DD, default: today in US Pacific time; Apple requires today or later)",
+		StartDateDefaultToday: true,
+		RequireBaseTerritory:  true,
 	})
 }
 
@@ -414,7 +421,7 @@ Examples:
 func PricingScheduleManualPricesCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing schedule manual-prices", flag.ExitOnError)
 
-	scheduleID := fs.String("schedule", "", "App price schedule ID")
+	scheduleID := shared.BindResourceIDFlag(fs, "schedule", "appPriceSchedules", "App price schedule ID")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
@@ -461,7 +468,7 @@ Examples:
 			defer cancel()
 
 			if *resolved {
-				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "manual", *limit, *next, time.Now().UTC())
+				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "manual", *limit, *next, shared.PricingNow())
 				if err != nil {
 					return fmt.Errorf("pricing schedule manual-prices: failed to resolve: %w", err)
 				}
@@ -504,7 +511,7 @@ Examples:
 func PricingScheduleAutomaticPricesCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing schedule automatic-prices", flag.ExitOnError)
 
-	scheduleID := fs.String("schedule", "", "App price schedule ID")
+	scheduleID := shared.BindResourceIDFlag(fs, "schedule", "appPriceSchedules", "App price schedule ID")
 	limit := fs.Int("limit", 0, "Maximum results per page (1-200)")
 	next := fs.String("next", "", "Fetch next page using a links.next URL")
 	paginate := fs.Bool("paginate", false, "Automatically fetch all pages (aggregate results)")
@@ -551,7 +558,7 @@ Examples:
 			defer cancel()
 
 			if *resolved {
-				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "automatic", *limit, *next, time.Now().UTC())
+				resp, err := fetchResolvedAppSchedulePrices(requestCtx, client, trimmedScheduleID, "automatic", *limit, *next, shared.PricingNow())
 				if err != nil {
 					return fmt.Errorf("pricing schedule automatic-prices: failed to resolve: %w", err)
 				}
@@ -602,6 +609,7 @@ Examples:
   asc pricing availability view --app "123456789"
   asc pricing availability view --id "AVAILABILITY_ID"
   asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true
+  asc pricing availability create --app "123456789" --all-territories --available true --available-in-new-territories true
   asc pricing availability edit --app "123456789" --territory "US,France,DEU" --available true
   asc pricing availability edit --app "123456789" --all-territories --available true
   asc pricing availability platforms --app "123456789"
@@ -627,7 +635,7 @@ func PricingAvailabilityGetCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("pricing availability view", flag.ExitOnError)
 
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
-	id := fs.String("id", "", "App availability ID")
+	id := shared.BindResourceIDFlag(fs, "id", "appAvailabilities", "App availability ID")
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
@@ -671,6 +679,11 @@ Examples:
 				resp, err = client.GetAppAvailabilityV2(requestCtx, appValue)
 			}
 			if err != nil {
+				if idValue == "" && asc.IsMissingResourceOfType(err, "appAvailabilities") {
+					safeAppID := asc.SanitizeTerminalText(appValue)
+					fmt.Fprintf(os.Stderr, "App %s has no availability configured yet; create it with: asc pricing availability create --app %s --territory \"USA\" --available true --available-in-new-territories true\n", safeAppID, safeAppID)
+					return shared.NewNotConfiguredReportedError(fmt.Errorf("pricing availability view: app %q has no availability configured", appValue))
+				}
 				if idValue == "" && shared.IsAppAvailabilityMissing(err) {
 					return shared.NewErrorWithCause(
 						fmt.Errorf("pricing availability view: app availability not found for app %q: %w", appValue, asc.ErrNotFound),
@@ -701,6 +714,7 @@ Examples:
   asc pricing availability territory-availabilities --next "NEXT_URL"`,
 		ParentFlag:  "availability",
 		ParentUsage: "App availability ID",
+		ParentType:  "appAvailabilities",
 		LimitMax:    200,
 		ErrorPrefix: "pricing availability territory-availabilities",
 		FetchPage: func(ctx context.Context, client *asc.Client, availabilityID string, limit int, next string) (asc.PaginatedResponse, error) {
@@ -743,25 +757,41 @@ func PricingAvailabilityCreateCommand() *ffcli.Command {
 	appID := fs.String("app", "", "App Store Connect app ID (or ASC_APP_ID)")
 	var availableInNewTerritories shared.OptionalBool
 	fs.Var(&availableInNewTerritories, "available-in-new-territories", "Automatically make app available in new territories: true or false (required)")
-	territory := fs.String("territory", "", "Territory inputs (comma-separated; accepts alpha-2, alpha-3, or exact English country names, e.g., US,USA,France)")
+	territory := fs.String("territory", "", "Territory inputs (comma-separated; accepts alpha-2, alpha-3, or exact English country names, e.g., US,USA,France; required unless --all-territories)")
+	allTerritories := fs.Bool("all-territories", false, "Apply --available to every territory in Apple's current territory catalog (mutually exclusive with --territory)")
 	var available shared.OptionalBool
 	fs.Var(&available, "available", "Set availability for specified territories: true or false (required)")
+	ifExists := shared.BindIfExistsFlag(fs, shared.IfExistsSkip, shared.IfExistsUpdate)
 	output := shared.BindOutputFlags(fs)
 
 	return &ffcli.Command{
 		Name:       "create",
-		ShortUsage: "asc pricing availability create --app \"APP_ID\" --territory \"USA,GBR\" --available true --available-in-new-territories true",
+		ShortUsage: "asc pricing availability create --app \"APP_ID\" (--territory \"USA,GBR\" | --all-territories) --available true --available-in-new-territories true",
 		ShortHelp:  "Initialize app availability for territories.",
 		LongHelp: `Initialize app availability for territories.
 
 Creates the initial app availability record through the public App Store Connect
 API. Every current territory is included: selected territories use --available,
-and unselected territories are initialized as unavailable. Once created, use
-"asc pricing availability edit" to update the record.
+and unselected territories are initialized as unavailable. --all-territories
+selects every territory in Apple's current territory catalog instead of a
+--territory list. Once created, use "asc pricing availability edit" to update
+the record.
 
 Examples:
   asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true
-  asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available false --available-in-new-territories false`,
+  asc pricing availability create --app "123456789" --all-territories --available true --available-in-new-territories true
+  asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available false --available-in-new-territories false
+  asc pricing availability create --app "123456789" --territory "USA,GBR,DEU" --available true --available-in-new-territories true --if-exists skip
+
+--if-exists controls what happens when App Store Connect answers 409 because
+the app already has an availability record. fail (default) returns the error.
+skip reads the existing record back, prints it, and exits 0 without changing
+it. update applies --territory (or, with --all-territories, every territory in
+the existing record) and --available to the existing record through the same
+path as "asc pricing availability edit"; Apple exposes no update for
+availableInNewTerritories, so on update that flag is only verified against the
+existing policy. Any other 409, including Apple's rejection of public-API
+bootstrap, keeps failing.`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -779,17 +809,40 @@ Examples:
 				return shared.MissingRequiredUsageError("--available-in-new-territories")
 			}
 
-			territories, err := shared.NormalizeASCTerritoryCSV(*territory)
-			if err != nil {
-				return shared.UsageError(err.Error())
+			territoryProvided := false
+			fs.Visit(func(f *flag.Flag) {
+				if f.Name == "territory" {
+					territoryProvided = true
+				}
+			})
+			if territoryProvided && *allTerritories {
+				fmt.Fprintln(os.Stderr, "Error: --territory and --all-territories are mutually exclusive")
+				return shared.WithDiagnostic(shared.InvalidValueUsageError("--all-territories"), shared.DiagnosticConflictingInput, "--all-territories")
 			}
-			if len(territories) == 0 {
-				fmt.Fprintln(os.Stderr, "Error: --territory must include at least one value")
-				return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "--territory")
+			if !territoryProvided && !*allTerritories {
+				fmt.Fprintln(os.Stderr, "Error: --territory or --all-territories is required")
+				return shared.MissingRequiredUsageError("--territory")
+			}
+			var territories []string
+			if !*allTerritories {
+				normalizedTerritories, err := shared.NormalizeASCTerritoryCSV(*territory)
+				if err != nil {
+					return shared.UsageError(err.Error())
+				}
+				if len(normalizedTerritories) == 0 {
+					fmt.Fprintln(os.Stderr, "Error: --territory must include at least one value")
+					return shared.WithDiagnostic(flag.ErrHelp, shared.DiagnosticInvalidInput, "--territory")
+				}
+				territories = normalizedTerritories
 			}
 			if !available.IsSet() {
 				fmt.Fprintln(os.Stderr, "Error: --available is required (true or false)")
 				return shared.MissingRequiredUsageError("--available")
+			}
+
+			ifExistsMode, err := shared.ParseIfExistsMode(*ifExists, shared.IfExistsSkip, shared.IfExistsUpdate)
+			if err != nil {
+				return err
 			}
 
 			client, err := pricingAvailabilityClientFactory()
@@ -797,12 +850,12 @@ Examples:
 				return fmt.Errorf("pricing availability create: %w", err)
 			}
 
-			requestCtx, cancel := shared.ContextWithTimeout(ctx)
+			requestCtx, cancel := shared.ContextWithAvailabilityTimeout(ctx, *allTerritories)
 			defer cancel()
 
 			availableInNewTerritoriesValue := availableInNewTerritories.Value()
 			availableValue := available.Value()
-			territoryAvailabilities, err := initialTerritoryAvailabilities(requestCtx, client, territories, availableValue)
+			territoryAvailabilities, err := initialTerritoryAvailabilities(requestCtx, client, territories, *allTerritories, availableValue)
 			if err != nil {
 				return fmt.Errorf("pricing availability create: %w", err)
 			}
@@ -812,13 +865,49 @@ Examples:
 				TerritoryAvailabilities:   territoryAvailabilities,
 			})
 			if err != nil {
+				// Apple answers the bootstrap rejection with the same 409 code as
+				// the existence conflict, so it is classified first and keeps its
+				// own remediation. Nothing was created, so a read-back would find
+				// nothing anyway.
 				if isAvailabilityBootstrapRelationshipRejection(err) {
 					return fmt.Errorf(
 						"pricing availability create: Apple rejected the initial availability request through the public API; availability was not configured. Authenticate a web session with \"asc web auth login --apple-id EMAIL\", then retry with \"asc web apps availability create\", or configure Pricing and Availability in App Store Connect: %w",
 						err,
 					)
 				}
-				return fmt.Errorf("pricing availability create: %w", err)
+				existing, handled, resolveErr := shared.ResolveIfExistsConflict(ifExistsMode, err, availabilityCreateExistsCodes, func() (*asc.AppAvailabilityV2Response, bool, error) {
+					return findExistingAppAvailability(requestCtx, client, resolvedAppID)
+				})
+				if resolveErr != nil {
+					return fmt.Errorf("pricing availability create: %w", resolveErr)
+				}
+				if !handled {
+					return fmt.Errorf("pricing availability create: %w", err)
+				}
+				resp = existing
+				outcome := "left unchanged"
+				if ifExistsMode == shared.IfExistsUpdate {
+					updated, changedTerritories, updateErr := shared.ApplyTerritoryAvailabilityUpdate(requestCtx, client, shared.TerritoryAvailabilityUpdateRequest{
+						AppID:                             resolvedAppID,
+						Territories:                       territories,
+						AllTerritories:                    *allTerritories,
+						Available:                         availableValue,
+						ExpectedAvailableInNewTerritories: &availableInNewTerritoriesValue,
+						ErrorPrefix:                       "pricing availability create",
+					})
+					if updateErr != nil {
+						return updateErr
+					}
+					resp = updated
+					// An update that changed no territory left the record as
+					// it was, so the diagnostic must not claim an update.
+					outcome = "every requested territory already matched; left unchanged"
+					if changedTerritories > 0 {
+						outcome = "updated it in place"
+					}
+				}
+				fmt.Fprintf(os.Stderr, "pricing availability create: app %s already has availability %s; %s (--if-exists %s)\n",
+					resolvedAppID, existing.Data.ID, outcome, ifExistsMode)
 			}
 
 			return shared.PrintOutput(resp, *output.Output, *output.Pretty)
@@ -919,4 +1008,32 @@ func PricingAvailabilityRemoveFromSaleCommand() *ffcli.Command {
 	return shared.NewAvailabilityRemoveFromSaleCommand(shared.AvailabilityRemoveFromSaleCommandConfig{
 		ClientFactory: pricingAvailabilityClientFactory,
 	})
+}
+
+// availabilityCreateExistsCodes lists the Apple 409 codes accepted as "this app
+// already has an appAvailability" on POST /v2/appAvailabilities. Apple rejects
+// the duplicate on the app relationship. The same code also carries Apple's
+// public-API bootstrap rejection, which is classified before this list and
+// keeps its own remediation; the read-back is what finally proves existence,
+// and STATE_ERROR.* keeps failing.
+var availabilityCreateExistsCodes = []string{
+	"ENTITY_ERROR.RELATIONSHIP.INVALID",
+	"ENTITY_ERROR.ATTRIBUTE.INVALID.ALREADY_EXISTS",
+}
+
+// findExistingAppAvailability reads back the availability record a 409 conflict
+// referred to. It reports found=false when the app has no record so the caller
+// can surface the original conflict.
+func findExistingAppAvailability(ctx context.Context, client *asc.Client, appID string) (*asc.AppAvailabilityV2Response, bool, error) {
+	resp, err := client.GetAppAvailabilityV2(ctx, appID)
+	if err != nil {
+		if shared.IsAppAvailabilityMissing(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	if strings.TrimSpace(resp.Data.ID) == "" {
+		return nil, false, nil
+	}
+	return resp, true, nil
 }

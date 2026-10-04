@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
@@ -28,8 +29,8 @@ var (
 	listCredentialSummaries  = authsvc.ListCredentialSummaries
 	keychainAvailable        = authsvc.KeychainAvailable
 	migrateKeychainToConfig  = authsvc.MigrateKeychainToConfig
-	removeStoredCredential   = authsvc.RemoveCredentials
-	removeStoredCredentials  = authsvc.RemoveAllCredentials
+	removeStoredCredential   = authsvc.RemoveCredentialsWithOptions
+	removeStoredCredentials  = authsvc.RemoveAllCredentialsWithOptions
 )
 
 // Auth command factory
@@ -103,7 +104,8 @@ func AuthInitCommand() *ffcli.Command {
 		ShortHelp:  "Create a template config.json for authentication.",
 		LongHelp: `Create a template config.json for authentication.
 
-This writes ~/.asc/config.json with empty fields and secure permissions.
+This writes the ASC_CONFIG_PATH file when that variable is set, otherwise
+~/.asc/config.json, with empty fields and secure permissions.
 Use --local to write ./.asc/config.json in the current repo instead.
 
 Examples:
@@ -119,7 +121,7 @@ Examples:
 			if *local {
 				path, err = config.LocalPath()
 			} else {
-				path, err = config.GlobalPath()
+				path, err = config.DefaultWritePath()
 			}
 			if err != nil {
 				return fmt.Errorf("auth init: %w", err)
@@ -136,6 +138,9 @@ Examples:
 			template := &config.Config{}
 			if err := config.SaveAt(path, template); err != nil {
 				return fmt.Errorf("auth init: %w", err)
+			}
+			if *local {
+				warnLocalConfigShadowed(path)
 			}
 
 			if *open {
@@ -220,15 +225,15 @@ func printDoctorReport(report authsvc.DoctorReport) {
 		if len(section.Checks) == 0 {
 			continue
 		}
-		fmt.Printf("\n%s:\n", section.Title)
+		fmt.Printf("\n%s:\n", shared.SanitizeTerminal(section.Title))
 		for _, check := range section.Checks {
-			fmt.Printf("  [%s] %s\n", doctorStatusLabel(check.Status), check.Message)
+			fmt.Printf("  [%s] %s\n", doctorStatusLabel(check.Status), shared.SanitizeTerminal(check.Message))
 		}
 	}
 	if len(report.Recommendations) > 0 {
 		fmt.Println("\nRecommendations:")
 		for i, rec := range report.Recommendations {
-			fmt.Printf("  %d. %s\n", i+1, rec)
+			fmt.Printf("  %d. %s\n", i+1, shared.SanitizeTerminal(rec))
 		}
 	}
 
@@ -417,6 +422,25 @@ func withNetworkDiagnostic(rendered, cause error) error {
 	return shared.WithDiagnostic(rendered, code, "")
 }
 
+// printPrivateKeyPermissionRemediation follows an over-permissive key failure
+// with the exact command that repairs the file and the flag that applies it, so
+// a first login recovers without consulting auth doctor. Other private-key
+// failures print nothing.
+func printPrivateKeyPermissionRemediation(cause error, keyPath string) {
+	if kind, ok := authsvc.PrivateKeyErrorKindOf(cause); !ok || kind != authsvc.PrivateKeyPermissionsInsecure {
+		return
+	}
+	if command, safe := authsvc.FilePermissionRemediationCommand(keyPath); safe {
+		fmt.Fprintf(
+			os.Stderr,
+			"To fix, run:\n  %s\nOr re-run with --fix-permissions to let asc change the file to 0600.\n",
+			shared.SanitizeTerminal(command),
+		)
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Re-run with --fix-permissions to let asc change the file to 0600.")
+}
+
 func withPrivateKeyDiagnostic(rendered, cause error) error {
 	kind, ok := authsvc.PrivateKeyErrorKindOf(cause)
 	if !ok {
@@ -450,16 +474,72 @@ func validateLoginNetwork(ctx context.Context, keyID, issuerID, keyPath string) 
 	return err
 }
 
+// loginConfigPath returns the config file a keychain-bypassing login writes:
+// ./.asc/config.json with --local, otherwise ASC_CONFIG_PATH when set (the only
+// file reads consult then), otherwise the global config.
+func loginConfigPath(local bool) (string, error) {
+	if local {
+		return config.LocalPath()
+	}
+	return config.DefaultWritePath()
+}
+
+// warnLocalConfigShadowed explains that an explicit --local write is not the
+// file later commands read while ASC_CONFIG_PATH is set.
+// warnRetainedGlobalCredentials tells the user when logout left credentials in
+// ~/.asc/config.json because ASC_CONFIG_PATH scoped cleanup to another file.
+// An empty name refers to all stored credentials.
+func warnRetainedGlobalCredentials(name string) {
+	globalPath, retained, err := authsvc.RetainedGlobalConfigCredentials(name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not check ~/.asc/config.json for credentials that auth logout left in place: %s\n", shared.SanitizeTerminal(err.Error()))
+		return
+	}
+	if !retained {
+		return
+	}
+	held := "stored credentials"
+	if name != "" {
+		held = fmt.Sprintf("credentials named '%s'", shared.SanitizeTerminal(name))
+	}
+	fmt.Fprintf(
+		os.Stderr,
+		"Warning: ASC_CONFIG_PATH is set, so auth logout did not change %s, which still holds %s; to remove them, run auth logout with ASC_CONFIG_PATH unset or pass --include-global.\n",
+		shared.SanitizeTerminal(globalPath),
+		held,
+	)
+}
+
+func warnLocalConfigShadowed(localPath string) {
+	overridePath, ok, err := config.OverridePath()
+	if !ok {
+		return
+	}
+	if err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Warning: other commands cannot read %s while ASC_CONFIG_PATH is invalid (%s); unset ASC_CONFIG_PATH or point it at %s to use this file.\n",
+			shared.SanitizeTerminal(localPath),
+			shared.SanitizeTerminal(err.Error()),
+			shared.SanitizeTerminal(localPath),
+		)
+		return
+	}
+	if filepath.Clean(overridePath) == filepath.Clean(localPath) {
+		return
+	}
+	fmt.Fprintf(
+		os.Stderr,
+		"Warning: ASC_CONFIG_PATH is set, so other commands read %s instead of %s; unset ASC_CONFIG_PATH or point it at %s to use this file.\n",
+		shared.SanitizeTerminal(overridePath),
+		shared.SanitizeTerminal(localPath),
+		shared.SanitizeTerminal(localPath),
+	)
+}
+
 func loginStorageMessage(bypassKeychain, local bool) (string, error) {
 	if bypassKeychain {
-		if local {
-			path, err := config.LocalPath()
-			if err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("Storing credentials in config file at %s", path), nil
-		}
-		path, err := config.GlobalPath()
+		path, err := loginConfigPath(local)
 		if err != nil {
 			return "", err
 		}
@@ -513,7 +593,7 @@ func reportLoginCredentialShapes(keyID, issuerID string, individualKey bool) err
 func AuthLoginCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("auth login", flag.ExitOnError)
 
-	name := fs.String("name", "", "Friendly name for this key")
+	name := fs.String("name", "", "Friendly name for this key (optional on first login: defaults to \"default\" when no profiles are stored)")
 	keyID := fs.String("key-id", "", "App Store Connect API Key ID")
 	issuerID := fs.String("issuer-id", "", "App Store Connect Issuer ID")
 	keyType := fs.String("key-type", config.CredentialKeyTypeTeam, "App Store Connect API key type: team or individual")
@@ -522,6 +602,7 @@ func AuthLoginCommand() *ffcli.Command {
 	local := fs.Bool("local", false, "When bypassing keychain, write to ./.asc/config.json")
 	network := fs.Bool("network", false, "Validate credentials with a lightweight API request")
 	skipValidation := fs.Bool("skip-validation", false, "Skip JWT and network validation checks")
+	fixPermissions := fs.Bool("fix-permissions", false, "Change an over-permissive private key file to 0600 before reading it")
 
 	return &ffcli.Command{
 		Name:       "login",
@@ -531,8 +612,18 @@ func AuthLoginCommand() *ffcli.Command {
 
 This command stores your API credentials in the system keychain when available,
 with a local config fallback (restricted permissions). Use --bypass-keychain to
-explicitly bypass keychain and write credentials to ~/.asc/config.json instead.
+explicitly bypass keychain and write credentials to a config file instead: the
+ASC_CONFIG_PATH file when that variable is set, otherwise ~/.asc/config.json.
 Add --local to write ./.asc/config.json for the current repo.
+
+--name may be omitted on a first login: with no stored profiles the key is saved
+as "default". Once profiles exist, --name is required and the error lists them.
+
+The private key file must not be readable by other users. An over-permissive key
+fails validation and, when its path is safe to render, prints the exact chmod
+command that repairs it. Pass --fix-permissions to let asc change the file to
+0600 first and report what it changed. If the operating system cannot securely
+open the file for descriptor-bound repair, asc fails without changing it.
 
 Examples:
   asc auth login --name "MyKey" --key-id "ABC123" --issuer-id "DEF456" --private-key /path/to/AuthKey.p8
@@ -540,6 +631,7 @@ Examples:
   asc auth login --bypass-keychain --local --name "MyKey" --key-id "ABC123" --issuer-id "DEF456" --private-key /path/to/AuthKey.p8
   asc auth login --network --name "MyKey" --key-id "ABC123" --issuer-id "DEF456" --private-key /path/to/AuthKey.p8
   asc auth login --skip-validation --name "MyKey" --key-id "ABC123" --issuer-id "DEF456" --private-key /path/to/AuthKey.p8
+  asc auth login --fix-permissions --name "MyKey" --key-id "ABC123" --issuer-id "DEF456" --private-key /path/to/AuthKey.p8
 
 When using system keychain storage, the encrypted key material is stored in keychain
 so commands continue to work even if the original .p8 file is removed.`,
@@ -549,6 +641,13 @@ so commands continue to work even if the original .p8 file is removed.`,
 			bypassKeychainEnabled := *bypassKeychain || authsvc.ShouldBypassKeychain()
 			if *local && !bypassKeychainEnabled {
 				return shared.WithDiagnostic(shared.UsageError("--local requires --bypass-keychain or ASC_BYPASS_KEYCHAIN set to 1/true/yes/on"), shared.DiagnosticInvalidInput, "--local")
+			}
+			if !flagWasSet(fs, "name") {
+				profileName, err := omittedLoginProfileName(bypassKeychainEnabled, *local)
+				if err != nil {
+					return err
+				}
+				*name = profileName
 			}
 			if strings.TrimSpace(*name) == "" {
 				fmt.Fprintln(os.Stderr, "Error: --name is required")
@@ -584,8 +683,21 @@ so commands continue to work even if the original .p8 file is removed.`,
 				return err
 			}
 
+			if *fixPermissions {
+				changed, err := authsvc.FixPrivateKeyFilePermissions(*keyPath)
+				if err != nil {
+					rendered := errors.New(shared.SanitizeTerminal(fmt.Sprintf("auth login: failed to fix private key permissions: %v", err)))
+					return withPrivateKeyDiagnostic(shared.NewErrorWithCause(rendered, err), err)
+				}
+				if changed {
+					fmt.Fprintf(os.Stderr, "Changed private key file permissions to 0600: %s\n", shared.SanitizeTerminal(*keyPath))
+				}
+			}
+
 			if err := authsvc.ValidateKeyFile(*keyPath); err != nil {
-				return withPrivateKeyDiagnostic(shared.UsageErrorf("auth login: invalid private key: %v", err), err)
+				rendered := withPrivateKeyDiagnostic(shared.UsageErrorf("auth login: invalid private key: %v", err), err)
+				printPrivateKeyPermissionRemediation(err, *keyPath)
+				return rendered
 			}
 
 			if !*skipValidation {
@@ -610,6 +722,7 @@ so commands continue to work even if the original .p8 file is removed.`,
 					if err := authsvc.StoreCredentialsConfigAtWithKeyType(*name, *keyID, *issuerID, *keyPath, path, normalizedKeyType); err != nil {
 						return fmt.Errorf("auth login: failed to store credentials: %w", err)
 					}
+					warnLocalConfigShadowed(path)
 				} else {
 					if err := authsvc.StoreCredentialsConfigWithKeyType(*name, *keyID, *issuerID, *keyPath, normalizedKeyType); err != nil {
 						return fmt.Errorf("auth login: failed to store credentials: %w", err)
@@ -625,6 +738,95 @@ so commands continue to work even if the original .p8 file is removed.`,
 			return nil
 		},
 	}
+}
+
+// defaultLoginProfileName is the name stored credentials resolve to when none
+// was given, matching the name unnamed legacy credentials are listed under.
+const defaultLoginProfileName = "default"
+
+// omittedLoginProfileName chooses the profile name for `auth login` without
+// --name. With nothing stored in the destination it uses the default name; once
+// profiles exist it refuses to guess, so an implicit default can never overwrite
+// one, and lists the names to pass explicitly.
+func omittedLoginProfileName(bypassKeychain, local bool) (string, error) {
+	names, err := existingLoginProfileNames(bypassKeychain, local)
+	if err != nil {
+		return "", fmt.Errorf("auth login: %w", err)
+	}
+	if len(names) == 0 {
+		return defaultLoginProfileName, nil
+	}
+	return "", shared.WithDiagnostic(
+		shared.UsageErrorf(
+			"--name is required when profiles already exist (%s); re-run with --name %q to update that profile, or --name with a new name to add one",
+			strings.Join(names, ", "), names[0],
+		),
+		shared.DiagnosticRequiredInputMissing,
+		"--name",
+	)
+}
+
+// existingLoginProfileNames lists the profile names in the store `auth login`
+// would write to: the config file from loginConfigPath when bypassing the
+// keychain, otherwise the merged keychain and config credentials.
+func existingLoginProfileNames(bypassKeychain, local bool) ([]string, error) {
+	if !bypassKeychain {
+		credentials, err := listCredentialSummaries()
+		if err != nil {
+			if _, ok := errors.AsType[*authsvc.CredentialsWarning](err); !ok {
+				return nil, fmt.Errorf("failed to list credentials: %w", err)
+			}
+		}
+		names := make([]string, 0, len(credentials))
+		for _, credential := range credentials {
+			names = appendProfileName(names, credential.Name)
+		}
+		return names, nil
+	}
+
+	path, err := loginConfigPath(local)
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := config.LoadAt(path)
+	if err != nil {
+		if errors.Is(err, config.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	names := make([]string, 0, len(cfg.Keys)+1)
+	for _, credential := range cfg.Keys {
+		names = appendProfileName(names, credential.Name)
+	}
+	if strings.TrimSpace(cfg.KeyID) != "" {
+		legacyName := strings.TrimSpace(cfg.DefaultKeyName)
+		if legacyName == "" {
+			legacyName = defaultLoginProfileName
+		}
+		names = appendProfileName(names, legacyName)
+	}
+	return names, nil
+}
+
+// flagWasSet reports whether name was passed on the command line, so an
+// explicitly blank value stays an error instead of reading as omitted.
+func flagWasSet(fs *flag.FlagSet, name string) bool {
+	set := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			set = true
+		}
+	})
+	return set
+}
+
+func appendProfileName(names []string, name string) []string {
+	name = strings.TrimSpace(name)
+	if name == "" || slices.Contains(names, name) {
+		return names
+	}
+	return append(names, name)
 }
 
 // AuthExportToConfigCommand copies keychain-backed credentials to config.json.
@@ -817,6 +1019,7 @@ func AuthLogoutCommand() *ffcli.Command {
 	all := fs.Bool("all", false, "Remove all stored credentials")
 	name := fs.String("name", "", "Remove a named credential")
 	confirm := fs.Bool("confirm", false, "Confirm credential removal (required)")
+	includeGlobal := fs.Bool("include-global", false, "Also remove matching credentials from ~/.asc/config.json when ASC_CONFIG_PATH points to another file")
 
 	return &ffcli.Command{
 		Name:       "logout",
@@ -827,9 +1030,17 @@ func AuthLogoutCommand() *ffcli.Command {
 Omitting --name removes all stored credentials. --confirm is required before
 any credential is removed.
 
+Logout removes matching credentials from the keychain and the active config
+file. When ASC_CONFIG_PATH is set, that file is the only config file changed;
+~/.asc/config.json is left alone, and a warning names it if it still holds
+matching credentials. Pass --include-global to remove them from
+~/.asc/config.json as well. Without ASC_CONFIG_PATH, logout also cleans
+~/.asc/config.json.
+
 Examples:
   asc auth logout --all --confirm
-  asc auth logout --name "MyKey" --confirm`,
+  asc auth logout --name "MyKey" --confirm
+  asc auth logout --all --include-global --confirm`,
 		FlagSet:   fs,
 		UsageFunc: shared.DefaultUsageFunc,
 		Exec: func(ctx context.Context, args []string) error {
@@ -856,15 +1067,24 @@ Examples:
 				return shared.UsageError("--confirm is required to remove stored credentials")
 			}
 
+			opts := authsvc.RemoveOptions{IncludeGlobalConfig: *includeGlobal}
 			if trimmedName != "" {
-				if err := removeStoredCredential(trimmedName); err != nil {
+				err := removeStoredCredential(trimmedName, opts)
+				if !opts.IncludeGlobalConfig {
+					warnRetainedGlobalCredentials(trimmedName)
+				}
+				if err != nil {
 					return fmt.Errorf("auth logout: failed to remove credentials: %w", err)
 				}
 				fmt.Printf("Successfully removed stored credential '%s'\n", trimmedName)
 				return nil
 			}
 
-			if err := removeStoredCredentials(); err != nil {
+			err := removeStoredCredentials(opts)
+			if !opts.IncludeGlobalConfig {
+				warnRetainedGlobalCredentials("")
+			}
+			if err != nil {
 				return fmt.Errorf("auth logout: failed to remove credentials: %w", err)
 			}
 
@@ -904,7 +1124,7 @@ Examples:
 			}
 
 			credentialLister := listCredentialSummaries
-			if *validate || *verbose {
+			if *validate {
 				credentialLister = listStoredCredentials
 			}
 			credentials, err := credentialLister()
@@ -1243,6 +1463,55 @@ Examples:
 	}
 }
 
+// authTokenConfirmRequiredMessage explains the --confirm gate in one line. It
+// keeps the "required" wording so the failure stays classified as
+// missing_required with usage exit code 2.
+const authTokenConfirmRequiredMessage = "--confirm is required because `asc auth token` prints a live bearer token to stdout, " +
+	"where it can leak into shell history, logs, or CI output"
+
+// authTokenConfirmInvocation reconstructs the exact command that satisfies the
+// --confirm gate, preserving the root --profile and --strict-auth overrides and
+// every command flag the caller already supplied so agents can re-run it
+// verbatim. ok is false when a supplied value cannot be rendered as a copyable
+// shell argument, in which case no suggestion is printed at all.
+func authTokenConfirmInvocation(fs *flag.FlagSet) (string, bool) {
+	rootFlags, ok := shared.RootFlagsForReinvocation()
+	if !ok {
+		return "", false
+	}
+	parts := []string{"asc"}
+	parts = append(parts, rootFlags...)
+	parts = append(parts, "auth", "token")
+	if fs != nil {
+		// flag.Visit walks only the flags that were set, in lexical order, so
+		// the rendered invocation is deterministic.
+		fs.Visit(func(f *flag.Flag) {
+			if !ok || f.Name == "confirm" {
+				// --confirm is re-added last, including when the caller passed
+				// --confirm=false.
+				return
+			}
+			if boolFlag, isBool := f.Value.(interface{ IsBoolFlag() bool }); isBool && boolFlag.IsBoolFlag() {
+				if f.Value.String() == "true" {
+					parts = append(parts, "--"+f.Name)
+				}
+				return
+			}
+			quoted, quotable := shared.ShellQuote(f.Value.String())
+			if !quotable {
+				ok = false
+				return
+			}
+			parts = append(parts, "--"+f.Name, quoted)
+		})
+	}
+	if !ok {
+		return "", false
+	}
+	parts = append(parts, "--confirm")
+	return strings.Join(parts, " "), true
+}
+
 // AuthTokenCommand prints a signed JWT for direct API calls.
 func AuthTokenCommand() *ffcli.Command {
 	fs := flag.NewFlagSet("auth token", flag.ExitOnError)
@@ -1282,7 +1551,14 @@ Examples:
 				return shared.UsageError(err.Error())
 			}
 			if !*confirm {
-				return shared.UsageError("--confirm is required")
+				// UsageError writes the "Error:" line first, so the exact
+				// re-invocation is appended straight after it and still lands
+				// ahead of the usage page ffcli renders for flag.ErrHelp.
+				usageErr := shared.UsageError(authTokenConfirmRequiredMessage)
+				if invocation, ok := authTokenConfirmInvocation(fs); ok {
+					fmt.Fprintf(os.Stderr, "Re-run: %s\n", invocation)
+				}
+				return usageErr
 			}
 
 			cred, err := shared.ResolveAuthCredentials(trimmedName)

@@ -30,6 +30,7 @@ import (
 
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/readonly"
 	webcore "github.com/rudrankriyam/App-Store-Connect-CLI/internal/web"
 )
 
@@ -75,6 +76,11 @@ func TestExitCodeFromError(t *testing.T) {
 			expected: ExitAuth,
 		},
 		{
+			name:     "wrapped missing Apple web session keeps usage exit code",
+			err:      fmt.Errorf("web review show failed: %w", &shared.MissingWebSessionError{Message: "no Apple web session is cached"}),
+			expected: ExitUsage,
+		},
+		{
 			name:     "ErrNotFound returns not found",
 			err:      asc.ErrNotFound,
 			expected: ExitNotFound,
@@ -88,6 +94,26 @@ func TestExitCodeFromError(t *testing.T) {
 			name:     "generic error returns generic error",
 			err:      errors.New("something went wrong"),
 			expected: ExitError,
+		},
+		{
+			name:     "pending wait returns pending",
+			err:      shared.NewPendingError("build is still pending"),
+			expected: ExitPending,
+		},
+		{
+			name:     "wrapped pending wait returns pending",
+			err:      fmt.Errorf("builds wait: %w", shared.NewPendingError("build is still pending")),
+			expected: ExitPending,
+		},
+		{
+			name:     "read-only refusal returns read-only",
+			err:      &readonly.RefusedError{Source: readonly.EnvVar, Method: http.MethodPatch, Target: "/v1/apps/1"},
+			expected: ExitReadOnly,
+		},
+		{
+			name:     "wrapped read-only refusal returns read-only",
+			err:      fmt.Errorf("failed to update app: %w", &readonly.RefusedError{Source: readonly.EnvVar, Method: http.MethodPatch, Target: "/v1/apps/1"}),
+			expected: ExitReadOnly,
 		},
 		{
 			name:     "child exit code is preserved",
@@ -186,6 +212,12 @@ func TestExitCodeConstants(t *testing.T) {
 	}
 	if ExitConflict != 5 {
 		t.Errorf("ExitConflict = %d, want 5", ExitConflict)
+	}
+	if ExitReadOnly != 6 {
+		t.Errorf("ExitReadOnly = %d, want 6", ExitReadOnly)
+	}
+	if ExitPending != 7 {
+		t.Errorf("ExitPending = %d, want 7", ExitPending)
 	}
 }
 
@@ -828,8 +860,8 @@ func TestRemovedBuildSelectorAliasesExitUsage(t *testing.T) {
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
 			}
-			if !strings.Contains(stderr, "Error: unknown flag `"+test.flag+"`") {
-				t.Fatalf("expected unknown flag diagnostic for %s, got %q", test.flag, stderr)
+			if !strings.Contains(stderr, "Error: `"+test.flag+"` was removed in 5.0.0") {
+				t.Fatalf("expected removed-flag guidance for %s, got %q", test.flag, stderr)
 			}
 			if strings.Contains(stderr, "is deprecated") {
 				t.Fatalf("removed alias must not emit deprecation guidance, got %q", stderr)
@@ -922,8 +954,8 @@ func TestTestFlightDistributionEditExternalTestingIsUnknownFlag(t *testing.T) {
 			if stdout != "" {
 				t.Fatalf("expected empty stdout, got %q", stdout)
 			}
-			if !strings.Contains(stderr, "Error: unknown flag `--external-testing`") {
-				t.Fatalf("expected unknown flag diagnostic for --external-testing, got %q", stderr)
+			if !strings.Contains(stderr, "Error: `--external-testing` was removed in 5.0.0") {
+				t.Fatalf("expected removal diagnostic for --external-testing, got %q", stderr)
 			}
 			if strings.Contains(stderr, "is deprecated") {
 				t.Fatalf("removed flag must not emit deprecation guidance, got %q", stderr)
@@ -1066,8 +1098,8 @@ func TestWebAuthLoginRemovedTwoFactorFlagExitCode(t *testing.T) {
 	}
 
 	stderr := string(output)
-	if !strings.Contains(stderr, "unknown flag `--two-factor-code` for `asc web auth login`") {
-		t.Fatalf("expected unknown-flag usage error, got %q", stderr)
+	if !strings.Contains(stderr, "`--two-factor-code` was removed in 5.0.0") {
+		t.Fatalf("expected removed-flag usage error, got %q", stderr)
 	}
 	if !strings.Contains(stderr, "--two-factor-code-command") {
 		t.Fatalf("expected --two-factor-code-command suggestion, got %q", stderr)

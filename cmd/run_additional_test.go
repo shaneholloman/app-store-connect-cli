@@ -541,11 +541,19 @@ func TestRun_UnknownInputReportWriteFailureReturnsExitError(t *testing.T) {
 		name       string
 		args       []string
 		wantPrefix string
+		wantChild  string
 	}{
 		{
 			name:       "unknown command",
 			args:       []string{"builds", "lsit"},
 			wantPrefix: "Error: unknown command `asc builds lsit`\n",
+			wantChild:  "other",
+		},
+		{
+			name:       "allowlisted unknown command",
+			args:       []string{"builds", "get"},
+			wantPrefix: "Error: unknown command `asc builds get`\n",
+			wantChild:  "get",
 		},
 		{
 			name:       "unknown flag",
@@ -598,6 +606,9 @@ func TestRun_UnknownInputReportWriteFailureReturnsExitError(t *testing.T) {
 				gotContext.ErrorKind != telemetry.ErrorKindOther || gotContext.OutcomeKind != telemetry.OutcomeInternalError {
 				t.Fatalf("unexpected telemetry: calls=%d command=%q exit=%d context=%+v", calls, gotCommand, gotExit, gotContext)
 			}
+			if gotContext.AttemptedChild != test.wantChild {
+				t.Fatalf("AttemptedChild = %q, want %q", gotContext.AttemptedChild, test.wantChild)
+			}
 			if !strings.HasPrefix(gotCommand, "asc builds") {
 				t.Fatalf("telemetry command = %q, want canonical builds path", gotCommand)
 			}
@@ -646,13 +657,13 @@ func TestRun_ValidateMissingRequiredFlagsReturnsUsage(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("expected empty stdout, got %q", stdout)
 	}
-	if !strings.Contains(stderr, "--version or --version-id is required") {
-		t.Fatalf("expected missing version error, got %q", stderr)
+	if !strings.Contains(stderr, "--app is required (or set ASC_APP_ID)") {
+		t.Fatalf("expected missing app error, got %q", stderr)
 	}
 	if gotContext.ErrorKind != telemetry.ErrorKindMissingRequired || gotContext.FailureStage != telemetry.FailureStageValidation {
 		t.Fatalf("unexpected telemetry context: %+v", gotContext)
 	}
-	if gotContext.FailureParameter != "" || gotContext.OutcomeKind != telemetry.OutcomeUsageError {
+	if gotContext.FailureParameter != "--app" || gotContext.OutcomeKind != telemetry.OutcomeUsageError {
 		t.Fatalf("unexpected missing-parameter telemetry context: %+v", gotContext)
 	}
 	if gotContext.DiagnosticCode != string(shared.DiagnosticRequiredInputMissing) {
@@ -1320,7 +1331,14 @@ func TestRun_UnknownCommandsReturnConciseRecovery(t *testing.T) {
 			args: []string{"builts"},
 			wantStderr: "Error: unknown command `asc builts`\n" +
 				"Try:\n" +
-				"  asc builds\n" +
+				"  asc builds --help\n" +
+				"For help:\n" +
+				"  asc --help\n",
+		},
+		{
+			name: "root typo beyond edit distance contract",
+			args: []string{"agxxxments"},
+			wantStderr: "Error: unknown command `asc agxxxments`\n" +
 				"For help:\n" +
 				"  asc --help\n",
 		},
@@ -1329,7 +1347,7 @@ func TestRun_UnknownCommandsReturnConciseRecovery(t *testing.T) {
 			args: []string{"builds", "lsit"},
 			wantStderr: "Error: unknown command `asc builds lsit`\n" +
 				"Try:\n" +
-				"  asc builds list\n" +
+				"  asc builds list --help\n" +
 				"For help:\n" +
 				"  asc builds --help\n",
 		},
@@ -1338,7 +1356,7 @@ func TestRun_UnknownCommandsReturnConciseRecovery(t *testing.T) {
 			args: []string{"xcode-cloud", "workflows", "lsit", "--app", "APP_ID"},
 			wantStderr: "Error: unknown command `asc xcode-cloud workflows lsit`\n" +
 				"Try:\n" +
-				"  asc xcode-cloud workflows list\n" +
+				"  asc xcode-cloud workflows list --help\n" +
 				"For help:\n" +
 				"  asc xcode-cloud workflows --help\n",
 		},
@@ -1422,8 +1440,8 @@ func TestRun_UnknownCommandSuggestionsAreBoundedAndTerminalSafe(t *testing.T) {
 		t.Fatalf("stdout = %q, want empty", stdout)
 	}
 	tryBlock, _, found := strings.Cut(strings.TrimPrefix(stderr, "Error: unknown command `asc app`\nTry:\n"), "For help:\n")
-	if !found || strings.Count(strings.TrimSpace(tryBlock), "\n") != 1 {
-		t.Fatalf("suggestion count is not 2; stderr=%q", stderr)
+	if !found || strings.Count(strings.TrimSpace(tryBlock), "\n") != 2 {
+		t.Fatalf("suggestion count is not 3; stderr=%q", stderr)
 	}
 
 	_, hostileStderr := captureCommandOutput(t, func() {
@@ -1452,7 +1470,7 @@ func TestRun_UnknownCommandRanksClosestPrefixBeforeSuggestionLimit(t *testing.T)
 	if stdout != "" {
 		t.Fatalf("stdout = %q, want empty", stdout)
 	}
-	if !strings.Contains(stderr, "Try:\n  asc builds\n") {
+	if !strings.Contains(stderr, "Try:\n  asc builds --help\n") {
 		t.Fatalf("closest prefix was truncated from suggestions: %q", stderr)
 	}
 }
@@ -1558,39 +1576,6 @@ func TestRun_MetadataValidateBareVersionPreservesGlobalFlagRecovery(t *testing.T
 	}
 }
 
-func TestRun_MetadataPullMissingVersionPointsToDiscovery(t *testing.T) {
-	resetReportFlags(t)
-	originalEmitTelemetry := emitTelemetry
-	t.Cleanup(func() { emitTelemetry = originalEmitTelemetry })
-
-	var gotContext telemetry.EventContext
-	emitTelemetry = func(_ string, _ string, _ time.Duration, _ int, eventContext telemetry.EventContext) {
-		gotContext = eventContext
-	}
-	stdout, stderr := captureCommandOutput(t, func() {
-		if code := Run([]string{"metadata", "pull", "--app", "app-1", "--dir", "./metadata"}, "1.0.0"); code != ExitUsage {
-			t.Fatalf("exit code = %d, want %d", code, ExitUsage)
-		}
-	})
-
-	if stdout != "" {
-		t.Fatalf("stdout = %q, want empty", stdout)
-	}
-	want := "Error: --version is required\n" +
-		"Find versions:\n" +
-		"  asc versions list --app \"APP_ID\" --paginate\n"
-	if stderr != want {
-		t.Fatalf("stderr = %q, want %q", stderr, want)
-	}
-	if gotContext.FailureParameter != "--version" ||
-		gotContext.DiagnosticCode != string(shared.DiagnosticRequiredInputMissing) ||
-		gotContext.ErrorKind != telemetry.ErrorKindMissingRequired ||
-		gotContext.FailureStage != telemetry.FailureStageValidation ||
-		gotContext.OutcomeKind != telemetry.OutcomeUsageError {
-		t.Fatalf("telemetry context = %+v, want missing --version validation", gotContext)
-	}
-}
-
 func TestRun_XcodeCloudStatusHelpOmitsRemovedIDAlias(t *testing.T) {
 	resetReportFlags(t)
 
@@ -1617,9 +1602,7 @@ func TestRun_XcodeCloudStatusHelpOmitsRemovedIDAlias(t *testing.T) {
 	if stdout != "" {
 		t.Fatalf("removed alias stdout = %q, want empty", stdout)
 	}
-	want := "Error: unknown flag `--id` for `asc xcode-cloud status`\n" +
-		"Try:\n" +
-		"  --run-id\n" +
+	want := "Error: `--id` was removed in 5.0.0; use `--run-id` (see migrate-to-5-0)\n" +
 		"For help:\n" +
 		"  asc xcode-cloud status --help\n"
 	if stderr != want {
@@ -1819,8 +1802,8 @@ func TestRun_CommonWrongCommandPathDoesNotCopyInvalidTypedValues(t *testing.T) {
 	}
 	want := "Error: unknown command `asc reviewsubmissions`\n" +
 		"Try:\n" +
-		"  asc reviews\n" +
-		"  asc review\n" +
+		"  asc reviews --help\n" +
+		"  asc review --help\n" +
 		"For help:\n" +
 		"  asc --help\n"
 
@@ -2320,7 +2303,7 @@ func TestRun_DeprecationMentionsRemainSuggestionCandidates(t *testing.T) {
 			t.Fatalf("Run() exit code = %d, want %d", code, ExitUsage)
 		}
 	})
-	if !strings.Contains(commandStderr, "Try:\n  asc iap versions submit\n") {
+	if !strings.Contains(commandStderr, "Try:\n  asc iap versions submit --help\n") {
 		t.Fatalf("stable command with deprecation context must remain suggestible, got %q", commandStderr)
 	}
 
